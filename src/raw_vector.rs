@@ -11,6 +11,218 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
+/// Append bits and variable-width integers to a container.
+///
+/// The container is not required to remember the types of the pushed items.
+///
+/// # Examples
+/// ```
+/// use simple_sds::raw_vector::PushRaw;
+/// use simple_sds::bits;
+///
+/// struct Example(Vec<bool>, Vec<u64>);
+///
+/// impl Example{
+///     fn new() -> Example {
+///         Example(Vec::new(), Vec::new())
+///     }
+/// }
+///
+/// impl PushRaw for Example {
+///     fn push_bit(&mut self, bit: bool) {
+///         self.0.push(bit);
+///     }
+///
+///     fn push_int(&mut self, value: u64, width: usize) {
+///         self.1.push(value & bits::low_set(width));
+///     }
+/// }
+///
+/// let mut example = Example::new();
+/// example.push_bit(false);
+/// example.push_int(123, 8);
+/// example.push_int(456, 9);
+/// example.push_bit(true);
+///
+/// assert_eq!(example.0.len(), 2);
+/// assert_eq!(example.1.len(), 2);
+/// ```
+pub trait PushRaw {
+    /// Appends a bit to the container.
+    ///
+    /// Behavior is undefined if there is an integer overflow.
+    ///
+    /// # Panics
+    ///
+    /// May panic due to I/O errors.
+    fn push_bit(&mut self, bit: bool);
+
+    /// Appends an integer to the container.
+    ///
+    /// Behavior is undefined if there is an integer overflow.
+    ///
+    /// # Arguments
+    ///
+    /// * `value`: The integer to be appended.
+    /// * `width`: The width of the integer in bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic due to I/O errors.
+    fn push_int(&mut self, value: u64, width: usize);
+}
+
+/// Removes and returns bits and variable-width integers from a container.
+///
+/// Behavior is implementation-dependent if the sequence of pop operations is not the reverse of push operations.
+///
+/// # Examples
+/// ```
+/// use simple_sds::raw_vector::PopRaw;
+///
+/// struct Example(Vec<bool>, Vec<u64>);
+///
+/// impl Example{
+///     fn new() -> Example {
+///         Example(Vec::new(), Vec::new())
+///     }
+/// }
+///
+/// impl PopRaw for Example {
+///     fn pop_bit(&mut self) -> Option<bool> {
+///         self.0.pop()
+///     }
+///
+///     fn pop_int(&mut self, _: usize) -> Option<u64> {
+///         self.1.pop()
+///     }
+/// }
+///
+/// let mut example = Example::new();
+/// example.0.push(false);
+/// example.1.push(123);
+/// example.1.push(456);
+/// example.0.push(true);
+///
+/// assert_eq!(example.pop_bit().unwrap(), true);
+/// assert_eq!(example.pop_int(9).unwrap(), 456);
+/// assert_eq!(example.pop_int(8).unwrap(), 123);
+/// assert_eq!(example.pop_bit().unwrap(), false);
+/// assert_eq!(example.pop_bit(), None);
+/// assert_eq!(example.pop_int(1), None);
+/// ```
+pub trait PopRaw {
+    /// Removes and returns the last bit from the container.
+    /// Returns `None` the container does not have more bits.
+    fn pop_bit(&mut self) -> Option<bool>;
+
+    /// Removes and returns the last `width` bits from the container as an integer.
+    /// Returns `None` if the container does not have more integers of that width.
+    ///
+    /// Behavior is undefined if `width > 64`.
+    fn pop_int(&mut self, width: usize) -> Option<u64>;
+}
+
+//-----------------------------------------------------------------------------
+
+/// Writes bits and variable-width integers to a bit array.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::SetRaw;
+/// use simple_sds::bits;
+///
+/// struct Example(Vec<u64>);
+///
+/// impl SetRaw for Example {
+///     fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+///         let (index, offset) = bits::split_offset(bit_offset);
+///         self.0[index] &= !(1u64 << offset);
+///         self.0[index] |= (bit as u64) << offset;
+///     }
+///
+///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+///         bits::write_int(&mut self.0, bit_offset, value, width)
+///     }
+/// }
+///
+/// let mut example = Example(vec![0u64; 2]);
+/// example.set_int(4, 0x33, 8);
+/// example.set_int(63, 2, 2);
+/// example.set_bit(72, true);
+/// assert_eq!(example.0[0], 0x330);
+/// assert_eq!(example.0[1], 0x101);
+/// ```
+pub trait SetRaw {
+    /// Writes a bit to the container.
+    ///
+    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Offset in the bit array.
+    /// * `bit`: The value of the bit.
+    fn set_bit(&mut self, bit_offset: usize, bit: bool);
+
+    /// Writes an integer to the container.
+    ///
+    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Starting offset in the bit array.
+    /// * `value`: The integer to be written.
+    /// * `width`: The width of the integer in bits.
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
+}
+
+/// Reads bits and variable-width integers from a bit array.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::GetRaw;
+/// use simple_sds::bits;
+///
+/// struct Example(Vec<u64>);
+///
+/// impl GetRaw for Example {
+///     fn get_bit(&self, bit_offset: usize) -> bool {
+///         let (index, offset) = bits::split_offset(bit_offset);
+///         (self.0[index] & (1u64 << offset)) != 0
+///     }
+///
+///     fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+///         bits::read_int(&self.0, bit_offset, width)
+///     }
+/// }
+///
+/// let example = Example(vec![0x330u64, 0x101u64]);
+/// assert!(example.get_bit(72));
+/// assert!(!example.get_bit(68));
+/// assert_eq!(example.get_int(4, 8), 0x33);
+/// assert_eq!(example.get_int(63, 2), 2);
+/// ```
+pub trait GetRaw {
+    /// Reads a bit from the container.
+    ///
+    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
+    fn get_bit(&self, bit_offset: usize) -> bool;
+
+    /// Reads an integer from the container.
+    ///
+    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Starting offset in the bit array.
+    /// * `width`: The width of the integer in bits.
+    fn get_int(&self, bit_offset: usize, width: usize) -> u64;
+}
+
+//-----------------------------------------------------------------------------
+
 /// A contiguous growable array of bits and up to 64-bit integers based on [`Vec`] of `u64` values.
 ///
 /// There are no iterators over the vector, because it may contain items of varying widths.
@@ -185,20 +397,24 @@ impl RawVector {
         }
     }
 
-    /// Appends a bit to the vector.
-    ///
-    /// Behavior is undefined if `self.len() + 1 > usize::MAX`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_bit(true);
-    /// assert_eq!(v.get_bit(0), true);
-    /// ```
-    pub fn push_bit(&mut self, bit: bool) {
+    // Set the unused bits in the last integer to the specified value.
+    fn set_unused_bits(data: &mut Vec<u64>, bit_len: usize, bit: bool) {
+        let (index, width) = bits::split_offset(bit_len);
+        if width > 0 {
+            if bit {
+                data[index] |= !bits::low_set(width);
+            }
+            else {
+                data[index] &= bits::low_set(width);
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl PushRaw for RawVector {
+    fn push_bit(&mut self, bit: bool) {
         let (index, offset) = bits::split_offset(self.bit_len);
         if index == self.data.len() {
             self.data.push(0);
@@ -207,17 +423,17 @@ impl RawVector {
         self.bit_len += 1;
     }
 
-    /// Removes and returns the last bit from the vector, or returns `None` if the vector is empty.
-    ///
-    /// # Examples
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_bit(true);
-    /// assert_eq!(v.pop_bit(), Some(true));
-    /// ```
-    pub fn pop_bit(&mut self) -> Option<bool> {
+    fn push_int(&mut self, value: u64, width: usize) {
+        if self.bit_len + width > bits::words_to_bits(self.data.len()) {
+            self.data.push(0);
+        }
+        bits::write_int(&mut self.data, self.bit_len, value, width);
+        self.bit_len += width;
+    }
+}
+
+impl PopRaw for RawVector {
+    fn pop_bit(&mut self) -> Option<bool> {
         if self.len() > 0 {
             let result = self.get_bit(self.bit_len - 1);
             self.bit_len -= 1;
@@ -230,85 +446,10 @@ impl RawVector {
         }
     }
 
-    /// Sets a bit in the vector.
-    ///
-    /// Behavior is undefined if `bit_offset >= self.len()`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::with_len(137, false);
-    /// v.set_bit(66, true);
-    /// assert_eq!(v.get_bit(66), true);
-    /// ```
-    pub fn set_bit(&mut self, bit_offset: usize, bit: bool) {
-        let (index, offset) = bits::split_offset(bit_offset);
-        self.data[index] &= !(1u64 << offset);
-        self.data[index] |= (bit as u64) << offset;
-    }
-
-    /// Reads a bit from the vector.
-    ///
-    /// Behavior is undefined if `bit_offset >= self.len()`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_bit(true);
-    /// assert_eq!(v.get_bit(0), true);
-    /// ```
-    pub fn get_bit(&self, bit_offset: usize) -> bool {
-        let (index, offset) = bits::split_offset(bit_offset);
-        (self.data[index] & (1u64 << offset)) != 0
-    }
-
-    /// Appends an integer to the vector.
-    ///
-    /// Behavior is undefined if `bits > 64` or `self.len() + bits > usize::MAX`.
-    ///
-    /// # Arguments
-    ///
-    /// * `value`: The integer to be appended.
-    /// * `bits`: The width of the value in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_int(123, 8);
-    /// assert_eq!(v.get_int(0, 8), 123);
-    /// ```
-    pub fn push_int(&mut self, value: u64, bits: usize) {
-        if self.bit_len + bits > bits::words_to_bits(self.data.len()) {
-            self.data.push(0);
-        }
-        bits::write_int(&mut self.data, self.bit_len, value, bits);
-        self.bit_len += bits;
-    }
-
-    /// Removes and returns the last `bits` bits from the vector, or returns `None` if there are not enough bits.
-    ///
-    /// Behavior is undefined if `bits > 64`.
-    ///
-    /// # Examples
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_int(123, 8);
-    /// assert_eq!(v.pop_int(8), Some(123));
-    /// ```
-    pub fn pop_int(&mut self, bits: usize) -> Option<u64> {
-        if self.bit_len >= bits {
-            let result = self.get_int(self.bit_len - bits, bits);
-            self.bit_len -= bits;
+    fn pop_int(&mut self, width: usize) -> Option<u64> {
+        if self.bit_len >= width {
+            let result = self.get_int(self.bit_len - width, width);
+            self.bit_len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
             let len_copy = self.len();
             Self::set_unused_bits(&mut self.data, len_copy, false);
@@ -317,67 +458,30 @@ impl RawVector {
             None
         }
     }
+}
 
-    /// Writes an integer to the vector.
-    ///
-    /// Behavior is undefined if `bits > 64` or `bit_offset + bits > self.len()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Starting offset in the bit array.
-    /// * `value`: The integer to be written.
-    /// * `bits`: The width of the integer in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::with_len(137, false);
-    /// v.set_int(66, 123, 8);
-    /// assert_eq!(v.get_int(66, 8), 123);
-    /// ```
-    pub fn set_int(&mut self, bit_offset: usize, value: u64, bits: usize) {
-        bits::write_int(&mut self.data, bit_offset, value, bits);
+impl SetRaw for RawVector {
+    fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+        let (index, offset) = bits::split_offset(bit_offset);
+        self.data[index] &= !(1u64 << offset);
+        self.data[index] |= (bit as u64) << offset;
     }
 
-    /// Reads an integer from the vector.
-    ///
-    /// Behavior is undefined if `bits > 64` or `bit_offset + bits > self.len()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Starting offset in the bit array.
-    /// * `bits`: The width of the integer in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let mut v = RawVector::new();
-    /// v.push_int(123, 8);
-    /// assert_eq!(v.get_int(0, 8), 123);
-    /// ```
-    pub fn get_int(&self, bit_offset: usize, bits: usize) -> u64 {
-        bits::read_int(&self.data, bit_offset, bits)
-    }
-
-    // Set the unused bits in the last integer to the specified value.
-    fn set_unused_bits(data: &mut Vec<u64>, bit_len: usize, bit: bool) {
-        let (index, bits) = bits::split_offset(bit_len);
-        if bits > 0 {
-            if bit {
-                data[index] |= !bits::low_set(bits);
-            }
-            else {
-                data[index] &= bits::low_set(bits);
-            }
-        }
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
 
-//-----------------------------------------------------------------------------
+impl GetRaw for RawVector {
+    fn get_bit(&self, bit_offset: usize) -> bool {
+        let (index, offset) = bits::split_offset(bit_offset);
+        (self.data[index] & (1u64 << offset)) != 0
+    }
+
+    fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+        bits::read_int(&self.data, bit_offset, width)
+    }
+}
 
 impl Serialize for RawVector {
     // The header also contains the header of the data, because the values are
@@ -419,8 +523,8 @@ impl FromIterator<bool> for RawVector {
 impl FromIterator<(u64, usize)> for RawVector {
     fn from_iter<I: IntoIterator<Item=(u64, usize)>>(iter: I) -> Self {
         let mut result = RawVector::new();
-        for (value, bits) in iter {
-            result.push_int(value, bits);
+        for (value, width) in iter {
+            result.push_int(value, width);
         }
         result
     }
@@ -593,75 +697,6 @@ impl RawVectorWriter {
         Ok(())
     }
 
-    /// Appends a bit to the vector
-    ///
-    /// Behavior is undefined if the file is closed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-push-bit");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert_eq!(v.len(), 0);
-    /// v.push_bit(true).unwrap();
-    /// v.push_bit(false).unwrap();
-    /// assert_eq!(v.len(), 2);
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any errors from [`Serialize::serialize`] will be passed through.
-    pub fn push_bit(&mut self, bit: bool) -> io::Result<()> {
-        self.buf.push_bit(bit); self.bit_len += 1;
-        if self.buf.len() >= self.buf_len {
-            self.flush(false)?;
-        }
-        Ok(())
-    }
-
-    /// Appends an integer to the vector.
-    ///
-    /// Behavior is undefined if `bits > 64`, if `self.len() + bits > usize::MAX`, or if the file is closed.
-    ///
-    /// # Arguments
-    ///
-    /// * `value`: The integer to be appended.
-    /// * `bits`: The width of the value in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-push-int");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert_eq!(v.len(), 0);
-    /// v.push_int(123, 8).unwrap();
-    /// v.push_int(456789, 20).unwrap();
-    /// assert_eq!(v.len(), 28);
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any errors from [`Serialize::serialize`] will be passed through.
-    pub fn push_int(&mut self, value: u64, bits: usize) -> io::Result<()> {
-        self.buf.push_int(value, bits); self.bit_len += bits;
-        if self.buf.len() >= self.buf_len {
-            self.flush(false)?;
-        }
-        Ok(())
-    }
-
     // Flushes the the buffer and optionally also the overflow bits.
     // This should only be called when the buffer is full or the file is going to be closed.
     // Otherwise there may be unused bits in the last serialized word.
@@ -705,6 +740,22 @@ impl RawVectorWriter {
 }
 
 //-----------------------------------------------------------------------------
+
+impl PushRaw for RawVectorWriter {
+    fn push_bit(&mut self, bit: bool) {
+        self.buf.push_bit(bit); self.bit_len += 1;
+        if self.buf.len() >= self.buf_len {
+            self.flush(false).unwrap();
+        }
+    }
+
+    fn push_int(&mut self, value: u64, width: usize) {
+        self.buf.push_int(value, width); self.bit_len += width;
+        if self.buf.len() >= self.buf_len {
+            self.flush(false).unwrap();
+        }
+    }
+}
 
 impl Drop for RawVectorWriter {
     fn drop(&mut self) {
@@ -836,8 +887,8 @@ mod tests {
         }
 
         let mut v = RawVector::new();
-        for (value, bits) in correct.iter() {
-            v.push_int(*value, *bits);
+        for (value, width) in correct.iter() {
+            v.push_int(*value, *width);
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
@@ -847,9 +898,9 @@ mod tests {
         correct.reverse();
         let mut popped: Vec<(u64, usize)> = Vec::new();
         for i in 0..correct.len() {
-            let bits = correct[i].1;
-            if let Some(value) = v.pop_int(bits) {
-                popped.push((value, bits));
+            let width = correct[i].1;
+            if let Some(value) = v.pop_int(width) {
+                popped.push((value, width));
             }
         }
         assert_eq!(popped.len(), correct.len(), "Invalid number of popped ints");
@@ -927,7 +978,7 @@ mod tests {
 
         let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
         for bit in correct.iter() {
-            v.push_bit(*bit).unwrap();
+            v.push_bit(*bit);
         }
         assert_eq!(v.len(), correct.len(), "Invalid size for the writer");
         v.close().unwrap();
@@ -949,25 +1000,25 @@ mod tests {
 
         let mut correct: Vec<u64> = Vec::new();
         let mut rng = rand::thread_rng();
-        let bits = 31;
+        let width = 31;
         for _ in 0..71 {
             let value: u64 = rng.gen();
-            correct.push(value & bits::low_set(bits));
+            correct.push(value & bits::low_set(width));
         }
 
         let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
         for value in correct.iter() {
-            v.push_int(*value, bits).unwrap();
+            v.push_int(*value, width);
         }
-        assert_eq!(v.len(), correct.len() * bits, "Invalid size for the writer");
+        assert_eq!(v.len(), correct.len() * width, "Invalid size for the writer");
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
         let mut w = RawVector::new();
         serialize::load_from(&mut w, &filename).unwrap();
-        assert_eq!(w.len(), correct.len() * bits, "Invalid size for the loaded vector");
+        assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.get_int(i * bits, bits), correct[i], "Invalid integer {}", i);
+            assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
         }
 
         fs::remove_file(&filename).unwrap();
@@ -980,25 +1031,25 @@ mod tests {
 
         let mut correct: Vec<u64> = Vec::new();
         let mut rng = rand::thread_rng();
-        let bits = 31;
+        let width = 31;
         for _ in 0..620001 {
             let value: u64 = rng.gen();
-            correct.push(value & bits::low_set(bits));
+            correct.push(value & bits::low_set(width));
         }
 
         let mut v = RawVectorWriter::new(&filename).unwrap();
         for value in correct.iter() {
-            v.push_int(*value, bits).unwrap();
+            v.push_int(*value, width);
         }
-        assert_eq!(v.len(), correct.len() * bits, "Invalid size for the writer");
+        assert_eq!(v.len(), correct.len() * width, "Invalid size for the writer");
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
         let mut w = RawVector::new();
         serialize::load_from(&mut w, &filename).unwrap();
-        assert_eq!(w.len(), correct.len() * bits, "Invalid size for the loaded vector");
+        assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.get_int(i * bits, bits), correct[i], "Invalid integer {}", i);
+            assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
         }
 
         fs::remove_file(&filename).unwrap();

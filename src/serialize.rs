@@ -10,7 +10,7 @@ use std::{env, io, mem, process, slice};
 
 //-----------------------------------------------------------------------------
 
-/// Serialization interface for the data structures.
+/// Serialize a data structure.
 ///
 /// # Examples
 ///
