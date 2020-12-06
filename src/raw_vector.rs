@@ -72,7 +72,7 @@ pub trait PushRaw {
     fn push_int(&mut self, value: u64, width: usize);
 }
 
-/// Removes and returns bits and variable-width integers from a container.
+/// Remove and return bits and variable-width integers from a container.
 ///
 /// Behavior is implementation-dependent if the sequence of pop operations is not the reverse of push operations.
 ///
@@ -125,7 +125,7 @@ pub trait PopRaw {
 
 //-----------------------------------------------------------------------------
 
-/// Writes bits and variable-width integers to a bit array.
+/// Write bits and variable-width integers to a bit array.
 ///
 /// # Examples
 ///
@@ -177,7 +177,7 @@ pub trait SetRaw {
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
 
-/// Reads bits and variable-width integers from a bit array.
+/// Read bits and variable-width integers from a bit array.
 ///
 /// # Examples
 ///
@@ -483,11 +483,15 @@ impl GetRaw for RawVector {
     }
 }
 
+// `RawVector` is a wrapper struct for `Vec<u64>` and its header ends with the header
+// of the `Vec`. Similarly, the header of any wrapper struct around `RawVector` will
+// have the header of the `RawVector` at the end of its header.
+//
+// This makes it possible for a writer to write the vector directly to a file without
+// knowing its size in advance. First the writer writes a placeholder header followed
+// by the data. After the writer has finished, it seeks to the beginning and writes
+// the true header in the same way as below.
 impl Serialize for RawVector {
-    // The header also contains the header of the data, because the values are
-    // related and depend on the values inserted into the vector. This makes
-    // it easier for the writer to overwrite the header fields when closing
-    // the file. 
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.bit_len.serialize(writer)?;
         self.data.serialize_header(writer)?;

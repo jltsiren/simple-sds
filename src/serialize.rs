@@ -2,6 +2,42 @@
 //!
 //! The serialized representation closely mirrors the in-memory representation with 8-byte alignment.
 //! This makes it easy to develop memory-mapped versions of the structures.
+//!
+//! The serialization format of a structure is split into the header and the data.
+//! They can be serialized separately with [`Serialize::serialize_header`] and [`Serialize::serialize_data`].
+//! Method [`Serialize::serialize`] provides an easy way of calling both.
+//! A serialized structure is always loaded with a single [`Serialize::load`] call.
+//!
+//! # Wrapper structures
+//!
+//! Assume that we have wrapper structure `A` around `B`, which is in turn a wrapper structure around `C`.
+//! The serialization format of `A` should be the following:
+//!
+//! * Header of `A`.
+//!   * Header information.
+//!   * Header of `B`.
+//!     * Header information.
+//!     * Header of `C`.
+//! * Data in `C`.
+//!
+//! The header of the outer structure should always end with the header of the inner structure.
+//! If we want to generate `A` directly to a file, we can then start by writing a placeholder header of `A`.
+//! After we have finished writing the data, we go back to the beginning and write the true header.
+//!
+//! # Composite structures
+//!
+//! Assume that structure `A` contains `B` and `C`.
+//! The serialization format of `A` should be the following:
+//!
+//! * Header of `A`.
+//! * Structure `B`.
+//!   * Header of `B`.
+//!   * Data in `B`.
+//! * Structure `C`.
+//!   * Header of `C`.
+//!   * Data in `C`.
+//!
+//! In this case, each structure is responsible for its own header.
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};

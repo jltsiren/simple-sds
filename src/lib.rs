@@ -14,5 +14,7 @@
 //! * The system is assumed to be little-endian.
 
 pub mod bits;
+// pub mod int_vector;
+pub mod ops;
 pub mod raw_vector;
 pub mod serialize;
