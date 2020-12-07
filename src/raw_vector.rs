@@ -327,7 +327,7 @@ impl RawVector {
 
     /// Resizes the vector to a specified length.
     ///
-    /// If `new_len > self.len()`, the new `new_len - self.len()` will be initialized.
+    /// If `new_len > self.len()`, the new `new_len - self.len()` bits will be initialized.
     /// If `new_len < self.len()`, the vector is truncated.
     ///
     /// # Arguments
@@ -359,7 +359,7 @@ impl RawVector {
         Self::set_unused_bits(&mut self.data, new_len, false);
     }
 
-    /// Clear the vector without freeing the data.
+    /// Clears the vector without freeing the data.
     ///
     /// # Examples
     ///
