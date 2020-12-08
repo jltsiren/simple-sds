@@ -168,6 +168,79 @@ pub trait Pack: Element {
 
 //-----------------------------------------------------------------------------
 
+/// A vector that supports random access to its elements.
+///
+/// # Example
+///
+/// ```
+/// use simple_sds::ops::{Element, Access};
+///
+/// struct Example(Vec<u8>);
+///
+/// impl Example {
+///     fn new() -> Example {
+///         Example(Vec::new())
+///     }
+/// }
+///
+/// impl Element for Example {
+///     type Item = u8;
+///
+///     fn len(&self) -> usize {
+///         self.0.len()
+///     }
+///
+///     fn width(&self) -> usize {
+///         8
+///     }
+/// } 
+///
+/// impl Access for Example {
+///     fn get(&self, index: usize) -> Self::Item {
+///         self.0[index]
+///     }
+///
+///     fn mutable(&self) -> bool {
+///         true
+///     }
+///
+///     fn set(&mut self, index: usize, value: Self::Item) {
+///         self.0[index] = value
+///     }
+/// }
+///
+/// let mut v = Example(Vec::from([1, 2, 3]));
+/// assert!(v.mutable());
+/// for i in 0..v.len() {
+///     assert_eq!(v.get(i), (i + 1) as u8);
+///     v.set(i, i as u8);
+///     assert_eq!(v.get(i), i as u8);
+/// }
+/// ```
+pub trait Access: Element {
+    /// Gets an element from the vector.
+    ///
+    /// Behavior is undefined if `index` is not a valid index in the vector.
+    fn get(&self, index: usize) -> <Self as Element>::Item;
+
+    /// Returns `true` if the underlying data is mutable.
+    ///
+    /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
+    fn mutable(&self) -> bool;
+
+    /// Sets an element in the vector.
+    ///
+    /// Behavior is undefined if `index` is not a valid index in the vector or if the underlying data is not mutable.
+    ///
+    /// # Arguments
+    ///
+    /// * `index`: Index in the vector.
+    /// * `value`: New value of the element.
+    fn set(&mut self, index: usize, value: <Self as Element>::Item);
+}
+
+//-----------------------------------------------------------------------------
+
 /// Append elements to a vector.
 ///
 /// [`Pop`] is a separate trait, because a file writer may not implement it.
@@ -263,79 +336,6 @@ pub trait Pop: Element {
     /// Removes and returns the last element from the vector.
     /// Returns `None` if there are no more elements in the vector.
     fn pop(&mut self) -> Option<<Self as Element>::Item>;
-}
-
-//-----------------------------------------------------------------------------
-
-/// A vector that supports random access to its elements.
-///
-/// # Example
-///
-/// ```
-/// use simple_sds::ops::{Element, Access};
-///
-/// struct Example(Vec<u8>);
-///
-/// impl Example {
-///     fn new() -> Example {
-///         Example(Vec::new())
-///     }
-/// }
-///
-/// impl Element for Example {
-///     type Item = u8;
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         8
-///     }
-/// } 
-///
-/// impl Access for Example {
-///     fn get(&self, index: usize) -> Self::Item {
-///         self.0[index]
-///     }
-///
-///     fn mutable(&self) -> bool {
-///         true
-///     }
-///
-///     fn set(&mut self, index: usize, value: Self::Item) {
-///         self.0[index] = value
-///     }
-/// }
-///
-/// let mut v = Example(Vec::from([1, 2, 3]));
-/// assert!(v.mutable());
-/// for i in 0..v.len() {
-///     assert_eq!(v.get(i), (i + 1) as u8);
-///     v.set(i, i as u8);
-///     assert_eq!(v.get(i), i as u8);
-/// }
-/// ```
-pub trait Access: Element {
-    /// Gets an element from the vector.
-    ///
-    /// Behavior is undefined if `index` is not a valid index in the vector.
-    fn get(&self, index: usize) -> <Self as Element>::Item;
-
-    /// Returns `true` if the underlying data is mutable.
-    ///
-    /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
-    fn mutable(&self) -> bool;
-
-    /// Sets an element in the vector.
-    ///
-    /// Behavior is undefined if `index` is not a valid index in the vector or if the underlying data is not mutable.
-    ///
-    /// # Arguments
-    ///
-    /// * `index`: Index in the vector.
-    /// * `value`: New value of the element.
-    fn set(&mut self, index: usize, value: <Self as Element>::Item);
 }
 
 //-----------------------------------------------------------------------------

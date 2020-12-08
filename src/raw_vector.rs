@@ -11,6 +11,104 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
+/// Write bits and variable-width integers to a bit array.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::SetRaw;
+/// use simple_sds::bits;
+///
+/// struct Example(Vec<u64>);
+///
+/// impl SetRaw for Example {
+///     fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+///         let (index, offset) = bits::split_offset(bit_offset);
+///         self.0[index] &= !(1u64 << offset);
+///         self.0[index] |= (bit as u64) << offset;
+///     }
+///
+///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+///         bits::write_int(&mut self.0, bit_offset, value, width);
+///     }
+/// }
+///
+/// let mut example = Example(vec![0u64; 2]);
+/// example.set_int(4, 0x33, 8);
+/// example.set_int(63, 2, 2);
+/// example.set_bit(72, true);
+/// assert_eq!(example.0[0], 0x330);
+/// assert_eq!(example.0[1], 0x101);
+/// ```
+pub trait SetRaw {
+    /// Writes a bit to the container.
+    ///
+    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Offset in the bit array.
+    /// * `bit`: The value of the bit.
+    fn set_bit(&mut self, bit_offset: usize, bit: bool);
+
+    /// Writes an integer to the container.
+    ///
+    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Starting offset in the bit array.
+    /// * `value`: The integer to be written.
+    /// * `width`: The width of the integer in bits.
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
+}
+
+/// Read bits and variable-width integers from a bit array.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::GetRaw;
+/// use simple_sds::bits;
+///
+/// struct Example(Vec<u64>);
+///
+/// impl GetRaw for Example {
+///     fn get_bit(&self, bit_offset: usize) -> bool {
+///         let (index, offset) = bits::split_offset(bit_offset);
+///         (self.0[index] & (1u64 << offset)) != 0
+///     }
+///
+///     fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+///         bits::read_int(&self.0, bit_offset, width)
+///     }
+/// }
+///
+/// let example = Example(vec![0x330u64, 0x101u64]);
+/// assert!(example.get_bit(72));
+/// assert!(!example.get_bit(68));
+/// assert_eq!(example.get_int(4, 8), 0x33);
+/// assert_eq!(example.get_int(63, 2), 2);
+/// ```
+pub trait GetRaw {
+    /// Reads a bit from the container.
+    ///
+    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
+    fn get_bit(&self, bit_offset: usize) -> bool;
+
+    /// Reads an integer from the container.
+    ///
+    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Starting offset in the bit array.
+    /// * `width`: The width of the integer in bits.
+    fn get_int(&self, bit_offset: usize, width: usize) -> u64;
+}
+
+//-----------------------------------------------------------------------------
+
 /// Append bits and variable-width integers to a container.
 ///
 /// The container is not required to remember the types of the pushed items.
@@ -121,104 +219,6 @@ pub trait PopRaw {
     ///
     /// Behavior is undefined if `width > 64`.
     fn pop_int(&mut self, width: usize) -> Option<u64>;
-}
-
-//-----------------------------------------------------------------------------
-
-/// Write bits and variable-width integers to a bit array.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::raw_vector::SetRaw;
-/// use simple_sds::bits;
-///
-/// struct Example(Vec<u64>);
-///
-/// impl SetRaw for Example {
-///     fn set_bit(&mut self, bit_offset: usize, bit: bool) {
-///         let (index, offset) = bits::split_offset(bit_offset);
-///         self.0[index] &= !(1u64 << offset);
-///         self.0[index] |= (bit as u64) << offset;
-///     }
-///
-///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-///         bits::write_int(&mut self.0, bit_offset, value, width);
-///     }
-/// }
-///
-/// let mut example = Example(vec![0u64; 2]);
-/// example.set_int(4, 0x33, 8);
-/// example.set_int(63, 2, 2);
-/// example.set_bit(72, true);
-/// assert_eq!(example.0[0], 0x330);
-/// assert_eq!(example.0[1], 0x101);
-/// ```
-pub trait SetRaw {
-    /// Writes a bit to the container.
-    ///
-    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Offset in the bit array.
-    /// * `bit`: The value of the bit.
-    fn set_bit(&mut self, bit_offset: usize, bit: bool);
-
-    /// Writes an integer to the container.
-    ///
-    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Starting offset in the bit array.
-    /// * `value`: The integer to be written.
-    /// * `width`: The width of the integer in bits.
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
-}
-
-/// Read bits and variable-width integers from a bit array.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::raw_vector::GetRaw;
-/// use simple_sds::bits;
-///
-/// struct Example(Vec<u64>);
-///
-/// impl GetRaw for Example {
-///     fn get_bit(&self, bit_offset: usize) -> bool {
-///         let (index, offset) = bits::split_offset(bit_offset);
-///         (self.0[index] & (1u64 << offset)) != 0
-///     }
-///
-///     fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
-///         bits::read_int(&self.0, bit_offset, width)
-///     }
-/// }
-///
-/// let example = Example(vec![0x330u64, 0x101u64]);
-/// assert!(example.get_bit(72));
-/// assert!(!example.get_bit(68));
-/// assert_eq!(example.get_int(4, 8), 0x33);
-/// assert_eq!(example.get_int(63, 2), 2);
-/// ```
-pub trait GetRaw {
-    /// Reads a bit from the container.
-    ///
-    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
-    fn get_bit(&self, bit_offset: usize) -> bool;
-
-    /// Reads an integer from the container.
-    ///
-    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Starting offset in the bit array.
-    /// * `width`: The width of the integer in bits.
-    fn get_int(&self, bit_offset: usize, width: usize) -> u64;
 }
 
 //-----------------------------------------------------------------------------
@@ -413,6 +413,29 @@ impl RawVector {
 
 //-----------------------------------------------------------------------------
 
+impl SetRaw for RawVector {
+    fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+        let (index, offset) = bits::split_offset(bit_offset);
+        self.data[index] &= !(1u64 << offset);
+        self.data[index] |= (bit as u64) << offset;
+    }
+
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        bits::write_int(&mut self.data, bit_offset, value, width);
+    }
+}
+
+impl GetRaw for RawVector {
+    fn get_bit(&self, bit_offset: usize) -> bool {
+        let (index, offset) = bits::split_offset(bit_offset);
+        (self.data[index] & (1u64 << offset)) != 0
+    }
+
+    fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+        bits::read_int(&self.data, bit_offset, width)
+    }
+}
+
 impl PushRaw for RawVector {
     fn push_bit(&mut self, bit: bool) {
         let (index, offset) = bits::split_offset(self.bit_len);
@@ -460,29 +483,6 @@ impl PopRaw for RawVector {
     }
 }
 
-impl SetRaw for RawVector {
-    fn set_bit(&mut self, bit_offset: usize, bit: bool) {
-        let (index, offset) = bits::split_offset(bit_offset);
-        self.data[index] &= !(1u64 << offset);
-        self.data[index] |= (bit as u64) << offset;
-    }
-
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-        bits::write_int(&mut self.data, bit_offset, value, width);
-    }
-}
-
-impl GetRaw for RawVector {
-    fn get_bit(&self, bit_offset: usize) -> bool {
-        let (index, offset) = bits::split_offset(bit_offset);
-        (self.data[index] & (1u64 << offset)) != 0
-    }
-
-    fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
-        bits::read_int(&self.data, bit_offset, width)
-    }
-}
-
 impl Serialize for RawVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.bit_len.serialize(writer)?;
@@ -503,7 +503,7 @@ impl Serialize for RawVector {
 
     fn size_in_bytes(&self) -> usize {
         self.bit_len.size_in_bytes() + self.data.size_in_bytes()
-    }  
+    }
 }
 
 //-----------------------------------------------------------------------------
