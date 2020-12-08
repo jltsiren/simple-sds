@@ -142,13 +142,13 @@ pub trait PopRaw {
 ///         self.0[index] |= (bit as u64) << offset;
 ///     }
 ///
-///     fn set_int(&mut self, bit_offset: usize, width: usize, value: u64) {
-///         bits::write_int(&mut self.0, bit_offset, width, value)
+///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+///         bits::write_int(&mut self.0, bit_offset, value, width);
 ///     }
 /// }
 ///
 /// let mut example = Example(vec![0u64; 2]);
-/// example.set_int(4, 8, 0x33);
+/// example.set_int(4, 0x33, 8);
 /// example.set_int(63, 2, 2);
 /// example.set_bit(72, true);
 /// assert_eq!(example.0[0], 0x330);
@@ -172,9 +172,9 @@ pub trait SetRaw {
     /// # Arguments
     ///
     /// * `bit_offset`: Starting offset in the bit array.
-    /// * `width`: The width of the integer in bits.
     /// * `value`: The integer to be written.
-    fn set_int(&mut self, bit_offset: usize, width: usize, value: u64);
+    /// * `width`: The width of the integer in bits.
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
 
 /// Read bits and variable-width integers from a bit array.
@@ -308,7 +308,7 @@ impl RawVector {
         }
     }
 
-    /// Creates a vector with enough capacity for at least `n` bits.
+    /// Creates an empty vector with enough capacity for at least `capacity` bits.
     ///
     /// # Examples
     ///
@@ -318,10 +318,10 @@ impl RawVector {
     /// let v = RawVector::with_capacity(137);
     /// assert!(v.capacity() >= 137);
     /// ```
-    pub fn with_capacity(n: usize) -> RawVector {
+    pub fn with_capacity(capacity: usize) -> RawVector {
         RawVector {
             bit_len: 0,
-            data: Vec::with_capacity(bits::bits_to_words(n)),
+            data: Vec::with_capacity(bits::bits_to_words(capacity)),
         }
     }
 
@@ -427,7 +427,7 @@ impl PushRaw for RawVector {
         if self.bit_len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        bits::write_int(&mut self.data, self.bit_len, width, value);
+        bits::write_int(&mut self.data, self.bit_len, value, width);
         self.bit_len += width;
     }
 }
@@ -467,8 +467,8 @@ impl SetRaw for RawVector {
         self.data[index] |= (bit as u64) << offset;
     }
 
-    fn set_int(&mut self, bit_offset: usize, width: usize, value: u64) {
-        bits::write_int(&mut self.data, bit_offset, width, value);
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
 
@@ -912,8 +912,8 @@ mod tests {
         let mut w = RawVector::with_len(64 * (63 + 64), true);
         let mut bit_offset = 0;
         for i in 0..64 {
-            v.set_int(bit_offset, 63, i); w.set_int(bit_offset, 63, i); bit_offset += 63;
-            v.set_int(bit_offset, 64, i * (i + 1)); w.set_int(bit_offset, 64, i * (i + 1)); bit_offset += 64;
+            v.set_int(bit_offset, i, 63); w.set_int(bit_offset, i, 63); bit_offset += 63;
+            v.set_int(bit_offset, i * (i + 1), 64); w.set_int(bit_offset, i * (i + 1), 64); bit_offset += 64;
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 

@@ -157,8 +157,8 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 /// use simple_sds::bits;
 ///
 /// let mut array: Vec<u64> = vec![0];
-/// bits::write_int(&mut array, 0, 4, 7);
-/// bits::write_int(&mut array, 4, 4, 3);
+/// bits::write_int(&mut array, 0, 7, 4);
+/// bits::write_int(&mut array, 4, 3, 4);
 /// assert_eq!(array[0], 0x37);
 /// ```
 ///
@@ -166,7 +166,7 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 ///
 /// Panics if `width > 64`.
 /// May panic if `(bit_offset + width - 1) / 64` is not a valid index in the array.
-pub fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: usize, width: usize, value: u64) {
+pub fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: usize, value: u64, width: usize) {
 
     let value = value & low_set(width);
     let (index, offset) = split_offset(bit_offset);
@@ -260,10 +260,10 @@ mod tests {
         let mut array: Vec<u64> = vec![0; 256];
         let mut bit_offset = 0;
         for i in 0..64 {
-            write_int(&mut array, bit_offset, 31, correct[i].0); bit_offset += 31;
-            write_int(&mut array, bit_offset, 64, correct[i].1); bit_offset += 64;
-            write_int(&mut array, bit_offset, 35, correct[i].2); bit_offset += 35;
-            write_int(&mut array, bit_offset, 63, correct[i].3); bit_offset += 63;
+            write_int(&mut array, bit_offset, correct[i].0, 31); bit_offset += 31;
+            write_int(&mut array, bit_offset, correct[i].1, 64); bit_offset += 64;
+            write_int(&mut array, bit_offset, correct[i].2, 35); bit_offset += 35;
+            write_int(&mut array, bit_offset, correct[i].3, 63); bit_offset += 63;
         }
 
         bit_offset = 0;
@@ -278,10 +278,10 @@ mod tests {
     #[test]
     fn no_extra_bits() {
         let mut array: Vec<u64> = vec![0; 2];
-        write_int(&mut array, 16, 16, 2);
-        write_int(&mut array, 48, 16, 2);
-        write_int(&mut array, 32, 16, !0u64); // This should not overwrite the integer at offset 48.
-        write_int(&mut array, 0, 16, !0u64); // This should not overwrite the other integers.
+        write_int(&mut array, 16, 2, 16);
+        write_int(&mut array, 48, 2, 16);
+        write_int(&mut array, 32, !0u64, 16); // This should not overwrite the integer at offset 48.
+        write_int(&mut array, 0, !0u64, 16); // This should not overwrite the other integers.
         assert_eq!(read_int(&array, 0, 16), 0xFFFF, "Incorrect 16-bit integer at offset 0");
         assert_eq!(read_int(&array, 16, 16), 2, "Incorrect 16-bit integer at offset 16");
         assert_eq!(read_int(&array, 32, 16), 0xFFFF, "Incorrect 16-bit integer at offset 32");
