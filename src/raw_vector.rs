@@ -142,13 +142,13 @@ pub trait PopRaw {
 ///         self.0[index] |= (bit as u64) << offset;
 ///     }
 ///
-///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-///         bits::write_int(&mut self.0, bit_offset, value, width)
+///     fn set_int(&mut self, bit_offset: usize, width: usize, value: u64) {
+///         bits::write_int(&mut self.0, bit_offset, width, value)
 ///     }
 /// }
 ///
 /// let mut example = Example(vec![0u64; 2]);
-/// example.set_int(4, 0x33, 8);
+/// example.set_int(4, 8, 0x33);
 /// example.set_int(63, 2, 2);
 /// example.set_bit(72, true);
 /// assert_eq!(example.0[0], 0x330);
@@ -172,9 +172,9 @@ pub trait SetRaw {
     /// # Arguments
     ///
     /// * `bit_offset`: Starting offset in the bit array.
-    /// * `value`: The integer to be written.
     /// * `width`: The width of the integer in bits.
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
+    /// * `value`: The integer to be written.
+    fn set_int(&mut self, bit_offset: usize, width: usize, value: u64);
 }
 
 /// Read bits and variable-width integers from a bit array.
@@ -229,7 +229,7 @@ pub trait GetRaw {
 ///
 /// # Notes
 /// * The unused part of the last integer is always set to `0`.
-/// * The underlying vector may allocate but not use more integers than are strictly needed.
+/// * The underlying vector may allocate but not use more integers than are strictly necessary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RawVector {
     bit_len: usize,
@@ -427,7 +427,7 @@ impl PushRaw for RawVector {
         if self.bit_len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        bits::write_int(&mut self.data, self.bit_len, value, width);
+        bits::write_int(&mut self.data, self.bit_len, width, value);
         self.bit_len += width;
     }
 }
@@ -467,8 +467,8 @@ impl SetRaw for RawVector {
         self.data[index] |= (bit as u64) << offset;
     }
 
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-        bits::write_int(&mut self.data, bit_offset, value, width);
+    fn set_int(&mut self, bit_offset: usize, width: usize, value: u64) {
+        bits::write_int(&mut self.data, bit_offset, width, value);
     }
 }
 
@@ -483,14 +483,6 @@ impl GetRaw for RawVector {
     }
 }
 
-// `RawVector` is a wrapper struct for `Vec<u64>` and its header ends with the header
-// of the `Vec`. Similarly, the header of any wrapper struct around `RawVector` will
-// have the header of the `RawVector` at the end of its header.
-//
-// This makes it possible for a writer to write the vector directly to a file without
-// knowing its size in advance. First the writer writes a placeholder header followed
-// by the data. After the writer has finished, it seeks to the beginning and writes
-// the true header in the same way as below.
 impl Serialize for RawVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.bit_len.serialize(writer)?;
@@ -513,6 +505,8 @@ impl Serialize for RawVector {
         self.bit_len.size_in_bytes() + self.data.size_in_bytes()
     }  
 }
+
+//-----------------------------------------------------------------------------
 
 impl FromIterator<bool> for RawVector {
     fn from_iter<I: IntoIterator<Item=bool>>(iter: I) -> Self {
@@ -918,8 +912,8 @@ mod tests {
         let mut w = RawVector::with_len(64 * (63 + 64), true);
         let mut bit_offset = 0;
         for i in 0..64 {
-            v.set_int(bit_offset, i, 63); w.set_int(bit_offset, i, 63); bit_offset += 63;
-            v.set_int(bit_offset, i * (i + 1), 64); w.set_int(bit_offset, i * (i + 1), 64); bit_offset += 64;
+            v.set_int(bit_offset, 63, i); w.set_int(bit_offset, 63, i); bit_offset += 63;
+            v.set_int(bit_offset, 64, i * (i + 1)); w.set_int(bit_offset, 64, i * (i + 1)); bit_offset += 64;
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
