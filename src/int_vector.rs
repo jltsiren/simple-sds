@@ -16,9 +16,10 @@ use std::io;
 /// Each element consists of the lowest 1 to 64 bits of an `u64` value, as specified by parameter `width`.
 /// The maximum length of the vector is `usize::MAX / width` elements.
 ///
-/// The struct itself contains only constructors and iterators.
-/// `IntVector` can also be built from an iterator over `u8`, `u16`, `u32`, `u64`, or `usize` values.
-/// The rest of the functionality uses the following `simple_sds` traits:
+/// A default constructed `IntVector` has `width == 64`.
+/// `IntVector` can be built from an iterator over `u8`, `u16`, `u32`, `u64`, or `usize` values.
+///
+/// `IntVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`Element`], [`Resize`], [`Pack`]
 /// * Queries and operations: [`Access`], [`Push`], [`Pop`]
 /// * Serialization: [`Serialize`]
@@ -263,6 +264,18 @@ impl Serialize for IntVector {
 
 //-----------------------------------------------------------------------------
 
+impl Default for IntVector {
+    fn default() -> Self {
+        IntVector {
+            len: 0,
+            width: bits::WORD_BITS,
+            data: RawVector::new(),
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 macro_rules! iter_to_int_vector {
     ($t:ident, $w:expr) => {
         impl FromIterator<$t> for IntVector {
@@ -366,6 +379,6 @@ impl IntoIterator for IntVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: construction, element, stack, random access, serialize, from_iterator, iterators
+// FIXME tests: construction (+ default), element, stack, random access, serialize, from_iterator, iterators
 
 //-----------------------------------------------------------------------------

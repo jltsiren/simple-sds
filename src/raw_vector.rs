@@ -230,7 +230,7 @@ pub trait PopRaw {
 /// # Notes
 /// * The unused part of the last integer is always set to `0`.
 /// * The underlying vector may allocate but not use more integers than are strictly necessary.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RawVector {
     bit_len: usize,
     data: Vec<u64>,
@@ -274,12 +274,10 @@ impl RawVector {
     ///
     /// let v = RawVector::new();
     /// assert_eq!(v.len(), 0);
+    /// assert_eq!(v.capacity(), 0);
     /// ```
     pub fn new() -> RawVector {
-        RawVector {
-            bit_len: 0,
-            data: Vec::new(),
-        }
+        RawVector::default()
     }
 
     /// Creates an initialized vector of specified length.
