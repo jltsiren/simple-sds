@@ -250,11 +250,15 @@ impl Serialize for IntVector {
         Ok(())
     }
 
-    fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
-        self.len.load(reader)?;
-        self.width.load(reader)?;
-        self.data.load(reader)?;
-        Ok(())
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let len = usize::load(reader)?;
+        let width = usize::load(reader)?;
+        let data = RawVector::load(reader)?;
+        Ok(IntVector {
+            len: len,
+            width: width,
+            data: data,
+        })
     }
 
     fn size_in_bytes(&self) -> usize {

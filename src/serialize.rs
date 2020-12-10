@@ -71,11 +71,11 @@ use std::{env, io, mem, process, slice};
 ///         Ok(())
 ///     }
 ///
-///     fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
+///     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
 ///         let mut bytes = [0u8; mem::size_of::<Self>()];
 ///         reader.read_exact(&mut bytes)?;
-///         *self = unsafe { mem::transmute_copy(&bytes) };
-///         Ok(())
+///         let value: Example = unsafe { mem::transmute_copy(&bytes) };
+///         Ok(value)
 ///     }
 ///
 ///     fn size_in_bytes(&self) -> usize {
@@ -88,13 +88,12 @@ use std::{env, io, mem, process, slice};
 ///
 /// serialize::serialize_to(&example, "example.dat").unwrap();
 ///
-/// let mut copy = Example(0, 0);
-/// serialize::load_from(&mut copy, "example.dat").unwrap();
+/// let copy: Example = serialize::load_from("example.dat").unwrap();
 /// assert_eq!(copy, example);
 ///
 /// fs::remove_file("example.dat").unwrap();
 /// ```
-pub trait Serialize {
+pub trait Serialize: Sized {
     /// Serializes the struct to the writer.
     ///
     /// Equivalent to calling [`Serialize::serialize_header`] and [`Serialize::serialize_data`].
@@ -127,7 +126,7 @@ pub trait Serialize {
     /// # Errors
     ///
     /// Any errors from the reader may be passed through.
-    fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()>;
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self>;
 
     /// Returns the size of the serialized struct in bytes.
     /// This should be closely related to the size of the in-memory struct.
@@ -157,11 +156,10 @@ pub fn serialize_to<T: Serialize, P: AsRef<Path>>(item: &T, filename: P) -> io::
 /// # Errors
 ///
 /// Any errors from [`OpenOptions::open`] and [`Serialize::load`] will be passed through.
-pub fn load_from<T: Serialize, P: AsRef<Path>>(item: &mut T, filename: P) -> io::Result<()> {
+pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
     let mut options = OpenOptions::new();
     let mut file = options.read(true).open(filename)?;
-    item.load(&mut file)?;
-    Ok(())
+    <T as Serialize>::load(&mut file)
 }
 
 // Counter used for temporary file names.
@@ -199,11 +197,11 @@ macro_rules! serialize_int {
                 Ok(())
             }
 
-            fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
+            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
                 let mut bytes = [0u8; mem::size_of::<Self>()];
                 reader.read_exact(&mut bytes)?;
-                *self = Self::from_ne_bytes(bytes);
-                Ok(())
+                let value = Self::from_ne_bytes(bytes);
+                Ok(value)
             }
 
             fn size_in_bytes(&self) -> usize {
@@ -235,21 +233,18 @@ macro_rules! serialize_int_vec {
                 Ok(())
             }
 
-            fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
-                let mut size: usize = 0;
-                size.load(reader)?;
+            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+                let size = usize::load(reader)?;
 
-                // Resize by dropping old allocation.
-                self.clear(); self.shrink_to_fit();
-                self.resize(size, 0);
-
-                let target_slice: &mut [$t] = self;
+                let mut value: Vec<$t> = Vec::with_capacity(size);
+                value.resize(size, 0);
+                let target_slice: &mut [$t] = &mut value;
                 let mut source_slice: &mut [u8] = unsafe {
                     slice::from_raw_parts_mut(target_slice.as_ptr() as *mut u8, target_slice.len() * mem::size_of::<$t>())
                 };
                 reader.read_exact(&mut source_slice)?;
 
-                Ok(())
+                Ok(value)
             }
 
             fn size_in_bytes(&self) -> usize {
@@ -263,7 +258,7 @@ serialize_int_vec!(u64);
 
 //-----------------------------------------------------------------------------
 
-impl<V: Serialize + Default> Serialize for Option<V> {
+impl<V: Serialize> Serialize for Option<V> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         let mut size: usize = 0;
         if let Some(value) = self {
@@ -280,17 +275,14 @@ impl<V: Serialize + Default> Serialize for Option<V> {
         Ok(())
     }
 
-    fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
-        let mut size: usize = 0;
-        size.load(reader)?;
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let size = usize::load(reader)?;
         if size == 0 {
-            *self = None;
+            Ok(None)
         } else {
-            let mut value = V::default();
-            value.load(reader)?;
-            *self = Some(value);
+            let value = V::load(reader)?;
+            Ok(Some(value))
         }
-        Ok(())
     }
 
     fn size_in_bytes(&self) -> usize {
@@ -317,8 +309,7 @@ mod tests {
         assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for usize");
         serialize_to(&original, &filename).unwrap();
 
-        let mut copy: usize = 0;
-        load_from(&mut copy, &filename).unwrap();
+        let copy: usize = load_from(&filename).unwrap();
         assert_eq!(copy, original, "Serialization changed the value of usize");
 
         fs::remove_file(&filename).unwrap();
@@ -332,8 +323,7 @@ mod tests {
             let original: Option<usize> = None;
             assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for empty Option<usize>");
             serialize_to(&original, &filename).unwrap();
-            let mut copy: Option<usize> = None;
-            load_from(&mut copy, &filename).unwrap();
+            let copy: Option<usize> = load_from(&filename).unwrap();
             assert_eq!(copy, original, "Serialization changed the value of empty Option<usize>");
         }
 
@@ -341,8 +331,7 @@ mod tests {
             let original: Option<usize> = Some(123456);
             assert_eq!(original.size_in_bytes(), 16, "Invalid serialized size for non-empty Option<usize>");
             serialize_to(&original, &filename).unwrap();
-            let mut copy: Option<usize> = None;
-            load_from(&mut copy, &filename).unwrap();
+            let copy: Option<usize> = load_from(&filename).unwrap();
             assert_eq!(copy, original, "Serialization changed the value of non-empty Option<usize>");
         }
     }
@@ -355,8 +344,7 @@ mod tests {
         assert_eq!(original.size_in_bytes(), 8 + 8 * original.len(), "Invalid serialized size for Vec<u64>");
         serialize_to(&original, &filename).unwrap();
 
-        let mut copy: Vec<u64> = Vec::new();
-        load_from(&mut copy, &filename).unwrap();
+        let copy: Vec<u64> = load_from(&filename).unwrap();
         assert_eq!(copy, original, "Serialization changed the value of Vec<u64>");
 
         fs::remove_file(&filename).unwrap();

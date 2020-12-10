@@ -493,10 +493,13 @@ impl Serialize for RawVector {
         Ok(())
     }
 
-    fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
-        self.bit_len.load(reader)?;
-        self.data.load(reader)?;
-        Ok(())
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let bit_len = usize::load(reader)?;
+        let data = <Vec<u64> as Serialize>::load(reader)?;
+        Ok(RawVector {
+            bit_len: bit_len,
+            data: data,
+        })
     }
 
     fn size_in_bytes(&self) -> usize {
@@ -934,8 +937,7 @@ mod tests {
         let filename = serialize::temp_file_name("raw-vector");
         serialize::serialize_to(&original, &filename).unwrap();
 
-        let mut copy = RawVector::new();
-        serialize::load_from(&mut copy, &filename).unwrap();
+        let copy: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(copy, original, "Serialization changed the RawVector");
 
         fs::remove_file(&filename).unwrap();
@@ -980,8 +982,7 @@ mod tests {
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
-        let mut w = RawVector::new();
-        serialize::load_from(&mut w, &filename).unwrap();
+        let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len(), "Invalid size for the loaded vector");
         for i in 0..correct.len() {
             assert_eq!(w.get_bit(i), correct[i], "Invalid bit {}", i);
@@ -1010,8 +1011,7 @@ mod tests {
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
-        let mut w = RawVector::new();
-        serialize::load_from(&mut w, &filename).unwrap();
+        let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
             assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
@@ -1041,8 +1041,7 @@ mod tests {
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
-        let mut w = RawVector::new();
-        serialize::load_from(&mut w, &filename).unwrap();
+        let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
             assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
