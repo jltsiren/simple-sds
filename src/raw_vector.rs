@@ -830,11 +830,11 @@ mod tests {
     #[test]
     fn reserving_capacity() {
         let mut original = RawVector::with_len(137, true);
-        let copied = original.clone();
+        let copy = original.clone();
         original.reserve(31 + original.capacity() - original.len());
 
         assert!(original.capacity() >= 137 + 31, "Reserving additional capacity failed");
-        assert_eq!(original, copied, "Reserving additional capacity changed the vector");
+        assert_eq!(original, copy, "Reserving additional capacity changed the vector");
     }
 
     #[test]
@@ -850,7 +850,7 @@ mod tests {
         }
         assert_eq!(v.len(), 137, "Invalid vector length");
 
-        let from_iter: RawVector = source.clone().into_iter().collect();
+        let from_iter: RawVector = source.iter().cloned().collect();
         assert_eq!(from_iter, v, "Vector built from an iterator is invalid");
 
         let mut popped: Vec<bool> = Vec::new();
@@ -891,7 +891,7 @@ mod tests {
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
-        let from_iter: RawVector = correct.clone().into_iter().collect();
+        let from_iter: RawVector = correct.iter().cloned().collect();
         assert_eq!(from_iter, v, "Vector built from an iterator is invalid");
 
         correct.reverse();
@@ -942,10 +942,6 @@ mod tests {
 
         fs::remove_file(&filename).unwrap();
     }
-
-    // len(), new(), with_buf_len()
-    // is_open(), close()
-    // push_bit(), push_int()
 
     #[test]
     fn empty_writer() {

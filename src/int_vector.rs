@@ -136,7 +136,7 @@ impl IntVector {
     /// use simple_sds::int_vector::IntVector;
     ///
     /// let source: Vec<u16> = vec![123, 456, 789, 10];
-    /// let mut v: IntVector = source.clone().into_iter().collect();
+    /// let mut v: IntVector = source.iter().cloned().collect();
     /// for (index, value) in v.iter().enumerate() {
     ///     assert_eq!(source[index] as u64, value);
     /// }
@@ -312,7 +312,7 @@ iter_to_int_vector!(usize, 64);
 /// use simple_sds::int_vector::IntVector;
 ///
 /// let source: Vec<u64> = vec![123, 456, 789, 10];
-/// let mut v: IntVector = source.clone().into_iter().collect();
+/// let mut v: IntVector = source.iter().cloned().collect();
 /// for (index, value) in v.iter().enumerate() {
 ///     assert_eq!(source[index], value);
 /// }
@@ -346,7 +346,7 @@ impl<'a> Iterator for Iter<'a> {
 /// use simple_sds::int_vector::IntVector;
 ///
 /// let source: Vec<u64> = vec![1, 3, 15, 255, 65535];
-/// let mut v: IntVector = source.clone().into_iter().collect();
+/// let mut v: IntVector = source.iter().cloned().collect();
 /// let target: Vec<u64> = v.into_iter().collect();
 /// assert_eq!(target, source);
 /// ```
@@ -383,6 +383,153 @@ impl IntoIterator for IntVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: construction (+ default), element, stack, random access, serialize, from_iterator, iterators
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
+    use crate::serialize::Serialize;
+    use crate::serialize;
+    use std::fs;
+
+    #[test]
+    fn empty_int_vector() {
+        let empty = IntVector::default();
+        assert_eq!(empty.len(), 0, "Created a non-empty empty vector");
+        assert_eq!(empty.width(), 64, "Invalid width for an empty vector");
+        assert_eq!(empty.capacity(), 0, "Reserved unnecessary memory for an empty vector");
+
+        let with_width = IntVector::new(13).unwrap();
+        assert_eq!(with_width.len(), 0, "Created a non-empty empty vector with a specified width");
+        assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified width");
+        assert_eq!(with_width.capacity(), 0, "Reserved unnecessary memory for an empty vector with a specified width");
+
+        let with_capacity = IntVector::with_capacity(137, 13).unwrap();
+        assert_eq!(with_capacity.len(), 0, "Created a non-empty vector by specifying capacity");
+        assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified capacity");
+        assert!(with_capacity.capacity() >= 137, "Vector capacity is lower than specified");
+    }
+
+    #[test]
+    fn with_len_and_clear() {
+        let mut v = IntVector::with_len(137, 13, 123).unwrap();
+        assert_eq!(v.len(), 137, "Vector length is not as specified");
+        assert_eq!(v.width(), 13, "Vector width is not as specified");
+        v.clear();
+        assert_eq!(v.len(), 0, "Could not clear the vector");
+        assert_eq!(v.width(), 13, "Clearing the vector changed its width");
+    }
+
+    #[test]
+    fn initialization_vs_push() {
+        let with_len = IntVector::with_len(137, 13, 123).unwrap();
+        let mut pushed = IntVector::new(13).unwrap();
+        for _ in 0..137 {
+            pushed.push(123);
+        }
+        assert_eq!(with_len, pushed, "Initializing with and pushing values yield different vectors");
+    }
+
+    #[test]
+    fn initialization_vs_resize() {
+        let initialized = IntVector::with_len(137, 13, 123).unwrap();
+
+        let mut extended = IntVector::with_len(66, 13, 123).unwrap();
+        extended.resize(137, 123);
+        assert_eq!(extended, initialized, "Extended vector is invalid");
+
+        let mut truncated = IntVector::with_len(212, 13, 123).unwrap();
+        truncated.resize(137, 123);
+        assert_eq!(truncated, initialized, "Truncated vector is invalid");
+
+        let mut popped = IntVector::with_len(97, 13, 123).unwrap();
+        for _ in 0..82 {
+            popped.pop();
+        }
+        popped.resize(137, 123);
+        assert_eq!(popped, initialized, "Popped vector is invalid after extension");
+    }
+
+    #[test]
+    fn reserving_capacity() {
+        let mut original = IntVector::with_len(137, 13, 123).unwrap();
+        let copy = original.clone();
+        original.reserve(31 + original.capacity() - original.len());
+
+        assert!(original.capacity() >= 137 + 31, "Reserving additional capacity failed");
+        assert_eq!(original, copy, "Reserving additional capacity changed the vector");
+    }
+
+    #[test]
+    fn push_pop() {
+        let mut correct: Vec<u16> = Vec::new();
+        for i in 0..64 {
+            correct.push(i); correct.push(i * (i + 1));
+        }
+
+        let mut v = IntVector::new(16).unwrap();
+        for value in correct.iter() {
+            v.push(*value as u64);
+        }
+        assert_eq!(v.len(), 128, "Invalid vector length");
+
+        let from_iter: IntVector = correct.iter().cloned().collect();
+        assert_eq!(from_iter, v, "Vector built from an iterator is invalid");
+
+        correct.reverse();
+        let mut popped: Vec<u16> = Vec::new();
+        for _ in 0..correct.len() {
+            if let Some(value) = v.pop() {
+                popped.push(value as u16);
+            }
+        }
+        assert_eq!(popped.len(), correct.len(), "Invalid number of popped ints");
+        assert_eq!(v.len(), 0, "Non-empty vector after popping all ints");
+        assert_eq!(popped, correct, "Invalid popped ints");
+    }
+
+    #[test]
+    fn set_get() {
+        let mut v = IntVector::with_len(128, 13, 0).unwrap();
+        for i in 0..64 {
+            v.set(2 * i, i as u64); v.set(2 * i + 1, (i * (i + 1)) as u64);
+        }
+        for i in 0..64 {
+            assert_eq!(v.get(2 * i), i as u64, "Invalid integer [{}].0", i);
+            assert_eq!(v.get(2 * i + 1), (i * (i + 1)) as u64, "Invalid integer [{}].1", i);
+        }
+    }
+
+    #[test]
+    fn iterators_and_pack() {
+        let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+
+        let packed: IntVector = correct.iter().cloned().collect();
+        let packed = packed.pack();
+        assert_eq!(packed.width(), 7, "Incorrect width after pack()");
+        for (index, value) in packed.iter().enumerate() {
+            assert_eq!(value, correct[index], "Invalid value in the packed vector");
+        }
+
+        let from_iter: Vec<u64> = packed.into_iter().collect();
+        assert_eq!(from_iter, correct, "Invalid vector built from into_iter()");
+    }
+
+    #[test]
+    fn serialize_int_vector() {
+        let mut original = IntVector::new(16).unwrap();
+        for i in 0..64 {
+            original.push(i * (i + 1) * (i + 2));
+        }
+        assert_eq!(original.size_in_bytes(), 160, "Invalid IntVector size in bytes");
+
+        let filename = serialize::temp_file_name("int-vector");
+        serialize::serialize_to(&original, &filename).unwrap();
+
+        let copy: IntVector = serialize::load_from(&filename).unwrap();
+        assert_eq!(copy, original, "Serialization changed the IntVector");
+
+        fs::remove_file(&filename).unwrap();
+    }
+}
 
 //-----------------------------------------------------------------------------
