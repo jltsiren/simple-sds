@@ -117,13 +117,14 @@ impl IntVector {
     /// ```
     pub fn with_capacity(capacity: usize, width: usize) -> Option<IntVector> {
         if width == 0 || width > bits::WORD_BITS {
-            return None;
+            None
+        } else {
+            Some(IntVector {
+                len: 0,
+                width: width,
+                data: RawVector::with_capacity(capacity * width),
+            })
         }
-        Some(IntVector {
-            len: 0,
-            width: width,
-            data: RawVector::with_capacity(capacity * width),
-        })
     }
 
     /// Returns an iterator visiting all elements of the vector in order.
@@ -309,11 +310,12 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.parent.len() {
-            return None;
+            None
+        } else {
+            let result = Some(self.parent.get(self.index));
+            self.index += 1;
+            result
         }
-        let result = Some(self.parent.get(self.index));
-        self.index += 1;
-        result
     }
 }
 
@@ -341,11 +343,12 @@ impl Iterator for IntoIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.parent.len() {
-            return None;
+            None
+        } else {
+            let result = Some(self.parent.get(self.index));
+            self.index += 1;
+            result
         }
-        let result = Some(self.parent.get(self.index));
-        self.index += 1;
-        result
     }
 }
 

@@ -48,6 +48,8 @@ use std::{env, io, mem, process, slice};
 
 /// Serialize a data structure.
 ///
+/// `self.size_in_bytes()` should always be nonzero.
+///
 /// # Examples
 ///
 /// ```
@@ -261,6 +263,47 @@ serialize_int_vec!(u64);
 
 //-----------------------------------------------------------------------------
 
+impl<V: Serialize + Default> Serialize for Option<V> {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        let mut size: usize = 0;
+        if let Some(value) = self {
+            size = value.size_in_bytes();
+        }
+        size.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        if let Some(value) = self {
+            value.serialize(writer)?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(&mut self, reader: &mut T) -> io::Result<()> {
+        let mut size: usize = 0;
+        size.load(reader)?;
+        if size == 0 {
+            *self = None;
+        } else {
+            let mut value = V::default();
+            value.load(reader)?;
+            *self = Some(value);
+        }
+        Ok(())
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        let mut result = mem::size_of::<usize>();
+        if let Some(value) = self {
+            result += value.size_in_bytes();
+        }
+        result
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,13 +314,37 @@ mod tests {
         let filename = temp_file_name("usize");
 
         let original: usize = 0x1234_5678_9ABC_DEF0;
+        assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for usize");
         serialize_to(&original, &filename).unwrap();
 
         let mut copy: usize = 0;
         load_from(&mut copy, &filename).unwrap();
-
         assert_eq!(copy, original, "Serialization changed the value of usize");
+
         fs::remove_file(&filename).unwrap();
+    }
+
+    #[test]
+    fn serialize_option() {
+        let filename = temp_file_name("option");
+
+        {
+            let original: Option<usize> = None;
+            assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for empty Option<usize>");
+            serialize_to(&original, &filename).unwrap();
+            let mut copy: Option<usize> = None;
+            load_from(&mut copy, &filename).unwrap();
+            assert_eq!(copy, original, "Serialization changed the value of empty Option<usize>");
+        }
+
+        {
+            let original: Option<usize> = Some(123456);
+            assert_eq!(original.size_in_bytes(), 16, "Invalid serialized size for non-empty Option<usize>");
+            serialize_to(&original, &filename).unwrap();
+            let mut copy: Option<usize> = None;
+            load_from(&mut copy, &filename).unwrap();
+            assert_eq!(copy, original, "Serialization changed the value of non-empty Option<usize>");
+        }
     }
 
     #[test]
@@ -285,12 +352,13 @@ mod tests {
         let filename = temp_file_name("vec_u64");
 
         let original: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        assert_eq!(original.size_in_bytes(), 8 + 8 * original.len(), "Invalid serialized size for Vec<u64>");
         serialize_to(&original, &filename).unwrap();
 
         let mut copy: Vec<u64> = Vec::new();
         load_from(&mut copy, &filename).unwrap();
-
         assert_eq!(copy, original, "Serialization changed the value of Vec<u64>");
+
         fs::remove_file(&filename).unwrap();
     }
 }

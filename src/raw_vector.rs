@@ -470,7 +470,7 @@ impl PopRaw for RawVector {
     }
 
     fn pop_int(&mut self, width: usize) -> Option<u64> {
-        if self.bit_len >= width {
+        if self.len() >= width {
             let result = self.get_int(self.bit_len - width, width);
             self.bit_len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
@@ -662,7 +662,7 @@ impl RawVectorWriter {
     pub fn is_open(&self) -> bool {
         match self.file {
             Some(_) => true,
-            None => false,
+            None    => false,
         }
     }
 

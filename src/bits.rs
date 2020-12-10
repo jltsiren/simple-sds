@@ -56,10 +56,9 @@ pub fn high_set(n: usize) -> u64 {
 /// assert_eq!(bits::bit_len(0x1FFF), 13);
 /// ```
 pub fn bit_len(n: u64) -> usize {
-    if n == 0 {
-        1
-    } else {
-        WORD_BITS - (n.leading_zeros() as usize)
+    match n {
+        0 => 1,
+        _ => WORD_BITS - (n.leading_zeros() as usize),
     }
 }
 
@@ -108,10 +107,10 @@ pub fn bits_to_words(n: usize) -> usize {
 /// assert_eq!(bits::round_up_to_word_size(65), 128);
 /// ```
 pub fn round_up_to_word_size(n: usize) -> usize {
-    if n == 0 {
-        return WORD_BITS;
+    match n {
+        0 => WORD_BITS,
+        _ => words_to_bits(bits_to_words(n)),
     }
-    words_to_bits(bits_to_words(n))
 }
 
 /// Returns an `u64` value consisting entirely of bit `bit`.
@@ -125,7 +124,10 @@ pub fn round_up_to_word_size(n: usize) -> usize {
 /// assert_eq!(bits::filler_value(true), !0u64);
 /// ```
 pub fn filler_value(bit: bool) -> u64 {
-    if bit { !0u64 } else { 0 }
+    match bit {
+        true  => !0u64,
+        false => 0u64,
+    }
 }
 
 /// Splits a bit offset into an index in an array of `u64` and an offset within the integer.
