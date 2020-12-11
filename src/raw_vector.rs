@@ -1,10 +1,9 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::Serialize;
+use crate::serialize::{Serialize, Writer};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
-use std::io::{Seek, SeekFrom};
 use std::iter::FromIterator;
 use std::path::Path;
 use std::io;
@@ -49,6 +48,10 @@ pub trait SetRaw {
     ///
     /// * `bit_offset`: Offset in the bit array.
     /// * `bit`: The value of the bit.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn set_bit(&mut self, bit_offset: usize, bit: bool);
 
     /// Writes an integer to the container.
@@ -60,6 +63,10 @@ pub trait SetRaw {
     /// * `bit_offset`: Starting offset in the bit array.
     /// * `value`: The integer to be written.
     /// * `width`: The width of the integer in bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
 
@@ -94,6 +101,10 @@ pub trait GetRaw {
     /// Reads a bit from the container.
     ///
     /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn get_bit(&self, bit_offset: usize) -> bool;
 
     /// Reads an integer from the container.
@@ -104,6 +115,10 @@ pub trait GetRaw {
     ///
     /// * `bit_offset`: Starting offset in the bit array.
     /// * `width`: The width of the integer in bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn get_int(&self, bit_offset: usize, width: usize) -> u64;
 }
 
@@ -152,7 +167,7 @@ pub trait PushRaw {
     ///
     /// # Panics
     ///
-    /// May panic due to I/O errors.
+    /// May panic from I/O errors.
     fn push_bit(&mut self, bit: bool);
 
     /// Appends an integer to the container.
@@ -166,7 +181,7 @@ pub trait PushRaw {
     ///
     /// # Panics
     ///
-    /// May panic due to I/O errors.
+    /// May panic from I/O errors.
     fn push_int(&mut self, value: u64, width: usize);
 }
 
@@ -586,7 +601,7 @@ impl RawVectorWriter {
     ///
     /// # Errors
     ///
-    /// Any errors from [`OpenOptions::open`], [`File::seek`], and [`Serialize::serialize`] will be passed through.
+    /// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
@@ -628,7 +643,7 @@ impl RawVectorWriter {
     ///
     /// # Errors
     ///
-    /// Any errors from [`OpenOptions::open`], [`File::seek`], and [`Serialize::serialize`] will be passed through.
+    /// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
         let buf_len = bits::round_up_to_word_size(buf_len);
         let mut options = OpenOptions::new();
@@ -643,98 +658,6 @@ impl RawVectorWriter {
         };
         result.write_header()?;
         Ok(result)
-    }
-
-    /// Tells whether the file is open for writing.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-is-open");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert!(v.is_open());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    pub fn is_open(&self) -> bool {
-        match self.file {
-            Some(_) => true,
-            None    => false,
-        }
-    }
-
-    /// Flushes the buffer and closes the file.
-    ///
-    /// No effect if the file is closed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::fs;
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-close");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert!(v.is_open());
-    /// v.close();
-    /// assert!(!v.is_open());
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any errors from [`File::seek`] and [`Serialize::serialize`] will be passed through.
-    pub fn close(&mut self) -> io::Result<()> {
-        self.flush(true)?;
-        self.write_header()?;
-        self.file = None;
-        Ok(())
-    }
-
-    // Flushes the the buffer and optionally also the overflow bits.
-    // This should only be called when the buffer is full or the file is going to be closed.
-    // Otherwise there may be unused bits in the last serialized word.
-    fn flush(&mut self, with_overflow: bool) -> io::Result<()> {
-        if !self.is_open() || self.buf.len() == 0 {
-            return Ok(());
-        }
-
-        // Handle the overflow if not serializing the entire buffer.
-        let mut overflow: (u64, usize) = (0, 0);
-        if !with_overflow && self.buf.len() > self.buf_len {
-            overflow = (self.buf.get_int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len);
-            self.buf.resize(self.buf_len, false);
-        }
-
-        // Serialize and clear the buffer.
-        let f = self.file.as_mut().unwrap();
-        self.buf.serialize_data(f)?;
-        self.buf.clear();
-
-        // Push the overflow back to the buffer.
-        if !with_overflow && overflow.1 > 0 {
-            self.buf.push_int(overflow.0, overflow.1);
-        }
-
-        Ok(())
-    }
-
-    // Rewinds the file and writes the header.
-    fn write_header(&mut self) -> io::Result<()> {
-        if !self.is_open() {
-            return Ok(());
-        }
-        let f = self.file.as_mut().unwrap();
-        f.seek(SeekFrom::Start(0))?;
-        self.bit_len.serialize(f)?;
-        let words: usize = bits::bits_to_words(self.bit_len);
-        words.serialize(f)?;
-        Ok(())
     }
 }
 
@@ -753,6 +676,46 @@ impl PushRaw for RawVectorWriter {
         if self.buf.len() >= self.buf_len {
             self.flush(false).unwrap();
         }
+    }
+}
+
+impl Writer for RawVectorWriter {
+    fn get_file(&mut self) -> Option<&mut File> {
+        self.file.as_mut()
+    }
+
+    fn flush(&mut self, final_flush: bool) -> io::Result<()> {
+        if let Some(f) = self.file.as_mut() {
+            // Handle the overflow if not serializing the entire buffer.
+            let mut overflow: (u64, usize) = (0, 0);
+            if !final_flush && self.buf.len() > self.buf_len {
+                overflow = (self.buf.get_int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len);
+                self.buf.resize(self.buf_len, false);
+            }
+
+            // Serialize and clear the buffer.
+            self.buf.serialize_data(f)?;
+            self.buf.clear();
+
+            // Push the overflow back to the buffer.
+            if !final_flush && overflow.1 > 0 {
+                self.buf.push_int(overflow.0, overflow.1);
+            }
+        }
+        Ok(())
+    }
+
+    fn write_header(&mut self) -> io::Result<()> {
+        if let Some(f) = self.file.as_mut() {
+            self.bit_len.serialize(f)?;
+            let words: usize = bits::bits_to_words(self.bit_len);
+            words.serialize(f)?;
+        }
+        Ok(())
+    }
+
+    fn close_file(&mut self) {
+        self.file = None;
     }
 }
 
@@ -948,11 +911,11 @@ mod tests {
         let first = serialize::temp_file_name("empty-writer");
         let second = serialize::temp_file_name("empty-writer");
 
-        let v = RawVectorWriter::new(&first).unwrap();
+        let mut v = RawVectorWriter::new(&first).unwrap();
         assert_eq!(v.len(), 0, "Created a non-empty empty writer");
         assert!(v.is_open(), "Newly created writer is not open");
 
-        let w = RawVectorWriter::with_buf_len(&second, 1024).unwrap();
+        let mut w = RawVectorWriter::with_buf_len(&second, 1024).unwrap();
         assert_eq!(w.len(), 0, "Created a non-empty empty writer with custom buffer size");
         assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
 

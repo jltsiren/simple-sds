@@ -12,7 +12,7 @@ use std::io;
 
 /// A contiguous growable bit-packed array of fixed-width integers.
 ///
-/// This is a wrapper over [`RawVector`], which is in turn a wrapper over [`Vec`].
+/// This structure contains [`RawVector`], which is in turn contains [`Vec`].
 /// Each element consists of the lowest 1 to 64 bits of an `u64` value, as specified by parameter `width`.
 /// The maximum length of the vector is `usize::MAX / width` elements.
 ///

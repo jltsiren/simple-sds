@@ -2,15 +2,21 @@
 
 This is a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures. The plan is to implement the subset of SDSL I am currently using and to extend it a bit.
 
+## Implemented functionality
+
+### Integer vectors
+
+* `RawVector`: A bit array that supports reading, writing, and appending 1-64 bits at a time. Implemented on top of `Vec<u64>`.
+* `RawVectorWriter`: An append-only version of `RawVector` that writes the structure directly to a file.
+* `IntVector`: A bit-packed vector of fixed-width integers implemented on top of `RawVector`. Like `sdsl::int_vector` but also supports stack functionality.
+* `IntVectorWriter`: An append-only version of `IntVector` that writes the structure directly to a file. Like a subset of `sdsl::int_vector_buffer`.
+
 ## Planned functionality
 
-### Vectors
+### Integer vectors
 
-* `RawVector`: A binary vector that supports reading, writing, and appending 1-64 bits at a time. Implemented on top of `Vec<u64>`.
-* `MmapVector`: A memory-mapped fixed-size version of `RawVector` compatible with its serialization format. Comparable to `sdsl::int_vector_mapper` in SDSL 3.
-* `VectorBuffer`: An append-only version of `RawVector` that writes its contents to a file. Comparable to a subset of `sdsl::int_vector_buffer` functionality.
-* `IntVector`: A packed vector of unsigned fixed-width integers. Implemented on top of `RawVector`. Comparable to `sdsl::int_vector`.
-* `TupleVector`: A packed vector of tuples of unsigned integers, with a fixed width for each field in the tuple. Implemented on top of `RawVector`.
+* `TupleVector`: A bit-packed vector of tuples of unsigned integers, with a fixed width for each field in the tuple. Implemented on top of `RawVector`.
+* Memory-mapped versions of all vectors.
 
 ### Bitvectors
 
@@ -28,4 +34,4 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 ## Notes
 
 * The included `.cargo/config.toml` sets the target CPU to `native`.
-* This probably assumes that `usize` is a 64-bit integer.
+* This crate assumes that `usize` is a 64-bit integer.

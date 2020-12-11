@@ -221,6 +221,10 @@ pub trait Access: Element {
     /// Gets an element from the vector.
     ///
     /// Behavior is undefined if `index` is not a valid index in the vector.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn get(&self, index: usize) -> <Self as Element>::Item;
 
     /// Returns `true` if the underlying data is mutable.
@@ -236,6 +240,10 @@ pub trait Access: Element {
     ///
     /// * `index`: Index in the vector.
     /// * `value`: New value of the element.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn set(&mut self, index: usize, value: <Self as Element>::Item);
 }
 
@@ -287,6 +295,10 @@ pub trait Push: Element {
     /// Appends an element to the vector.
     ///
     /// Behavior is undefined if the vector would exceed the maximum length.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn push(&mut self, value: <Self as Element>::Item);
 }
 
@@ -472,6 +484,10 @@ pub trait AccessSub: SubElement {
     ///
     /// * `index`: Index in the vector.
     /// * `offset`: Offset in the element.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn get_sub(&self, index: usize, offset: usize) -> <Self as SubElement>::SubItem;
 
     /// Sets a subelement in the vector.
@@ -486,6 +502,10 @@ pub trait AccessSub: SubElement {
     /// * `index`: Index in the vector.
     /// * `offset`: Offset in the element.
     /// * `value`: New value of the subelement.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
     fn set_sub(&mut self, index: usize, offset: usize, value: <Self as SubElement>::SubItem);
 }
 
