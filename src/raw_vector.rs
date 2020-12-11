@@ -601,7 +601,7 @@ impl RawVectorWriter {
     ///
     /// # Errors
     ///
-    /// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
+    /// Any I/O errors will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
@@ -643,7 +643,7 @@ impl RawVectorWriter {
     ///
     /// # Errors
     ///
-    /// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
+    /// Any I/O errors will be passed through.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
         let buf_len = bits::round_up_to_word_size(buf_len);
         let mut options = OpenOptions::new();
@@ -908,16 +908,18 @@ mod tests {
 
     #[test]
     fn empty_writer() {
-        let first = serialize::temp_file_name("empty-writer");
-        let second = serialize::temp_file_name("empty-writer");
+        let first = serialize::temp_file_name("empty-raw-vector-writer");
+        let second = serialize::temp_file_name("empty-raw-vector-writer");
 
         let mut v = RawVectorWriter::new(&first).unwrap();
         assert_eq!(v.len(), 0, "Created a non-empty empty writer");
         assert!(v.is_open(), "Newly created writer is not open");
+        v.close().unwrap();
 
         let mut w = RawVectorWriter::with_buf_len(&second, 1024).unwrap();
         assert_eq!(w.len(), 0, "Created a non-empty empty writer with custom buffer size");
         assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
+        w.close().unwrap();
 
         fs::remove_file(&first).unwrap();
         fs::remove_file(&second).unwrap();
@@ -925,7 +927,7 @@ mod tests {
 
     #[test]
     fn push_bits_to_writer() {
-        let filename = serialize::temp_file_name("push-bits-to-writer");
+        let filename = serialize::temp_file_name("push-bits-to-raw-vector-writer");
 
         let mut correct: Vec<bool> = Vec::new();
         let mut rng = rand::thread_rng();
@@ -952,7 +954,7 @@ mod tests {
 
     #[test]
     fn push_ints_to_writer() {
-        let filename = serialize::temp_file_name("push-ints-to-writer");
+        let filename = serialize::temp_file_name("push-ints-to-raw-vector-writer");
 
         let mut correct: Vec<u64> = Vec::new();
         let mut rng = rand::thread_rng();
@@ -982,7 +984,7 @@ mod tests {
     #[test]
     #[ignore]
     fn large_writer() {
-        let filename = serialize::temp_file_name("large_writer");
+        let filename = serialize::temp_file_name("large-raw-vector-writer");
 
         let mut correct: Vec<u64> = Vec::new();
         let mut rng = rand::thread_rng();

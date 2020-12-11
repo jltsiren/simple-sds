@@ -1,11 +1,14 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::raw_vector::{RawVector, SetRaw, GetRaw, PushRaw, PopRaw};
-use crate::serialize::Serialize;
+use crate::raw_vector::{RawVector, RawVectorWriter, SetRaw, GetRaw, PushRaw, PopRaw};
+use crate::serialize::{Serialize, Writer};
 use crate::bits;
 
+use std::fs::File;
+use std::io::{Error, ErrorKind};
 use std::iter::FromIterator;
+use std::path::Path;
 use std::io;
 
 //-----------------------------------------------------------------------------
@@ -383,13 +386,172 @@ impl IntoIterator for IntVector {
 
 //-----------------------------------------------------------------------------
 
+/// A buffered file writer compatible with the serialization format of [`IntVector`].
+///
+/// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
+/// Call [`IntVectorWriter::close`] explicitly to handle the errors.
+#[derive(Debug)]
+pub struct IntVectorWriter {
+    len: usize,
+    width: usize,
+    writer: RawVectorWriter,
+}
+
+impl IntVectorWriter {
+    /// Creates an empty vector stored in the specified file with the default buffer size.
+    ///
+    /// If the file already exists, it will be overwritten.
+    ///
+    /// # Arguments
+    ///
+    /// * `filename`: Name of the file.
+    /// * `width`: Width of each element in bits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::IntVectorWriter;
+    /// use simple_sds::ops::Element;
+    /// use simple_sds::serialize;
+    /// use std::{fs, mem};
+    ///
+    /// let filename = serialize::temp_file_name("int-vector-writer-new");
+    /// let mut v = IntVectorWriter::new(&filename, 13).unwrap();
+    /// assert_eq!(v.len(), 0);
+    /// mem::drop(v);
+    /// fs::remove_file(&filename).unwrap();
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error of the kind [`ErrorKind::Other`] if the width is invalid.
+    /// Any I/O errors will be passed through.
+    pub fn new<P: AsRef<Path>>(filename: P, width: usize) -> io::Result<IntVectorWriter> {
+        if width == 0 || width > bits::WORD_BITS {
+            return Err(Error::new(ErrorKind::Other, format!("invalid element width: {}", width)));
+        }
+        let writer = RawVectorWriter::new(filename)?;
+        let mut result = IntVectorWriter {
+            len: 0,
+            width: width,
+            writer: writer,
+        };
+        // TODO: This is an ugly hack. The writer already wrote the header, so we have to
+        // go back and write the right header.
+        result.seek_to_start()?;
+        result.write_header()?;
+        Ok(result)
+    }
+
+    /// Creates an empty vector stored in the specified file with user-defined buffer size.
+    ///
+    /// If the file already exists, it will be overwritten.
+    /// Actual buffer size may be slightly higher than requested.
+    /// Behavior is undefined if `buf_len * width > usize::MAX`.
+    ///
+    /// # Arguments
+    ///
+    /// * `filename`: Name of the file.
+    /// * `width`: Width of each element in bits.
+    /// * `buf_len`: Buffer size in elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::IntVectorWriter;
+    /// use simple_sds::ops::Element;
+    /// use simple_sds::serialize;
+    /// use std::{fs, mem};
+    ///
+    /// let filename = serialize::temp_file_name("int-vector-writer-with-buf-len");
+    /// let mut v = IntVectorWriter::with_buf_len(&filename, 13, 1024).unwrap();
+    /// assert_eq!(v.len(), 0);
+    /// mem::drop(v);
+    /// fs::remove_file(&filename).unwrap();
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error of the kind [`ErrorKind::Other`] if the width is invalid.
+    /// Any I/O errors will be passed through.
+    pub fn with_buf_len<P: AsRef<Path>>(filename: P, width: usize, buf_len: usize) -> io::Result<IntVectorWriter> {
+        if width == 0 || width > bits::WORD_BITS {
+            return Err(Error::new(ErrorKind::Other, format!("invalid element width: {}", width)));
+        }
+        let writer = RawVectorWriter::with_buf_len(filename, buf_len * width)?;
+        let mut result = IntVectorWriter {
+            len: 0,
+            width: width,
+            writer: writer,
+        };
+        // TODO: This is an ugly hack. The writer already wrote the header, so we have to
+        // go back and write the right header.
+        result.seek_to_start()?;
+        result.write_header()?;
+        Ok(result)
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl Element for IntVectorWriter {
+    type Item = u64;
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn width(&self) -> usize {
+        self.width
+    }
+}
+
+impl Push for IntVectorWriter {
+    fn push(&mut self, value: <Self as Element>::Item) {
+        self.writer.push_int(value, self.width());
+        self.len += 1;
+    }
+}
+
+impl Writer for IntVectorWriter {
+    fn get_file(&mut self) -> Option<&mut File> {
+        self.writer.get_file()
+    }
+
+    fn flush(&mut self, final_flush: bool) -> io::Result<()> {
+        self.writer.flush(final_flush)
+    }
+
+    fn write_header(&mut self) -> io::Result<()> {
+        if let Some(f) = self.writer.get_file() {
+            self.len.serialize(f)?;
+            self.width.serialize(f)?;
+        }
+        self.writer.write_header()?;
+        Ok(())
+    }
+
+    fn close_file(&mut self) {
+        self.writer.close_file()
+    }
+}
+
+impl Drop for IntVectorWriter {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-    use crate::serialize::Serialize;
+    use crate::serialize::{Serialize, Writer};
     use crate::serialize;
     use std::fs;
+    use rand::Rng;
 
     #[test]
     fn empty_int_vector() {
@@ -527,6 +689,84 @@ mod tests {
 
         let copy: IntVector = serialize::load_from(&filename).unwrap();
         assert_eq!(copy, original, "Serialization changed the IntVector");
+
+        fs::remove_file(&filename).unwrap();
+    }
+
+    #[test]
+    fn empty_writer() {
+        let first = serialize::temp_file_name("empty-int-vector-writer");
+        let second = serialize::temp_file_name("empty-int-vector-writer");
+
+        let mut v = IntVectorWriter::new(&first, 13).unwrap();
+        assert_eq!(v.len(), 0, "Created a non-empty empty writer");
+        assert!(v.is_open(), "Newly created writer is not open");
+        v.close().unwrap();
+
+        let mut w = IntVectorWriter::with_buf_len(&second, 13, 1024).unwrap();
+        assert_eq!(w.len(), 0, "Created a non-empty empty writer with custom buffer size");
+        assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
+        w.close().unwrap();
+
+        fs::remove_file(&first).unwrap();
+        fs::remove_file(&second).unwrap();
+    }
+
+    #[test]
+    fn push_to_writer() {
+        let filename = serialize::temp_file_name("push-to-int-vector-writer");
+
+        let mut correct: Vec<u64> = Vec::new();
+        let mut rng = rand::thread_rng();
+        let width = 31;
+        for _ in 0..71 {
+            let value: u64 = rng.gen();
+            correct.push(value & bits::low_set(width));
+        }
+
+        let mut v = IntVectorWriter::with_buf_len(&filename, width, 32).unwrap();
+        for value in correct.iter() {
+            v.push(*value);
+        }
+        assert_eq!(v.len(), correct.len(), "Invalid size for the writer");
+        v.close().unwrap();
+        assert!(!v.is_open(), "Could not close the writer");
+
+        let w: IntVector = serialize::load_from(&filename).unwrap();
+        assert_eq!(w.len(), correct.len(), "Invalid size for the loaded vector");
+        for i in 0..correct.len() {
+            assert_eq!(w.get(i), correct[i], "Invalid integer {}", i);
+        }
+
+        fs::remove_file(&filename).unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn large_writer() {
+        let filename = serialize::temp_file_name("large-int-vector-writer");
+
+        let mut correct: Vec<u64> = Vec::new();
+        let mut rng = rand::thread_rng();
+        let width = 31;
+        for _ in 0..620001 {
+            let value: u64 = rng.gen();
+            correct.push(value & bits::low_set(width));
+        }
+
+        let mut v = IntVectorWriter::new(&filename, width).unwrap();
+        for value in correct.iter() {
+            v.push(*value);
+        }
+        assert_eq!(v.len(), correct.len(), "Invalid size for the writer");
+        v.close().unwrap();
+        assert!(!v.is_open(), "Could not close the writer");
+
+        let w: IntVector = serialize::load_from(&filename).unwrap();
+        assert_eq!(w.len(), correct.len(), "Invalid size for the loaded vector");
+        for i in 0..correct.len() {
+            assert_eq!(w.get(i), correct[i], "Invalid integer {}", i);
+        }
 
         fs::remove_file(&filename).unwrap();
     }
