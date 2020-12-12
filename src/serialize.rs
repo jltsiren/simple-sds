@@ -3,10 +3,27 @@
 //! The serialized representation closely mirrors the in-memory representation with 8-byte alignment.
 //! This makes it easy to develop memory-mapped versions of the structures.
 //!
-//! The serialization format of a structure is split into the header and the data.
-//! They can be serialized separately with [`Serialize::serialize_header`] and [`Serialize::serialize_data`].
+//! # Serialization formats
+//!
+//! The serialization format of a structure, as implemented with trait [`Serialize`], is split into the header and the body.
+//! Both contain a concatenation of 0 or more structures, and at least one of them must be non-empty.
+//! The header and the body can be serialized separately with [`Serialize::serialize_header`] and [`Serialize::serialize_body`].
 //! Method [`Serialize::serialize`] provides an easy way of calling both.
 //! A serialized structure is always loaded with a single [`Serialize::load`] call.
+//!
+//! There are currently three fundamental serialization types:
+//!
+//! * Element. Any 64-bit primitive type in native byte order. The header is empty and the body contains the value.
+//! * [`Vec`] of elements. The header stores the number of elements in the body as `usize`. The body stores the elements.
+//! * `Option<T: Serialize>`. The header stores the number of elements in the body as `usize`. The body stores `T` for `Some(T)` and is empty for `None`.
+//!
+//! # Writer structures
+//!
+//! Trait [`Writer`] provides an interface for writing a nested data structure directly to a file.
+//! Like with serialization, the innermost writer is responsible for handling the buffer and the file.
+//! The outermost structure is responsible for writing the header.
+//! Most methods in the outer writer should simply call the corresponding method of the inner writer.
+//! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
 //!
 //! # Nested structures
 //!
@@ -18,11 +35,11 @@
 //!   * Header of `B`.
 //!     * Header information.
 //!     * Header of `C`.
-//! * Data in `C`.
+//! * Body of `C`.
 //!
 //! The header of the outer structure should always end with the header of the inner structure.
 //! If we want to generate `A` directly to a file, we can then start by writing a placeholder header of `A`.
-//! After we have finished writing the data, we go back to the beginning and write the true header.
+//! After we have finished writing the body, we go back to the beginning and write the true header.
 //!
 //! # Composite structures
 //!
@@ -32,20 +49,12 @@
 //! * Header of `A`.
 //! * Structure `B`.
 //!   * Header of `B`.
-//!   * Data in `B`.
+//!   * Body of `B`.
 //! * Structure `C`.
 //!   * Header of `C`.
-//!   * Data in `C`.
+//!   * Body of `C`.
 //!
 //! In this case, each structure is responsible for its own header.
-//!
-//! # Writer structures
-//!
-//! Trait [`Writer`] provides an interface for writing a nested data structure directly to a file.
-//! Like with serialization, the innermost writer is responsible for handling the buffer and the file.
-//! The outermost structure is responsible for writing the header.
-//! Most methods in the outer writer should simply call the corresponding method of the inner writer.
-//! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
 
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom};
@@ -74,7 +83,7 @@ use std::{env, io, mem, process, slice};
 ///         Ok(())
 ///     }
 ///
-///     fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+///     fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
 ///         let bytes: [u8; mem::size_of::<Self>()] = unsafe { mem::transmute_copy(self) };
 ///         writer.write_all(&bytes)?;
 ///         Ok(())
@@ -105,14 +114,14 @@ use std::{env, io, mem, process, slice};
 pub trait Serialize: Sized {
     /// Serializes the struct to the writer.
     ///
-    /// Equivalent to calling [`Serialize::serialize_header`] and [`Serialize::serialize_data`].
+    /// Equivalent to calling [`Serialize::serialize_header`] and [`Serialize::serialize_body`].
     ///
     /// # Errors
     ///
     /// Any errors from the writer may be passed through.
     fn serialize<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.serialize_header(writer)?;
-        self.serialize_data(writer)?;
+        self.serialize_body(writer)?;
         Ok(())
     }
 
@@ -123,12 +132,12 @@ pub trait Serialize: Sized {
     /// Any errors from the writer may be passed through.
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()>;
 
-    /// Serializes the data to the writer.
+    /// Serializes the body to the writer.
     ///
     /// # Errors
     ///
     /// Any errors from the writer may be passed through.
-    fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()>;
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()>;
 
     /// Loads the struct from the reader.
     ///
@@ -192,7 +201,7 @@ pub trait Serialize: Sized {
 ///
 ///     fn flush(&mut self, _: bool) -> io::Result<()> {
 ///         if let Some(f) = self.file.as_mut() {
-///             self.buf.serialize_data(f)?;
+///             self.buf.serialize_body(f)?;
 ///             self.buf.clear();
 ///         }
 ///         Ok(())
@@ -354,14 +363,14 @@ pub fn temp_file_name(name_part: &str) -> PathBuf {
 
 //-----------------------------------------------------------------------------
 
-macro_rules! serialize_int {
+macro_rules! serialize_element {
     ($t:ident) => {
         impl Serialize for $t {
             fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
                 Ok(())
             }
 
-            fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
                 let bytes = self.to_ne_bytes();
                 writer.write_all(&bytes)?;
                 Ok(())
@@ -381,11 +390,15 @@ macro_rules! serialize_int {
     }
 }
 
-serialize_int!(usize);
+serialize_element!(f64);
+serialize_element!(i64);
+serialize_element!(isize);
+serialize_element!(u64);
+serialize_element!(usize);
 
 //-----------------------------------------------------------------------------
 
-macro_rules! serialize_int_vec {
+macro_rules! serialize_element_vec {
     ($t:ident) => {
         impl Serialize for Vec<$t> {
             fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
@@ -394,7 +407,7 @@ macro_rules! serialize_int_vec {
                 Ok(())
             }
 
-            fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
                 let source_slice: &[$t] = self;
                 let target_slice: &[u8] = unsafe {
                     slice::from_raw_parts(source_slice.as_ptr() as *const u8, source_slice.len() * mem::size_of::<$t>())
@@ -407,7 +420,7 @@ macro_rules! serialize_int_vec {
                 let size = usize::load(reader)?;
 
                 let mut value: Vec<$t> = Vec::with_capacity(size);
-                value.resize(size, 0);
+                value.resize(size, $t::default());
                 let target_slice: &mut [$t] = &mut value;
                 let mut source_slice: &mut [u8] = unsafe {
                     slice::from_raw_parts_mut(target_slice.as_ptr() as *mut u8, target_slice.len() * mem::size_of::<$t>())
@@ -424,7 +437,11 @@ macro_rules! serialize_int_vec {
     }
 }
 
-serialize_int_vec!(u64);
+serialize_element_vec!(f64);
+serialize_element_vec!(i64);
+serialize_element_vec!(isize);
+serialize_element_vec!(u64);
+serialize_element_vec!(usize);
 
 //-----------------------------------------------------------------------------
 
@@ -432,13 +449,13 @@ impl<V: Serialize> Serialize for Option<V> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         let mut size: usize = 0;
         if let Some(value) = self {
-            size = value.size_in_bytes();
+            size = value.size_in_bytes() / mem::size_of::<u64>();
         }
         size.serialize(writer)?;
         Ok(())
     }
 
-    fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         if let Some(value) = self {
             value.serialize(writer)?;
         }

@@ -510,3 +510,164 @@ pub trait AccessSub: SubElement {
 }
 
 //-----------------------------------------------------------------------------
+
+// FIXME document: bit array interpretation, sorted integer array interpretation, 0-based indexing, complement vector
+pub trait BitVec {
+    /// Returns the length of the binary array or the universe size of the integer array.
+    fn len(&self) -> usize;
+
+    /// Returns the length of the integer array or the number of ones in the binary array.
+    fn count_ones(&self) -> usize;
+
+    /// Reads a bit from the binary array.
+    ///
+    /// In the integer array interpretation, returns `true` if value `index` is in the array.
+    /// Behavior is undefined if `index` is not a valid index in the binary array.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn get(&self, index: usize) -> bool;
+}
+
+// FIXME document
+
+pub trait Rank: BitVec {
+    /// Returns `true` if rank support has been enabled.
+    fn supports_rank(&self) -> bool;
+
+    /// Enables rank support for the vector.
+    ///
+    /// No effect if rank support has already been enabled.
+    fn enable_rank(&mut self);
+
+    /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == true`.
+    ///
+    /// In the integer array interpretation, returns the number of values smaller than `index`.
+    /// The semantics of the query are the same as in SDSL.
+    ///
+    /// # Panics
+    ///
+    /// May panic if rank support has not been enabled.
+    /// May panic from I/O errors.
+    fn rank(&self, index: usize) -> usize;
+
+    /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == false`.
+    ///
+    /// In the integer array interpretation, returns the number of missing values smaller than `index`.
+    /// The semantics of the query are the same as in SDSL.
+    ///
+    /// # Panics
+    ///
+    /// May panic if rank support has not been enabled.
+    /// May panic from I/O errors.
+    fn complement_rank(&self, index: usize) -> usize {
+        index - self.rank(index)
+    }
+}
+
+// FIXME document
+
+pub trait Select: BitVec {
+    /// Iterator type over (index, value) pairs in the integer array.
+    ///
+    /// The `Item` in the iterator is an (index, value) pair in the integer array.
+    /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
+    type Iter: Iterator<Item = (usize, usize)>;
+
+    /// Returns `true` if select support has been enabled.
+    fn supports_select(&self) -> bool;
+
+    /// Enables select support for the vector.
+    ///
+    /// No effect if select support has already been enabled.
+    fn enable_select(&mut self);
+
+    /// Returns an iterator at the specified index in the integer array.
+    ///
+    /// The iterator will return `None` if the index is out of bounds.
+    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == true` and `self.rank(i) == index`.
+    /// This trait uses 0-based indexing, while the SDSL select uses 1-based indexing.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled.
+    /// May panic from I/O errors.
+    fn select(&self, index: usize) -> Self::Iter;
+
+    /// Returns an iterator at the largest `v <= value` in the integer array.
+    ///
+    /// The iterator will return `None` if no such value exists.
+    /// In the bit array interpretation, the iterator points to the largest `i <= value` such that `self.get(i) == true`.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled.
+    /// May panic from I/O errors.
+    fn predecessor(&self, value: usize) -> Self::Iter;
+
+    /// Returns an iterator at the smallest `v >= value` in the integer array.
+    ///
+    /// The iterator will return `None` if no such value exists.
+    /// In the bit array interpretation, the iterator points to the smallest `i >= value` such that `self.get(i) == true`.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled.
+    /// May panic from I/O errors.
+    fn successor(&self, value: usize) -> Self::Iter;
+}
+
+// FIXME document
+
+pub trait Complement: BitVec {
+    /// Iterator type over (index, value) pairs in the complement of the integer array.
+    ///
+    /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
+    /// This can be interpreted as `(i, complement_select(i))` or `(complement_rank(j), j)`.
+    type Iter: Iterator<Item = (usize, usize)>;
+
+    /// Returns `true` if select support has been enabled for the complement.
+    fn supports_complement(&self) -> bool;
+
+    /// Enables select support for the complement vector.
+    ///
+    /// No effect if select support has already been enabled for the complement.
+    fn enable_complement(&mut self);
+
+    /// Returns an iterator at the specified index in the complement of the integer array.
+    ///
+    /// The iterator will return `None` if the index is out of bounds.
+    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.complement_rank(i) == index`.
+    /// This trait uses 0-based indexing, while the SDSL select uses 1-based indexing.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled for the complement.
+    /// May panic from I/O errors.
+    fn complement_select(&self, index: usize) -> Self::Iter;
+
+    /// Returns an iterator at the largest `v <= value` missing from the integer array.
+    ///
+    /// The iterator will return `None` if no such value exists.
+    /// In the bit array interpretation, the iterator points to the largest `i <= value` such that `self.get(i) == false`.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled for the complement.
+    /// May panic from I/O errors.
+    fn complement_predecessor(&self, value: usize) -> Self::Iter;
+
+    /// Returns an iterator at the smallest `v >= value` missing from the integer array.
+    ///
+    /// The iterator will return `None` if no such value exists.
+    /// In the bit array interpretation, the iterator points to the smallest `i >= value` such that `self.get(i) == false`.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled for the complement.
+    /// May panic from I/O errors.
+    fn complement_successor(&self, value: usize) -> Self::Iter;
+}
+
+//-----------------------------------------------------------------------------

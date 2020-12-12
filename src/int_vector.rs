@@ -26,6 +26,10 @@ use std::io;
 /// * Basic functionality: [`Element`], [`Resize`], [`Pack`]
 /// * Queries and operations: [`Access`], [`Push`], [`Pop`]
 /// * Serialization: [`Serialize`]
+///
+/// # Notes
+///
+/// * `IntVector` never panics from I/O errors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IntVector {
     len: usize,
@@ -248,8 +252,8 @@ impl Serialize for IntVector {
         Ok(())
     }
 
-    fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-        self.data.serialize_data(writer)?;
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.data.serialize_body(writer)?;
         Ok(())
     }
 

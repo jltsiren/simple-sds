@@ -245,6 +245,7 @@ pub trait PopRaw {
 /// # Notes
 /// * The unused part of the last integer is always set to `0`.
 /// * The underlying vector may allocate but not use more integers than are strictly necessary.
+/// * `RawVector` never panics from I/O errors.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RawVector {
     bit_len: usize,
@@ -503,8 +504,8 @@ impl Serialize for RawVector {
         Ok(())
     }
 
-    fn serialize_data<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-        self.data.serialize_data(writer)?;
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.data.serialize_body(writer)?;
         Ok(())
     }
 
@@ -694,7 +695,7 @@ impl Writer for RawVectorWriter {
             }
 
             // Serialize and clear the buffer.
-            self.buf.serialize_data(f)?;
+            self.buf.serialize_body(f)?;
             self.buf.clear();
 
             // Push the overflow back to the buffer.
