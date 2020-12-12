@@ -20,16 +20,14 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 
 ### Bitvectors
 
-* `BitVector`: A plain immutable bitvector supporting `rank()`, `select()`, and `select_0()`. Implemented on top of `RawVector`. The support structures for all three queries are optional. May also implement `predecessor()` and `successor()`.
-* `SparseVector`: An Elias-Fano encoded immutable bitvector supporting `rank()`, `select()`, `predecessor()`, and `successor()`. Comparable to `sdsl::sd_vector`.
+* `BitVector`: A plain immutable bitvector supporting `rank()`, `select()`, and `select_0()`. Implemented on top of `RawVector`. The support structures for all three queries are optional.
+* `SparseVector`: An Elias-Fano encoded immutable bitvector supporting `rank()` and `select()`. Comparable to `sdsl::sd_vector`.
 * `v.rank(i)`: The number of ones in `v[0..i]`.
-* The other queries assume that the vector encodes a sorted integer array `a`.
+* Select support implies support for predecessor/successor queries:
   * `v.select(i)`: Value `a[i]`. Note that `select()` is 0-based, unlike in SDSL.
   * `v.predecessor(i)`: Largest `a[j] <= i`.
   * `v.successor(i)`: Smallest `a[j] >= i`.
-* These queries return iterators over pairs `(i, a[i])`.
-  * It may be convenient to return a final `(count_ones(), len())` guard pair.
-  * `predecessor()` may return an empty value or a special guard value if there is no predecessor.
+  * These queries assume that the vector encodes a sorted integer array `a`. They return iterators over pairs `(i, a[i])`.
 
 ## Notes
 

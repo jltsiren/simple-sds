@@ -281,6 +281,26 @@ impl RawVector {
         bits::words_to_bits(self.data.capacity())
     }
 
+    /// Counts the number of ones in the bit array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::raw_vector::{RawVector, SetRaw};
+    ///
+    /// let mut v = RawVector::with_len(137, false);
+    /// assert_eq!(v.count_ones(), 0);
+    /// v.set_bit(1, true); v.set_bit(33, true); v.set_bit(95, true); v.set_bit(123, true);
+    /// assert_eq!(v.count_ones(), 4);
+    /// ```
+    pub fn count_ones(&self) -> usize {
+        let mut result: usize = 0;
+        for value in self.data.iter() {
+            result += (*value).count_ones() as usize;
+        }
+        result
+    }
+
     /// Creates an empty vector.
     ///
     /// # Examples
@@ -830,11 +850,14 @@ mod tests {
     fn set_bits() {
         let mut v = RawVector::with_len(137, false);
         let mut w = RawVector::with_len(137, true);
+        assert_eq!(v.count_ones(), 0, "Non-zero bits in a zero-initialized vector");
+        assert_eq!(w.count_ones(), 137, "Zero bits in an one-initialized vector");
         for i in 0..137 {
             v.set_bit(i, i & 1 == 1);
             w.set_bit(i, i & 1 == 1);
         }
         assert_eq!(v.len(), 137, "Invalid vector length");
+        assert_eq!(v.count_ones(), 68, "Invalid number of ones in the vector");
 
         for i in 0..137 {
             assert_eq!(v.get_bit(i), i & 1 == 1, "Invalid bit {}", i);

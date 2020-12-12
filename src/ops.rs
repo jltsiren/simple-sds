@@ -511,12 +511,67 @@ pub trait AccessSub: SubElement {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document: bit array interpretation, sorted integer array interpretation, 0-based indexing, complement vector
+/// An immutable structure that can be seen as a binary array or a sorted array of distinct integers.
+///
+/// Let `A` be the integer array and `B` the binary array.
+/// `B[i] == true` is then equivalent to value `i` being present in array `A`.
+/// Indexes in both arrays are 0-based.
+///
+/// Some operations deal with the complement of the bitvector.
+/// In the binary array interpretation, all bits in the complement vector are flipped.
+/// In the integer array interpretation, the complement contains the values in `0..self.len()` missing from the original.
+///
+/// # Example
+///
+/// ```
+/// use simple_sds::ops::{BitVec};
+/// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+/// use simple_sds::bits;
+///
+/// struct NaiveBitVector {
+///     ones: usize,
+///     data: RawVector,
+/// }
+///
+/// impl From<RawVector> for NaiveBitVector {
+///     fn from(data: RawVector) -> Self {
+///         let ones = data.count_ones();
+///         NaiveBitVector {
+///             ones: ones,
+///             data: data,
+///         }
+///     }
+/// }
+///
+/// impl BitVec for NaiveBitVector {
+///     fn len(&self) -> usize {
+///         self.data.len()
+///     }
+///
+///     fn count_ones(&self) -> usize {
+///         self.ones
+///     }
+///
+///     fn get(&self, index: usize) -> bool {
+///         self.data.get_bit(index)
+///     }
+/// }
+///
+/// let mut data = RawVector::with_len(137, false);
+/// data.set_bit(1, true); data.set_bit(33, true); data.set_bit(95, true); data.set_bit(123, true);
+/// let bv = NaiveBitVector::from(data);
+/// assert_eq!(bv.len(), 137);
+/// assert_eq!(bv.count_ones(), 4);
+/// assert!(bv.get(33));
+/// assert!(!bv.get(34));
+/// ```
 pub trait BitVec {
     /// Returns the length of the binary array or the universe size of the integer array.
     fn len(&self) -> usize;
 
     /// Returns the length of the integer array or the number of ones in the binary array.
+    ///
+    /// Because the vector is immutable, the implementation should cache the value during construction.
     fn count_ones(&self) -> usize;
 
     /// Reads a bit from the binary array.
@@ -530,8 +585,76 @@ pub trait BitVec {
     fn get(&self, index: usize) -> bool;
 }
 
-// FIXME document
-
+/// Rank queries on a bitvector.
+///
+/// Some bitvector types do not build rank/select support structures by default.
+/// After the vector has been built, rank support can be enabled with `self.enable_rank()`.
+///
+/// # Example
+///
+/// ```
+/// use simple_sds::ops::{BitVec, Rank};
+/// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+/// use simple_sds::bits;
+/// use std::cmp;
+///
+/// struct NaiveBitVector {
+///     ones: usize,
+///     data: RawVector,
+/// }
+///
+/// impl From<RawVector> for NaiveBitVector {
+///     fn from(data: RawVector) -> Self {
+///         let ones = data.count_ones();
+///         NaiveBitVector {
+///             ones: ones,
+///             data: data,
+///         }
+///     }
+/// }
+///
+/// impl BitVec for NaiveBitVector {
+///     fn len(&self) -> usize {
+///         self.data.len()
+///     }
+///
+///     fn count_ones(&self) -> usize {
+///         self.ones
+///     }
+///
+///     fn get(&self, index: usize) -> bool {
+///         self.data.get_bit(index)
+///     }
+/// }
+///
+/// impl Rank for NaiveBitVector {
+///     fn supports_rank(&self) -> bool {
+///         true
+///     }
+///
+///     fn enable_rank(&mut self) {}
+///
+///     fn rank(&self, index: usize) -> usize {
+///         let mut result: usize = 0;
+///         let index = cmp::min(self.len(), index);
+///         for i in 0..index {
+///             if self.get(i) {
+///                 result += 1;
+///             }
+///         }
+///         result
+///     }
+/// }
+///
+/// let mut data = RawVector::with_len(137, false);
+/// data.set_bit(1, true); data.set_bit(33, true); data.set_bit(95, true); data.set_bit(123, true);
+/// let mut bv = NaiveBitVector::from(data);
+/// bv.enable_rank();
+/// assert!(bv.supports_rank());
+/// assert_eq!(bv.rank(33), 1);
+/// assert_eq!(bv.rank(34), 2);
+/// assert_eq!(bv.complement_rank(65), 63);
+/// ```
 pub trait Rank: BitVec {
     /// Returns `true` if rank support has been enabled.
     fn supports_rank(&self) -> bool;
@@ -544,7 +667,7 @@ pub trait Rank: BitVec {
     /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == true`.
     ///
     /// In the integer array interpretation, returns the number of values smaller than `index`.
-    /// The semantics of the query are the same as in SDSL.
+    /// The semantics of the query are the same as in [SDSL](https://github.com/simongog/sdsl-lite).
     ///
     /// # Panics
     ///
@@ -555,7 +678,7 @@ pub trait Rank: BitVec {
     /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == false`.
     ///
     /// In the integer array interpretation, returns the number of missing values smaller than `index`.
-    /// The semantics of the query are the same as in SDSL.
+    /// The semantics of the query are the same as in [SDSL](https://github.com/simongog/sdsl-lite).
     ///
     /// # Panics
     ///
@@ -566,9 +689,155 @@ pub trait Rank: BitVec {
     }
 }
 
-// FIXME document
-
-pub trait Select: BitVec {
+/// Select / predecessor / successor queries on a bitvector.
+///
+/// Some bitvector types do not build rank/select support structures by default.
+/// After the vector has been built, select support can be enabled with `self.enable_select()`.
+///
+/// # Example
+///
+/// ```
+/// use simple_sds::ops::{BitVec, Select};
+/// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+/// use simple_sds::bits;
+/// use std::cmp;
+///
+/// struct NaiveBitVector {
+///     ones: usize,
+///     data: RawVector,
+/// }
+///
+/// impl From<RawVector> for NaiveBitVector {
+///     fn from(data: RawVector) -> Self {
+///         let ones = data.count_ones();
+///         NaiveBitVector {
+///             ones: ones,
+///             data: data,
+///         }
+///     }
+/// }
+///
+/// impl BitVec for NaiveBitVector {
+///     fn len(&self) -> usize {
+///         self.data.len()
+///     }
+///
+///     fn count_ones(&self) -> usize {
+///         self.ones
+///     }
+///
+///     fn get(&self, index: usize) -> bool {
+///         self.data.get_bit(index)
+///     }
+/// }
+///
+/// struct SelectIter<'a> {
+///     parent: &'a NaiveBitVector,
+///     rank: usize,
+///     index: usize,
+/// }
+///
+/// impl<'a> Iterator for SelectIter<'a> {
+///     type Item = (usize, usize);
+///
+///     fn next(&mut self) -> Option<Self::Item> {
+///         while self.index < self.parent.len() {
+///             if self.parent.get(self.index) {
+///                 let result = Some((self.rank, self.index));
+///                 self.rank += 1; self.index += 1;
+///                 return result;
+///             }
+///             self.index += 1;
+///         }
+///         None
+///     }
+/// }
+///
+/// impl<'a> Select<'a> for NaiveBitVector {
+///     type Iter = SelectIter<'a>;
+///
+///     fn supports_select(&self) -> bool {
+///         true
+///     }
+///
+///     fn enable_select(&mut self) {}
+///
+///     fn select(&'a self, index: usize) -> Self::Iter {
+///         let mut rank: usize = 0;
+///         let mut bv_index: usize = 0;
+///         while bv_index < self.len() {
+///             if self.get(bv_index) {
+///                 if rank == index {
+///                     break;
+///                 }
+///                 rank += 1;
+///             }
+///             bv_index += 1;
+///         }
+///         Self::Iter {
+///             parent: self,
+///             rank: rank,
+///             index: bv_index,
+///         }
+///     }
+///
+///     fn predecessor(&'a self, index: usize) -> Self::Iter {
+///         let mut result = Self::Iter {
+///             parent: self,
+///             rank: self.count_ones(),
+///             index: self.len(),
+///         };
+///         let mut rank: usize = 0;
+///         let mut bv_index: usize = 0;
+///         while bv_index <= index && bv_index < self.len() {
+///             if self.get(bv_index) {
+///                 result.rank = rank;
+///                 result.index = bv_index;
+///                 rank += 1;
+///             }
+///             bv_index += 1;
+///         }
+///         result
+///     }
+///
+///     fn successor(&'a self, index: usize) -> Self::Iter {
+///         let mut result = Self::Iter {
+///             parent: self,
+///             rank: self.count_ones(),
+///             index: self.len(),
+///         };
+///         let mut rank: usize = 0;
+///         let mut bv_index: usize = 0;
+///         while bv_index < index && bv_index < self.len() {
+///             rank += self.get(bv_index) as usize;
+///             bv_index += 1;
+///         }
+///         while bv_index < self.len() {
+///             if self.get(bv_index) {
+///                 result.rank = rank;
+///                 result.index = bv_index;
+///                 return result;
+///             }
+///             bv_index += 1;
+///         }
+///         result
+///     }
+/// }
+///
+/// let mut data = RawVector::with_len(137, false);
+/// data.set_bit(1, true); data.set_bit(33, true); data.set_bit(95, true); data.set_bit(123, true);
+/// let mut bv = NaiveBitVector::from(data);
+/// bv.enable_select();
+/// assert!(bv.supports_select());
+/// assert_eq!(bv.select(2).next(), Some((2, 95)));
+/// assert_eq!(bv.predecessor(0).next(), None);
+/// assert_eq!(bv.predecessor(1).next(), Some((0, 1)));
+/// assert_eq!(bv.predecessor(2).next(), Some((0, 1)));
+/// assert_eq!(bv.successor(122).next(), Some((3, 123)));
+/// assert_eq!(bv.successor(123).next(), Some((3, 123)));
+/// assert_eq!(bv.successor(124).next(), None);
+/// ```
+pub trait Select<'a>: BitVec {
     /// Iterator type over (index, value) pairs in the integer array.
     ///
     /// The `Item` in the iterator is an (index, value) pair in the integer array.
@@ -587,13 +856,13 @@ pub trait Select: BitVec {
     ///
     /// The iterator will return `None` if the index is out of bounds.
     /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == true` and `self.rank(i) == index`.
-    /// This trait uses 0-based indexing, while the SDSL select uses 1-based indexing.
+    /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
     ///
     /// # Panics
     ///
     /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
-    fn select(&self, index: usize) -> Self::Iter;
+    fn select(&'a self, index: usize) -> Self::Iter;
 
     /// Returns an iterator at the largest `v <= value` in the integer array.
     ///
@@ -604,7 +873,7 @@ pub trait Select: BitVec {
     ///
     /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
-    fn predecessor(&self, value: usize) -> Self::Iter;
+    fn predecessor(&'a self, value: usize) -> Self::Iter;
 
     /// Returns an iterator at the smallest `v >= value` in the integer array.
     ///
@@ -615,12 +884,18 @@ pub trait Select: BitVec {
     ///
     /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
-    fn successor(&self, value: usize) -> Self::Iter;
+    fn successor(&'a self, value: usize) -> Self::Iter;
 }
 
-// FIXME document
 
-pub trait Complement: BitVec {
+/// Select / predecessor / successor queries on the complement of a bitvector.
+///
+/// Some bitvector types do not build rank/select support structures by default.
+/// After the vector has been built, select support for the complement can be enabled with `self.enable_complement()`.
+///
+/// This trait is analogous to [`Select`].
+/// See that trait for an example.
+pub trait Complement<'a>: BitVec {
     /// Iterator type over (index, value) pairs in the complement of the integer array.
     ///
     /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
@@ -639,13 +914,13 @@ pub trait Complement: BitVec {
     ///
     /// The iterator will return `None` if the index is out of bounds.
     /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.complement_rank(i) == index`.
-    /// This trait uses 0-based indexing, while the SDSL select uses 1-based indexing.
+    /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
     ///
     /// # Panics
     ///
     /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
-    fn complement_select(&self, index: usize) -> Self::Iter;
+    fn complement_select(&'a self, index: usize) -> Self::Iter;
 
     /// Returns an iterator at the largest `v <= value` missing from the integer array.
     ///
@@ -656,7 +931,7 @@ pub trait Complement: BitVec {
     ///
     /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
-    fn complement_predecessor(&self, value: usize) -> Self::Iter;
+    fn complement_predecessor(&'a self, value: usize) -> Self::Iter;
 
     /// Returns an iterator at the smallest `v >= value` missing from the integer array.
     ///
@@ -667,7 +942,7 @@ pub trait Complement: BitVec {
     ///
     /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
-    fn complement_successor(&self, value: usize) -> Self::Iter;
+    fn complement_successor(&'a self, value: usize) -> Self::Iter;
 }
 
 //-----------------------------------------------------------------------------

@@ -419,8 +419,7 @@ macro_rules! serialize_element_vec {
             fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
                 let size = usize::load(reader)?;
 
-                let mut value: Vec<$t> = Vec::with_capacity(size);
-                value.resize(size, $t::default());
+                let mut value: Vec<$t> = vec![$t::default(); size];
                 let target_slice: &mut [$t] = &mut value;
                 let mut source_slice: &mut [u8] = unsafe {
                     slice::from_raw_parts_mut(target_slice.as_ptr() as *mut u8, target_slice.len() * mem::size_of::<$t>())
