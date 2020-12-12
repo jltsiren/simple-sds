@@ -158,7 +158,7 @@ pub trait Serialize: Sized {
 /// Any structure implementing `Writer` should also implement [`Drop`] that calls [`Writer::close`].
 /// The implementation should ignore any errors from [`Writer::close`] silently.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use simple_sds::serialize::{Serialize, Writer};

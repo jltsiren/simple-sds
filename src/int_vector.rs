@@ -347,7 +347,7 @@ impl<'a> Iterator for Iter<'a> {
 ///
 /// The type of `Item` is `u64`.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use simple_sds::int_vector::IntVector;

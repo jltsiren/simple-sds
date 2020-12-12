@@ -42,8 +42,6 @@ use std::io;
 pub trait SetRaw {
     /// Writes a bit to the container.
     ///
-    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
-    ///
     /// # Arguments
     ///
     /// * `bit_offset`: Offset in the bit array.
@@ -51,12 +49,13 @@ pub trait SetRaw {
     ///
     /// # Panics
     ///
+    /// May panic if `bit_offset` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn set_bit(&mut self, bit_offset: usize, bit: bool);
 
     /// Writes an integer to the container.
     ///
-    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Arguments
     ///
@@ -66,6 +65,7 @@ pub trait SetRaw {
     ///
     /// # Panics
     ///
+    /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
@@ -100,16 +100,15 @@ pub trait SetRaw {
 pub trait GetRaw {
     /// Reads a bit from the container.
     ///
-    /// Behavior is undefined if `bit_offset` is not a valid offset in the bit array.
-    ///
     /// # Panics
     ///
+    /// May panic if `bit_offset` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn get_bit(&self, bit_offset: usize) -> bool;
 
     /// Reads an integer from the container.
     ///
-    /// Behavior is undefined if `width > 64` or `bit_offset + width - 1` is not a valid offset in the bit array.
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Arguments
     ///
@@ -118,6 +117,7 @@ pub trait GetRaw {
     ///
     /// # Panics
     ///
+    /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn get_int(&self, bit_offset: usize, width: usize) -> u64;
 }
