@@ -31,6 +31,7 @@
 /// } 
 ///
 /// let v = Example::new();
+/// assert!(v.is_empty());
 /// assert_eq!(v.len(), 0);
 /// assert_eq!(v.width(), bits::bit_len(u8::MAX as u64));
 /// ```
@@ -40,6 +41,11 @@ pub trait Element {
 
     /// Returns the number of elements in the vector.
     fn len(&self) -> usize;
+
+    /// Returns `true` if the vector is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Returns the width of of an element in bits.
     fn width(&self) -> usize;
@@ -91,13 +97,13 @@ pub trait Element {
 /// }
 ///
 /// let mut v = Example::new();
-/// assert_eq!(v.len(), 0);
+/// assert!(v.is_empty());
 /// v.reserve(4);
 /// assert!(v.capacity() >= 4);
 /// v.resize(4, 0);
 /// assert_eq!(v.len(), 4);
 /// v.clear();
-/// assert_eq!(v.len(), 0);
+/// assert!(v.is_empty());
 /// ```
 pub trait Resize: Element {
     /// Resizes the vector to a specified length.
@@ -200,7 +206,7 @@ pub trait Pack: Element {
 ///         self.0[index]
 ///     }
 ///
-///     fn mutable(&self) -> bool {
+///     fn is_mutable(&self) -> bool {
 ///         true
 ///     }
 ///
@@ -210,7 +216,7 @@ pub trait Pack: Element {
 /// }
 ///
 /// let mut v = Example(Vec::from([1, 2, 3]));
-/// assert!(v.mutable());
+/// assert!(v.is_mutable());
 /// for i in 0..v.len() {
 ///     assert_eq!(v.get(i), (i + 1) as u8);
 ///     v.set(i, i as u8);
@@ -229,7 +235,7 @@ pub trait Access: Element {
     /// Returns `true` if the underlying data is mutable.
     ///
     /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
-    fn mutable(&self) -> bool;
+    fn is_mutable(&self) -> bool;
 
     /// Sets an element in the vector.
     ///
@@ -285,7 +291,7 @@ pub trait Access: Element {
 /// }
 ///
 /// let mut v = Example::new();
-/// assert_eq!(v.len(), 0);
+/// assert!(v.is_empty());
 /// v.push(1);
 /// v.push(2);
 /// v.push(3);
@@ -342,7 +348,7 @@ pub trait Push: Element {
 /// assert_eq!(v.pop(), Some(3));
 /// assert_eq!(v.pop(), Some(2));
 /// assert_eq!(v.pop(), Some(1));
-/// assert_eq!(v.len(), 0);
+/// assert!(v.is_empty());
 /// ```
 pub trait Pop: Element {
     /// Removes and returns the last element from the vector.
@@ -397,7 +403,7 @@ pub trait Pop: Element {
 /// }
 ///
 /// let v = Example::new();
-/// assert_eq!(v.len(), 0);
+/// assert!(v.is_empty());
 /// assert_eq!(v.element_len(), mem::size_of::<<Example as Element>::Item>());
 /// for i in 0..v.len() {
 ///     assert_eq!(v.sub_width(i), bits::bit_len(u8::MAX as u64));
@@ -460,7 +466,7 @@ pub trait SubElement: Element {
 /// }
 ///
 /// impl AccessSub for Example {
-///     fn get_sub(&self, index: usize, offset: usize) -> Self::SubItem {
+///     fn sub(&self, index: usize, offset: usize) -> Self::SubItem {
 ///         self.0[index][offset]
 ///     }
 ///
@@ -473,9 +479,9 @@ pub trait SubElement: Element {
 ///     [0, 1, 2, 3, 4, 5, 6, 7],
 ///     [7, 6, 5, 4, 3, 2, 1, 0],
 /// ]));
-/// assert_eq!(v.get_sub(1, 3), 4u8);
+/// assert_eq!(v.sub(1, 3), 4u8);
 /// v.set_sub(1, 3, 55u8);
-/// assert_eq!(v.get_sub(1, 3), 55u8);
+/// assert_eq!(v.sub(1, 3), 55u8);
 /// ```
 pub trait AccessSub: SubElement {
     /// Gets a subelement from the vector.
@@ -489,7 +495,7 @@ pub trait AccessSub: SubElement {
     ///
     /// May panic if `index` is not a valid index in the vector or `offset` is not a valid offset in the element.
     /// May panic from I/O errors.
-    fn get_sub(&self, index: usize, offset: usize) -> <Self as SubElement>::SubItem;
+    fn sub(&self, index: usize, offset: usize) -> <Self as SubElement>::SubItem;
 
     /// Sets a subelement in the vector.
     ///
@@ -572,7 +578,7 @@ pub trait AccessSub: SubElement {
 ///     }
 ///
 ///     fn get(&self, index: usize) -> bool {
-///         self.data.get_bit(index)
+///         self.data.bit(index)
 ///     }
 ///
 ///     fn iter(&'a self) -> Self::Iter {
@@ -709,6 +715,7 @@ pub trait AccessSub: SubElement {
 ///
 /// // BitVec
 /// assert_eq!(bv.len(), 137);
+/// assert!(!bv.is_empty());
 /// assert_eq!(bv.count_ones(), 4);
 /// assert!(bv.get(33));
 /// assert!(!bv.get(34));
@@ -742,6 +749,11 @@ pub trait BitVec<'a> {
 
     /// Returns the length of the binary array or the universe size of the integer array.
     fn len(&self) -> usize;
+
+    /// Returns `true` if the bitvector is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Returns the length of the integer array or the number of ones in the binary array.
     ///

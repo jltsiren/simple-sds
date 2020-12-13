@@ -2,12 +2,12 @@
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
 use crate::raw_vector::{RawVector, RawVectorWriter, SetRaw, GetRaw, PushRaw, PopRaw};
-use crate::serialize::{Serialize, Writer};
+use crate::serialize::{Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::File;
 use std::io::{Error, ErrorKind};
-use std::iter::FromIterator;
+use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator, Extend};
 use std::path::Path;
 use std::io;
 
@@ -49,7 +49,7 @@ impl IntVector {
     /// use simple_sds::ops::Element;
     ///
     /// let v = IntVector::new(13).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// assert_eq!(v.width(), 13);
     /// ```
     pub fn new(width: usize) -> Option<IntVector> {
@@ -119,7 +119,7 @@ impl IntVector {
     /// use simple_sds::ops::{Element, Resize};
     ///
     /// let v = IntVector::with_capacity(4, 13).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// assert_eq!(v.width(), 13);
     /// assert!(v.capacity() >= 4);
     /// ```
@@ -151,7 +151,8 @@ impl IntVector {
     pub fn iter(&self) -> Iter<'_> {
         Iter {
             parent: self,
-            index: 0,
+            next: 0,
+            limit: self.len(),
         }
     }
 }
@@ -199,7 +200,7 @@ impl Resize for IntVector {
 
 impl Pack for IntVector {
     fn pack(self) -> Self {
-        if self.len() == 0 {
+        if self.is_empty() {
             return self;
         }
         let new_width = bits::bit_len(self.iter().max().unwrap());
@@ -216,10 +217,10 @@ impl Pack for IntVector {
 
 impl Access for IntVector {
     fn get(&self, index: usize) -> <Self as Element>::Item {
-        self.data.get_int(index * self.width(), self.width)
+        self.data.int(index * self.width(), self.width)
     }
 
-    fn mutable(&self) -> bool {
+    fn is_mutable(&self) -> bool {
         true
     }
 
@@ -285,27 +286,11 @@ impl Default for IntVector {
     }
 }
 
-//-----------------------------------------------------------------------------
-
-macro_rules! iter_to_int_vector {
-    ($t:ident, $w:expr) => {
-        impl FromIterator<$t> for IntVector {
-            fn from_iter<I: IntoIterator<Item=$t>>(iter: I) -> Self {
-                let mut result = IntVector::new($w).unwrap();
-                for value in iter {
-                    result.push(value as <Self as Element>::Item);
-                }
-                result
-            }
-        }
+impl AsRef<RawVector> for IntVector {
+    fn as_ref(&self) -> &RawVector {
+        &(self.data)
     }
 }
-
-iter_to_int_vector!(u8, 8);
-iter_to_int_vector!(u16, 16);
-iter_to_int_vector!(u32, 32);
-iter_to_int_vector!(u64, 64);
-iter_to_int_vector!(usize, 64);
 
 //-----------------------------------------------------------------------------
 
@@ -319,29 +304,55 @@ iter_to_int_vector!(usize, 64);
 /// use simple_sds::int_vector::IntVector;
 ///
 /// let source: Vec<u64> = vec![123, 456, 789, 10];
-/// let mut v: IntVector = source.iter().cloned().collect();
+/// let v: IntVector = source.iter().cloned().collect();
 /// for (index, value) in v.iter().enumerate() {
 ///     assert_eq!(source[index], value);
 /// }
 /// ```
+#[derive(Clone, Debug)]
 pub struct Iter<'a> {
     parent: &'a IntVector,
-    index: usize,
+    // The first element we have not returned.
+    next: usize,
+    // The first item we should not return.
+    limit: usize,
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = <IntVector as Element>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.parent.len() {
+        if self.next >= self.limit {
             None
         } else {
-            let result = Some(self.parent.get(self.index));
-            self.index += 1;
+            let result = Some(self.parent.get(self.next));
+            self.next += 1;
             result
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.limit - self.next;
+        (remaining, Some(remaining))
+    }
 }
+
+impl<'a> DoubleEndedIterator for Iter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            self.limit -= 1;
+            Some(self.parent.get(self.limit))
+        }
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {}
+
+impl<'a> FusedIterator for Iter<'a> {}
+
+//-----------------------------------------------------------------------------
 
 /// [`IntVector`] transformed into an iterator.
 ///
@@ -357,6 +368,7 @@ impl<'a> Iterator for Iter<'a> {
 /// let target: Vec<u64> = v.into_iter().collect();
 /// assert_eq!(target, source);
 /// ```
+#[derive(Clone, Debug)]
 pub struct IntoIter {
     parent: IntVector,
     index: usize,
@@ -374,7 +386,16 @@ impl Iterator for IntoIter {
             result
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.parent.len() - self.index;
+        (remaining, Some(remaining))
+    }
 }
+
+impl ExactSizeIterator for IntoIter {}
+
+impl FusedIterator for IntoIter {}
 
 impl IntoIterator for IntVector {
     type Item = <Self as Element>::Item;
@@ -421,7 +442,7 @@ impl IntVectorWriter {
     ///
     /// let filename = serialize::temp_file_name("int-vector-writer-new");
     /// let mut v = IntVectorWriter::new(&filename, 13).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// mem::drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
@@ -469,7 +490,7 @@ impl IntVectorWriter {
     ///
     /// let filename = serialize::temp_file_name("int-vector-writer-with-buf-len");
     /// let mut v = IntVectorWriter::with_buf_len(&filename, 13, 1024).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// mem::drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
@@ -518,16 +539,16 @@ impl Push for IntVectorWriter {
 }
 
 impl Writer for IntVectorWriter {
-    fn get_file(&mut self) -> Option<&mut File> {
-        self.writer.get_file()
+    fn file(&mut self) -> Option<&mut File> {
+        self.writer.file()
     }
 
-    fn flush(&mut self, final_flush: bool) -> io::Result<()> {
-        self.writer.flush(final_flush)
+    fn flush(&mut self, mode: FlushMode) -> io::Result<()> {
+        self.writer.flush(mode)
     }
 
     fn write_header(&mut self) -> io::Result<()> {
-        if let Some(f) = self.writer.get_file() {
+        if let Some(f) = self.writer.file() {
             self.len.serialize(f)?;
             self.width.serialize(f)?;
         }
@@ -548,6 +569,45 @@ impl Drop for IntVectorWriter {
 
 //-----------------------------------------------------------------------------
 
+macro_rules! iter_to_int_vector {
+    ($t:ident, $w:expr) => {
+        impl FromIterator<$t> for IntVector {
+            fn from_iter<I: IntoIterator<Item = $t>>(iter: I) -> Self {
+                let mut result = IntVector::new($w).unwrap();
+                result.extend(iter);
+                result
+            }
+        }
+
+        impl Extend<$t> for IntVector {
+            fn extend<I: IntoIterator<Item = $t>>(&mut self, iter: I) {
+                let mut iter = iter.into_iter();
+                let (lower_bound, _) = iter.size_hint();
+                self.reserve(lower_bound);
+                while let Some(value) = iter.next() {
+                    self.push(value as <Self as Element>::Item);
+                }
+            }
+        }
+
+        impl Extend<$t> for IntVectorWriter {
+            fn extend<I: IntoIterator<Item = $t>>(&mut self, iter: I) {
+                for value in iter {
+                    self.push(value as <Self as Element>::Item);
+                }
+            }
+        }
+    }
+}
+
+iter_to_int_vector!(u8, 8);
+iter_to_int_vector!(u16, 16);
+iter_to_int_vector!(u32, 32);
+iter_to_int_vector!(u64, 64);
+iter_to_int_vector!(usize, 64);
+
+//-----------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,17 +620,18 @@ mod tests {
     #[test]
     fn empty_int_vector() {
         let empty = IntVector::default();
-        assert_eq!(empty.len(), 0, "Created a non-empty empty vector");
+        assert!(empty.is_empty(), "Created a non-empty empty vector");
+        assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
         assert_eq!(empty.width(), 64, "Invalid width for an empty vector");
         assert_eq!(empty.capacity(), 0, "Reserved unnecessary memory for an empty vector");
 
         let with_width = IntVector::new(13).unwrap();
-        assert_eq!(with_width.len(), 0, "Created a non-empty empty vector with a specified width");
+        assert!(with_width.is_empty(), "Created a non-empty empty vector with a specified width");
         assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified width");
         assert_eq!(with_width.capacity(), 0, "Reserved unnecessary memory for an empty vector with a specified width");
 
         let with_capacity = IntVector::with_capacity(137, 13).unwrap();
-        assert_eq!(with_capacity.len(), 0, "Created a non-empty vector by specifying capacity");
+        assert!(with_capacity.is_empty(), "Created a non-empty vector by specifying capacity");
         assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified capacity");
         assert!(with_capacity.capacity() >= 137, "Vector capacity is lower than specified");
     }
@@ -581,7 +642,7 @@ mod tests {
         assert_eq!(v.len(), 137, "Vector length is not as specified");
         assert_eq!(v.width(), 13, "Vector width is not as specified");
         v.clear();
-        assert_eq!(v.len(), 0, "Could not clear the vector");
+        assert!(v.is_empty(), "Could not clear the vector");
         assert_eq!(v.width(), 13, "Clearing the vector changed its width");
     }
 
@@ -626,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn push_pop() {
+    fn push_pop_from_iter() {
         let mut correct: Vec<u16> = Vec::new();
         for i in 0..64 {
             correct.push(i); correct.push(i * (i + 1));
@@ -649,7 +710,7 @@ mod tests {
             }
         }
         assert_eq!(popped.len(), correct.len(), "Invalid number of popped ints");
-        assert_eq!(v.len(), 0, "Non-empty vector after popping all ints");
+        assert!(v.is_empty(), "Non-empty vector after popping all ints");
         assert_eq!(popped, correct, "Invalid popped ints");
     }
 
@@ -666,6 +727,21 @@ mod tests {
     }
 
     #[test]
+    fn extend() {
+        let first: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        let second: Vec<u64> = vec![1, 2, 4, 8, 16, 32, 64, 128];
+        let mut correct: Vec<u64> = Vec::new();
+        correct.extend(first.iter().cloned()); correct.extend(second.iter().cloned());
+
+        let mut int_vec = IntVector::new(8).unwrap();
+        int_vec.extend(first); int_vec.extend(second);
+        assert_eq!(int_vec.len(), correct.len(), "Invalid length for the extended IntVector");
+
+        let collected: Vec<u64> = int_vec.into_iter().collect();
+        assert_eq!(collected, correct, "Invalid values collected from the IntVector");
+    }
+
+    #[test]
     fn iterators_and_pack() {
         let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
@@ -676,8 +752,37 @@ mod tests {
             assert_eq!(value, correct[index], "Invalid value in the packed vector");
         }
 
+        assert_eq!(packed.iter().len(), packed.len(), "Invalid length from the iterator");
+
         let from_iter: Vec<u64> = packed.into_iter().collect();
         assert_eq!(from_iter, correct, "Invalid vector built from into_iter()");
+    }
+
+    #[test]
+    fn double_ended_iterator() {
+        let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+
+        let v: IntVector = correct.iter().cloned().collect();
+        let mut index = correct.len();
+        let mut iter = v.iter();
+        while let Some(value) = iter.next_back() {
+            index -= 1;
+            assert_eq!(value, correct[index], "Invalid value {} when iterating backwards", index);
+        }
+
+        let mut next = 0;
+        let mut limit = correct.len();
+        let mut iter = v.iter();
+        while iter.len() > 0 {
+            assert_eq!(iter.next(), Some(correct[next]), "Invalid value {} (forward)", next);
+            next += 1;
+            if iter.len() == 0 {
+                break;
+            }
+            limit -= 1;
+            assert_eq!(iter.next_back(), Some(correct[limit]), "Invalid value {} (backward)", limit);
+        }
+        assert_eq!(next, limit, "Iterator did not visit all values");
     }
 
     #[test]
@@ -703,12 +808,12 @@ mod tests {
         let second = serialize::temp_file_name("empty-int-vector-writer");
 
         let mut v = IntVectorWriter::new(&first, 13).unwrap();
-        assert_eq!(v.len(), 0, "Created a non-empty empty writer");
+        assert!(v.is_empty(), "Created a non-empty empty writer");
         assert!(v.is_open(), "Newly created writer is not open");
         v.close().unwrap();
 
         let mut w = IntVectorWriter::with_buf_len(&second, 13, 1024).unwrap();
-        assert_eq!(w.len(), 0, "Created a non-empty empty writer with custom buffer size");
+        assert!(w.is_empty(), "Created a non-empty empty writer with custom buffer size");
         assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
         w.close().unwrap();
 
@@ -741,6 +846,27 @@ mod tests {
         for i in 0..correct.len() {
             assert_eq!(w.get(i), correct[i], "Invalid integer {}", i);
         }
+
+        fs::remove_file(&filename).unwrap();
+    }
+
+    #[test]
+    fn extend_writer() {
+        let filename = serialize::temp_file_name("extend-int-vector-writer");
+
+        let first: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        let second: Vec<u64> = vec![1, 2, 4, 8, 16, 32, 64, 128];
+        let mut correct: Vec<u64> = Vec::new();
+        correct.extend(first.iter().cloned()); correct.extend(second.iter().cloned());
+
+        let mut writer = IntVectorWriter::with_buf_len(&filename, 8, 32).unwrap();
+        writer.extend(first); writer.extend(second);
+        assert_eq!(writer.len(), correct.len(), "Invalid length for the extended writer");
+        writer.close().unwrap();
+
+        let int_vec: IntVector = serialize::load_from(&filename).unwrap();
+        let collected: Vec<u64> = int_vec.into_iter().collect();
+        assert_eq!(collected, correct, "Invalid values collected from the writer");
 
         fs::remove_file(&filename).unwrap();
     }

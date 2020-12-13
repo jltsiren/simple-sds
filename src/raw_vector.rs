@@ -1,10 +1,9 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{Serialize, Writer};
+use crate::serialize::{Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
-use std::iter::FromIterator;
 use std::path::Path;
 use std::io;
 
@@ -21,10 +20,10 @@ use std::io;
 /// struct Example(Vec<u64>);
 ///
 /// impl SetRaw for Example {
-///     fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+///     fn set_bit(&mut self, bit_offset: usize, value: bool) {
 ///         let (index, offset) = bits::split_offset(bit_offset);
 ///         self.0[index] &= !(1u64 << offset);
-///         self.0[index] |= (bit as u64) << offset;
+///         self.0[index] |= (value as u64) << offset;
 ///     }
 ///
 ///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
@@ -45,13 +44,13 @@ pub trait SetRaw {
     /// # Arguments
     ///
     /// * `bit_offset`: Offset in the bit array.
-    /// * `bit`: The value of the bit.
+    /// * `value`: The value of the bit.
     ///
     /// # Panics
     ///
     /// May panic if `bit_offset` is not a valid offset in the bit array.
     /// May panic from I/O errors.
-    fn set_bit(&mut self, bit_offset: usize, bit: bool);
+    fn set_bit(&mut self, bit_offset: usize, value: bool);
 
     /// Writes an integer to the container.
     ///
@@ -81,21 +80,21 @@ pub trait SetRaw {
 /// struct Example(Vec<u64>);
 ///
 /// impl GetRaw for Example {
-///     fn get_bit(&self, bit_offset: usize) -> bool {
+///     fn bit(&self, bit_offset: usize) -> bool {
 ///         let (index, offset) = bits::split_offset(bit_offset);
 ///         (self.0[index] & (1u64 << offset)) != 0
 ///     }
 ///
-///     fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+///     fn int(&self, bit_offset: usize, width: usize) -> u64 {
 ///         bits::read_int(&self.0, bit_offset, width)
 ///     }
 /// }
 ///
 /// let example = Example(vec![0x330u64, 0x101u64]);
-/// assert!(example.get_bit(72));
-/// assert!(!example.get_bit(68));
-/// assert_eq!(example.get_int(4, 8), 0x33);
-/// assert_eq!(example.get_int(63, 2), 2);
+/// assert!(example.bit(72));
+/// assert!(!example.bit(68));
+/// assert_eq!(example.int(4, 8), 0x33);
+/// assert_eq!(example.int(63, 2), 2);
 /// ```
 pub trait GetRaw {
     /// Reads a bit from the container.
@@ -104,7 +103,7 @@ pub trait GetRaw {
     ///
     /// May panic if `bit_offset` is not a valid offset in the bit array.
     /// May panic from I/O errors.
-    fn get_bit(&self, bit_offset: usize) -> bool;
+    fn bit(&self, bit_offset: usize) -> bool;
 
     /// Reads an integer from the container.
     ///
@@ -119,7 +118,7 @@ pub trait GetRaw {
     ///
     /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic from I/O errors.
-    fn get_int(&self, bit_offset: usize, width: usize) -> u64;
+    fn int(&self, bit_offset: usize, width: usize) -> u64;
 }
 
 //-----------------------------------------------------------------------------
@@ -142,8 +141,8 @@ pub trait GetRaw {
 /// }
 ///
 /// impl PushRaw for Example {
-///     fn push_bit(&mut self, bit: bool) {
-///         self.0.push(bit);
+///     fn push_bit(&mut self, value: bool) {
+///         self.0.push(value);
 ///     }
 ///
 ///     fn push_int(&mut self, value: u64, width: usize) {
@@ -168,7 +167,7 @@ pub trait PushRaw {
     /// # Panics
     ///
     /// May panic from I/O errors.
-    fn push_bit(&mut self, bit: bool);
+    fn push_bit(&mut self, value: bool);
 
     /// Appends an integer to the container.
     ///
@@ -246,9 +245,9 @@ pub trait PopRaw {
 /// * The unused part of the last integer is always set to `0`.
 /// * The underlying vector may allocate but not use more integers than are strictly necessary.
 /// * `RawVector` never panics from I/O errors.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct RawVector {
-    bit_len: usize,
+    len: usize,
     data: Vec<u64>,
 }
 
@@ -264,7 +263,12 @@ impl RawVector {
     /// assert_eq!(v.len(), 137);
     /// ```
     pub fn len(&self) -> usize {
-        self.bit_len
+        self.len
+    }
+
+    /// Returns `true` if the vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns the capacity of the vector in bits.
@@ -309,7 +313,7 @@ impl RawVector {
     /// use simple_sds::raw_vector::RawVector;
     ///
     /// let v = RawVector::new();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// assert_eq!(v.capacity(), 0);
     /// ```
     pub fn new() -> RawVector {
@@ -321,7 +325,7 @@ impl RawVector {
     /// # Arguments
     ///
     /// * `len`: Length of the vector in bits.
-    /// * `bit`: Initialization value.
+    /// * `value`: Initialization value.
     ///
     /// # Examples
     ///
@@ -331,13 +335,13 @@ impl RawVector {
     /// let v = RawVector::with_len(137, false);
     /// assert_eq!(v.len(), 137);
     /// ```
-    pub fn with_len(len: usize, bit: bool) -> RawVector {
-        let val = bits::filler_value(bit);
+    pub fn with_len(len: usize, value: bool) -> RawVector {
+        let val = bits::filler_value(value);
         let mut data: Vec<u64> = vec![val; bits::bits_to_words(len)];
         Self::set_unused_bits(&mut data, len, false);
 
         RawVector {
-            bit_len: len,
+            len: len,
             data: data,
         }
     }
@@ -354,7 +358,7 @@ impl RawVector {
     /// ```
     pub fn with_capacity(capacity: usize) -> RawVector {
         RawVector {
-            bit_len: 0,
+            len: 0,
             data: Vec::with_capacity(bits::bits_to_words(capacity)),
         }
     }
@@ -367,7 +371,7 @@ impl RawVector {
     /// # Arguments
     ///
     /// * `new_len`: New length of the vector in bits.
-    /// * `bit`: Initialization value.
+    /// * `value`: Initialization value.
     ///
     /// # Examples
     ///
@@ -379,17 +383,17 @@ impl RawVector {
     /// let w = RawVector::with_len(137, true);
     /// assert_eq!(v, w);
     /// ```
-    pub fn resize(&mut self, new_len: usize, bit: bool) {
+    pub fn resize(&mut self, new_len: usize, value: bool) {
 
         // Fill the unused bits if necessary.
         if new_len > self.len() {
             let old_len = self.len();
-            Self::set_unused_bits(&mut self.data, old_len, bit);
+            Self::set_unused_bits(&mut self.data, old_len, value);
         }
 
         // Use more space if necessary.
-        self.data.resize(bits::bits_to_words(new_len), bits::filler_value(bit));
-        self.bit_len = new_len;
+        self.data.resize(bits::bits_to_words(new_len), bits::filler_value(value));
+        self.len = new_len;
         Self::set_unused_bits(&mut self.data, new_len, false);
     }
 
@@ -403,11 +407,11 @@ impl RawVector {
     /// let mut v = RawVector::with_len(137, true);
     /// assert_eq!(v.len(), 137);
     /// v.clear();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// ```
     pub fn clear(&mut self) {
         self.data.clear();
-        self.bit_len = 0;
+        self.len = 0;
     }
 
     /// Reserves space for storing at least `self.len() + additional` bits in the vector.
@@ -432,10 +436,10 @@ impl RawVector {
     }
 
     // Set the unused bits in the last integer to the specified value.
-    fn set_unused_bits(data: &mut Vec<u64>, bit_len: usize, bit: bool) {
-        let (index, width) = bits::split_offset(bit_len);
+    fn set_unused_bits(data: &mut Vec<u64>, len: usize, value: bool) {
+        let (index, width) = bits::split_offset(len);
         if width > 0 {
-            if bit {
+            if value {
                 data[index] |= !bits::low_set(width);
             }
             else {
@@ -448,10 +452,10 @@ impl RawVector {
 //-----------------------------------------------------------------------------
 
 impl SetRaw for RawVector {
-    fn set_bit(&mut self, bit_offset: usize, bit: bool) {
+    fn set_bit(&mut self, bit_offset: usize, value: bool) {
         let (index, offset) = bits::split_offset(bit_offset);
         self.data[index] &= !(1u64 << offset);
-        self.data[index] |= (bit as u64) << offset;
+        self.data[index] |= (value as u64) << offset;
     }
 
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
@@ -460,40 +464,40 @@ impl SetRaw for RawVector {
 }
 
 impl GetRaw for RawVector {
-    fn get_bit(&self, bit_offset: usize) -> bool {
+    fn bit(&self, bit_offset: usize) -> bool {
         let (index, offset) = bits::split_offset(bit_offset);
         (self.data[index] & (1u64 << offset)) != 0
     }
 
-    fn get_int(&self, bit_offset: usize, width: usize) -> u64 {
+    fn int(&self, bit_offset: usize, width: usize) -> u64 {
         bits::read_int(&self.data, bit_offset, width)
     }
 }
 
 impl PushRaw for RawVector {
-    fn push_bit(&mut self, bit: bool) {
-        let (index, offset) = bits::split_offset(self.bit_len);
+    fn push_bit(&mut self, value: bool) {
+        let (index, offset) = bits::split_offset(self.len);
         if index == self.data.len() {
             self.data.push(0);
         }
-        self.data[index] |= (bit as u64) << offset;
-        self.bit_len += 1;
+        self.data[index] |= (value as u64) << offset;
+        self.len += 1;
     }
 
     fn push_int(&mut self, value: u64, width: usize) {
-        if self.bit_len + width > bits::words_to_bits(self.data.len()) {
+        if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        bits::write_int(&mut self.data, self.bit_len, value, width);
-        self.bit_len += width;
+        bits::write_int(&mut self.data, self.len, value, width);
+        self.len += width;
     }
 }
 
 impl PopRaw for RawVector {
     fn pop_bit(&mut self) -> Option<bool> {
         if self.len() > 0 {
-            let result = self.get_bit(self.bit_len - 1);
-            self.bit_len -= 1;
+            let result = self.bit(self.len - 1);
+            self.len -= 1;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
             let len_copy = self.len();
             Self::set_unused_bits(&mut self.data, len_copy, false);
@@ -505,8 +509,8 @@ impl PopRaw for RawVector {
 
     fn pop_int(&mut self, width: usize) -> Option<u64> {
         if self.len() >= width {
-            let result = self.get_int(self.bit_len - width, width);
-            self.bit_len -= width;
+            let result = self.int(self.len - width, width);
+            self.len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
             let len_copy = self.len();
             Self::set_unused_bits(&mut self.data, len_copy, false);
@@ -519,7 +523,7 @@ impl PopRaw for RawVector {
 
 impl Serialize for RawVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-        self.bit_len.serialize(writer)?;
+        self.len.serialize(writer)?;
         self.data.serialize_header(writer)?;
         Ok(())
     }
@@ -530,38 +534,24 @@ impl Serialize for RawVector {
     }
 
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-        let bit_len = usize::load(reader)?;
+        let len = usize::load(reader)?;
         let data = <Vec<u64> as Serialize>::load(reader)?;
         Ok(RawVector {
-            bit_len: bit_len,
+            len: len,
             data: data,
         })
     }
 
     fn size_in_bytes(&self) -> usize {
-        self.bit_len.size_in_bytes() + self.data.size_in_bytes()
+        self.len.size_in_bytes() + self.data.size_in_bytes()
     }
 }
 
 //-----------------------------------------------------------------------------
 
-impl FromIterator<bool> for RawVector {
-    fn from_iter<I: IntoIterator<Item=bool>>(iter: I) -> Self {
-        let mut result = RawVector::new();
-        for bit in iter {
-            result.push_bit(bit);
-        }
-        result
-    }
-}
-
-impl FromIterator<(u64, usize)> for RawVector {
-    fn from_iter<I: IntoIterator<Item=(u64, usize)>>(iter: I) -> Self {
-        let mut result = RawVector::new();
-        for (value, width) in iter {
-            result.push_int(value, width);
-        }
-        result
+impl AsRef<Vec<u64>> for RawVector {
+    fn as_ref(&self) -> &Vec<u64> {
+        &(self.data)
     }
 }
 
@@ -573,7 +563,7 @@ impl FromIterator<(u64, usize)> for RawVector {
 /// Call [`RawVectorWriter::close`] explicitly to handle the errors.
 #[derive(Debug)]
 pub struct RawVectorWriter {
-    bit_len: usize,
+    len: usize,
     buf_len: usize,
     file: Option<File>,
     buf: RawVector,
@@ -594,12 +584,17 @@ impl RawVectorWriter {
     ///
     /// let filename = serialize::temp_file_name("raw-vector-writer-len");
     /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// mem::drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
     pub fn len(&self) -> usize {
-        self.bit_len
+        self.len
+    }
+
+    /// Returns `true` if the vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Creates an empty vector stored in the specified file with the default buffer size.
@@ -615,7 +610,7 @@ impl RawVectorWriter {
     ///
     /// let filename = serialize::temp_file_name("raw-vector-writer-new");
     /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// mem::drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
@@ -629,7 +624,7 @@ impl RawVectorWriter {
         // Allocate one extra word for overflow.
         let buf = RawVector::with_capacity(Self::DEFAULT_BUFFER_SIZE + bits::WORD_BITS);
         let mut result = RawVectorWriter {
-            bit_len: 0,
+            len: 0,
             buf_len: Self::DEFAULT_BUFFER_SIZE,
             file: Some(file),
             buf: buf,
@@ -657,7 +652,7 @@ impl RawVectorWriter {
     ///
     /// let filename = serialize::temp_file_name("raw-vector-writer-with-buf-len");
     /// let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
-    /// assert_eq!(v.len(), 0);
+    /// assert!(v.is_empty());
     /// mem::drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
@@ -672,7 +667,7 @@ impl RawVectorWriter {
         // Allocate one extra word for overflow.
         let buf = RawVector::with_capacity(buf_len + bits::WORD_BITS);
         let mut result = RawVectorWriter {
-            bit_len: 0,
+            len: 0,
             buf_len: buf_len,
             file: Some(file),
             buf: buf,
@@ -685,33 +680,35 @@ impl RawVectorWriter {
 //-----------------------------------------------------------------------------
 
 impl PushRaw for RawVectorWriter {
-    fn push_bit(&mut self, bit: bool) {
-        self.buf.push_bit(bit); self.bit_len += 1;
+    fn push_bit(&mut self, value: bool) {
+        self.buf.push_bit(value); self.len += 1;
         if self.buf.len() >= self.buf_len {
-            self.flush(false).unwrap();
+            self.flush(FlushMode::Safe).unwrap();
         }
     }
 
     fn push_int(&mut self, value: u64, width: usize) {
-        self.buf.push_int(value, width); self.bit_len += width;
+        self.buf.push_int(value, width); self.len += width;
         if self.buf.len() >= self.buf_len {
-            self.flush(false).unwrap();
+            self.flush(FlushMode::Safe).unwrap();
         }
     }
 }
 
 impl Writer for RawVectorWriter {
-    fn get_file(&mut self) -> Option<&mut File> {
+    fn file(&mut self) -> Option<&mut File> {
         self.file.as_mut()
     }
 
-    fn flush(&mut self, final_flush: bool) -> io::Result<()> {
+    fn flush(&mut self, mode: FlushMode) -> io::Result<()> {
         if let Some(f) = self.file.as_mut() {
             // Handle the overflow if not serializing the entire buffer.
             let mut overflow: (u64, usize) = (0, 0);
-            if !final_flush && self.buf.len() > self.buf_len {
-                overflow = (self.buf.get_int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len);
-                self.buf.resize(self.buf_len, false);
+            if let FlushMode::Safe = mode {
+                if self.buf.len() > self.buf_len {
+                    overflow = (self.buf.int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len);
+                    self.buf.resize(self.buf_len, false);
+                }
             }
 
             // Serialize and clear the buffer.
@@ -719,8 +716,10 @@ impl Writer for RawVectorWriter {
             self.buf.clear();
 
             // Push the overflow back to the buffer.
-            if !final_flush && overflow.1 > 0 {
-                self.buf.push_int(overflow.0, overflow.1);
+            if let FlushMode::Safe = mode {
+                if overflow.1 > 0 {
+                    self.buf.push_int(overflow.0, overflow.1);
+                }
             }
         }
         Ok(())
@@ -728,8 +727,8 @@ impl Writer for RawVectorWriter {
 
     fn write_header(&mut self) -> io::Result<()> {
         if let Some(f) = self.file.as_mut() {
-            self.bit_len.serialize(f)?;
-            let words: usize = bits::bits_to_words(self.bit_len);
+            self.len.serialize(f)?;
+            let words: usize = bits::bits_to_words(self.len);
             words.serialize(f)?;
         }
         Ok(())
@@ -758,11 +757,12 @@ mod tests {
     #[test]
     fn empty_raw_vector() {
         let empty = RawVector::new();
-        assert_eq!(empty.len(), 0, "Created a non-empty empty vector");
+        assert!(empty.is_empty(), "Created a non-empty empty vector");
+        assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
         assert_eq!(empty.capacity(), 0, "Reserved unnecessary memory for an empty vector");
 
         let with_capacity = RawVector::with_capacity(137);
-        assert_eq!(with_capacity.len(), 0, "Created a non-empty vector by specifying capacity");
+        assert!(with_capacity.is_empty(), "Created a non-empty vector by specifying capacity");
         assert!(with_capacity.capacity() >= 137, "Vector capacity is lower than specified");
     }
 
@@ -771,7 +771,7 @@ mod tests {
         let mut v = RawVector::with_len(137, true);
         assert_eq!(v.len(), 137, "Vector length is not as specified");
         v.clear();
-        assert_eq!(v.len(), 0, "Could not clear the vector");
+        assert!(v.is_empty(), "Could not clear the vector");
     }
 
     #[test]
@@ -834,15 +834,12 @@ mod tests {
         }
         assert_eq!(v.len(), 137, "Invalid vector length");
 
-        let from_iter: RawVector = source.iter().cloned().collect();
-        assert_eq!(from_iter, v, "Vector built from an iterator is invalid");
-
         let mut popped: Vec<bool> = Vec::new();
         while let Some(bit) = v.pop_bit() {
             popped.push(bit);
         }
         popped.reverse();
-        assert_eq!(v.len(), 0, "Non-empty vector after popping all bits");
+        assert!(v.is_empty(), "Non-empty vector after popping all bits");
         assert_eq!(popped, source, "Invalid sequence of bits popped from RawVector");
     }
 
@@ -860,7 +857,7 @@ mod tests {
         assert_eq!(v.count_ones(), 68, "Invalid number of ones in the vector");
 
         for i in 0..137 {
-            assert_eq!(v.get_bit(i), i & 1 == 1, "Invalid bit {}", i);
+            assert_eq!(v.bit(i), i & 1 == 1, "Invalid bit {}", i);
         }
         assert_eq!(v, w, "Fully overwritten vector still depends on the initialization value");
     }
@@ -878,9 +875,6 @@ mod tests {
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
-        let from_iter: RawVector = correct.iter().cloned().collect();
-        assert_eq!(from_iter, v, "Vector built from an iterator is invalid");
-
         correct.reverse();
         let mut popped: Vec<(u64, usize)> = Vec::new();
         for i in 0..correct.len() {
@@ -890,7 +884,7 @@ mod tests {
             }
         }
         assert_eq!(popped.len(), correct.len(), "Invalid number of popped ints");
-        assert_eq!(v.len(), 0, "Non-empty vector after popping all ints");
+        assert!(v.is_empty(), "Non-empty vector after popping all ints");
         assert_eq!(popped, correct, "Invalid popped ints");
     }
 
@@ -907,8 +901,8 @@ mod tests {
 
         bit_offset = 0;
         for i in 0..64 {
-            assert_eq!(v.get_int(bit_offset, 63), i, "Invalid integer [{}].0", i); bit_offset += 63;
-            assert_eq!(v.get_int(bit_offset, 64), i * (i + 1), "Invalid integer [{}].1", i); bit_offset += 64;
+            assert_eq!(v.int(bit_offset, 63), i, "Invalid integer [{}].0", i); bit_offset += 63;
+            assert_eq!(v.int(bit_offset, 64), i * (i + 1), "Invalid integer [{}].1", i); bit_offset += 64;
         }
         assert_eq!(v, w, "Fully overwritten vector still depends on the initialization value");
     }
@@ -936,12 +930,13 @@ mod tests {
         let second = serialize::temp_file_name("empty-raw-vector-writer");
 
         let mut v = RawVectorWriter::new(&first).unwrap();
-        assert_eq!(v.len(), 0, "Created a non-empty empty writer");
+        assert!(v.is_empty(), "Created a non-empty empty writer");
+        assert_eq!(v.len(), 0, "Nonzero length for an empty writer");
         assert!(v.is_open(), "Newly created writer is not open");
         v.close().unwrap();
 
         let mut w = RawVectorWriter::with_buf_len(&second, 1024).unwrap();
-        assert_eq!(w.len(), 0, "Created a non-empty empty writer with custom buffer size");
+        assert!(w.is_empty(), "Created a non-empty empty writer with custom buffer size");
         assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
         w.close().unwrap();
 
@@ -963,14 +958,14 @@ mod tests {
         for bit in correct.iter() {
             v.push_bit(*bit);
         }
-        assert_eq!(v.len(), correct.len(), "Invalid size for the writer");
+        assert_eq!(v.len(), correct.len(), "Invalid size for the writer after push_bit");
         v.close().unwrap();
         assert!(!v.is_open(), "Could not close the writer");
 
         let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len(), "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.get_bit(i), correct[i], "Invalid bit {}", i);
+            assert_eq!(w.bit(i), correct[i], "Invalid bit {}", i);
         }
 
         fs::remove_file(&filename).unwrap();
@@ -999,7 +994,7 @@ mod tests {
         let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
+            assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i);
         }
 
         fs::remove_file(&filename).unwrap();
@@ -1029,7 +1024,7 @@ mod tests {
         let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.get_int(i * width, width), correct[i], "Invalid integer {}", i);
+            assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i);
         }
 
         fs::remove_file(&filename).unwrap();

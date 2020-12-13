@@ -153,6 +153,16 @@ pub trait Serialize: Sized {
 
 //-----------------------------------------------------------------------------
 
+/// Ways of flushing a write buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FlushMode {
+    /// Only flush the part of the buffer that can be flushed safely.
+    Safe,
+    /// Flush the entire buffer.
+    /// Subsequent writes to the buffer will have undefined behavior.
+    Final,
+}
+
 /// Write a nested data structure directly to a file using a buffer.
 ///
 /// Any structure implementing `Writer` should also implement [`Drop`] that calls [`Writer::close`].
@@ -161,7 +171,7 @@ pub trait Serialize: Sized {
 /// # Examples
 ///
 /// ```
-/// use simple_sds::serialize::{Serialize, Writer};
+/// use simple_sds::serialize::{Serialize, Writer, FlushMode};
 /// use std::fs::{File, OpenOptions};
 /// use std::path::Path;
 /// use simple_sds::serialize;
@@ -174,7 +184,7 @@ pub trait Serialize: Sized {
 /// }
 ///
 /// impl VecWriter {
-///     pub fn new<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<VecWriter> {
+///     fn new<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<VecWriter> {
 ///         let mut options = OpenOptions::new();
 ///         let file = options.create(true).write(true).truncate(true).open(filename)?;
 ///         let mut result = VecWriter {
@@ -186,20 +196,20 @@ pub trait Serialize: Sized {
 ///         Ok(result)
 ///     }
 ///
-///     pub fn push(&mut self, value: u64) {
+///     fn push(&mut self, value: u64) {
 ///         self.buf.push(value); self.len += 1;
 ///         if self.buf.len() >= self.buf.capacity() {
-///             self.flush(false).unwrap();
+///             self.flush(FlushMode::Safe).unwrap();
 ///         }
 ///     }
 /// }
 ///
 /// impl Writer for VecWriter {
-///     fn get_file(&mut self) -> Option<&mut File> {
+///     fn file(&mut self) -> Option<&mut File> {
 ///         self.file.as_mut()
 ///     }
 ///
-///     fn flush(&mut self, _: bool) -> io::Result<()> {
+///     fn flush(&mut self, _: FlushMode) -> io::Result<()> {
 ///         if let Some(f) = self.file.as_mut() {
 ///             self.buf.serialize_body(f)?;
 ///             self.buf.clear();
@@ -239,19 +249,17 @@ pub trait Serialize: Sized {
 /// ```
 pub trait Writer {
     /// Returns the file used by the writer, or `None` if the file is closed.
-    fn get_file(&mut self) -> Option<&mut File>;
+    fn file(&mut self) -> Option<&mut File>;
 
     /// Writes the contents of the buffer to the file.
     ///
     /// No effect if the file is closed.
-    /// If `final_flush = true`, the entire buffer is flushed.
-    /// Further writes may leave the file in an invalid state.
-    /// Otherwise flushes only the part of the buffer that can be safely flushed.
+    /// If `FlushMode::Final` is used, further writes may leave the file in an invalid state.
     ///
     /// # Errors
     ///
     /// Any errors from writing to the file may be passed through.
-    fn flush(&mut self, final_flush: bool) -> io::Result<()>;
+    fn flush(&mut self, mode: FlushMode) -> io::Result<()>;
 
     /// Writes the header to the current offset in the file.
     ///
@@ -269,7 +277,7 @@ pub trait Writer {
 
     /// Returns `true` if the file is open for writing.
     fn is_open(&mut self) -> bool {
-        match self.get_file() {
+        match self.file() {
             Some(_) => true,
             None    => false,
         }
@@ -283,7 +291,7 @@ pub trait Writer {
     ///
     /// Any errors from seeking in the file will be passed through.
     fn seek_to_start(&mut self) -> io::Result<()> {
-        if let Some(f) = self.get_file() {
+        if let Some(f) = self.file() {
             f.seek(SeekFrom::Start(0))?;
         }
         Ok(())
@@ -293,7 +301,7 @@ pub trait Writer {
     ///
     /// No effect if the file is closed.
     /// Otherwise this is equivalent to calling the following methods:
-    /// * `self.flush(true)`
+    /// * `self.flush(FlushMode::Final)`
     /// * `self.seek_to_start()`
     /// * `self.write_header()`
     /// * `self.close_file()`
@@ -303,7 +311,7 @@ pub trait Writer {
     /// Any errors from the method calls will be passed through.
     fn close(&mut self) -> io::Result<()> {
         if self.is_open() {
-            self.flush(true)?;
+            self.flush(FlushMode::Final)?;
             self.seek_to_start()?;
             self.write_header()?;
             self.close_file();

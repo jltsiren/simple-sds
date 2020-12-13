@@ -113,7 +113,7 @@ pub fn round_up_to_word_size(n: usize) -> usize {
     }
 }
 
-/// Returns an `u64` value consisting entirely of bit `bit`.
+/// Returns an `u64` value consisting entirely of bit `value`.
 ///
 /// # Examples
 ///
@@ -123,8 +123,8 @@ pub fn round_up_to_word_size(n: usize) -> usize {
 /// assert_eq!(bits::filler_value(false), 0);
 /// assert_eq!(bits::filler_value(true), !0u64);
 /// ```
-pub fn filler_value(bit: bool) -> u64 {
-    match bit {
+pub fn filler_value(value: bool) -> u64 {
+    match value {
         true  => !0u64,
         false => 0u64,
     }
