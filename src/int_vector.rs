@@ -312,9 +312,9 @@ impl AsRef<RawVector> for IntVector {
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
     parent: &'a IntVector,
-    // The first element we have not returned.
+    // The first index we have not used.
     next: usize,
-    // The first item we should not return.
+    // The first index we should not use.
     limit: usize,
 }
 

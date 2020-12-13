@@ -13,6 +13,7 @@
 //! * Things may not work if `usize` is not 64 bits.
 //! * The system is assumed to be little-endian.
 
+pub mod bit_vector;
 pub mod bits;
 pub mod int_vector;
 pub mod ops;
