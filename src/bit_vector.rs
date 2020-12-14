@@ -9,9 +9,26 @@ use crate::serialize::Serialize;
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator};
 use std::io;
 
+#[cfg(test)]
+mod tests;
+
 //-----------------------------------------------------------------------------
 
-// FIXME document
+/// An immutable binary array supporting, rank, select, and related queries.
+///
+/// This structure contains [`RawVector`], which is in turn contains [`Vec`].
+/// Because most queries require separate support structures, the binary array itself is immutable.
+/// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
+/// The maximum length of the vector is `usize::MAX` bits.
+///
+/// `BitVector` implements the following `simple_sds` traits:
+/// * Basic functionality: [`BitVec`]
+/// * Queries and operations: [`Rank`], [`Select`], [`Complement`]
+/// * Serialization: [`Serialize`]
+///
+/// # Notes
+///
+/// * `BitVector` never panics from I/O errors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitVector {
     ones: usize,
@@ -20,7 +37,23 @@ pub struct BitVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document
+/// A read-only iterator over [`BitVector`].
+///
+/// The type of `Item` is `bool`.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bit_vector::BitVector;
+/// use simple_sds::ops::BitVec;
+///
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let bv: BitVector = source.iter().cloned().collect();
+/// assert_eq!(bv.iter().len(), source.len());
+/// for (index, value) in bv.iter().enumerate() {
+///     assert_eq!(source[index], value);
+/// }
+/// ```
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
     parent: &'a BitVector,
@@ -148,6 +181,12 @@ impl From<RawVector> for BitVector {
     }
 }
 
+impl From<BitVector> for RawVector {
+    fn from(source: BitVector) -> Self {
+        source.data
+    }
+}
+
 impl FromIterator<bool> for BitVector {
     fn from_iter<I: IntoIterator<Item = bool>>(iter: I) -> Self {
         let mut iter = iter.into_iter();
@@ -166,7 +205,20 @@ impl FromIterator<bool> for BitVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document
+/// [`BitVector`] transformed into an iterator.
+///
+/// The type of `Item` is `bool`.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bit_vector::BitVector;
+///
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let bv: BitVector = source.iter().cloned().collect();
+/// let target: Vec<bool> = bv.into_iter().collect();
+/// assert_eq!(target, source);
+/// ```
 #[derive(Clone, Debug)]
 pub struct IntoIter {
     parent: BitVector,
@@ -207,10 +259,5 @@ impl IntoIterator for BitVector {
         }
     }
 }
-
-//-----------------------------------------------------------------------------
-
-// FIXME tests: BitVec, Iter, Rank, Select, OneIter, Complement, Serialize, ZeroIter, From, FromIterator, IntoIter
-// TODO: move tests to a separate file, as they have to be extensive for Rank / Select / Complement
 
 //-----------------------------------------------------------------------------

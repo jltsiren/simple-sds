@@ -16,7 +16,7 @@ use std::io;
 /// A contiguous growable bit-packed array of fixed-width integers.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
-/// Each element consists of the lowest 1 to 64 bits of an `u64` value, as specified by parameter `width`.
+/// Each element consists of the lowest 1 to 64 bits of a `u64` value, as specified by parameter `width`.
 /// The maximum length of the vector is `usize::MAX / width` elements.
 ///
 /// A default constructed `IntVector` has `width == 64`.
@@ -292,6 +292,12 @@ impl AsRef<RawVector> for IntVector {
     }
 }
 
+impl From<IntVector> for RawVector {
+    fn from(source: IntVector) -> Self {
+        source.data
+    }
+}
+
 //-----------------------------------------------------------------------------
 
 /// A read-only iterator over [`IntVector`].
@@ -364,7 +370,7 @@ impl<'a> FusedIterator for Iter<'a> {}
 /// use simple_sds::int_vector::IntVector;
 ///
 /// let source: Vec<u64> = vec![1, 3, 15, 255, 65535];
-/// let mut v: IntVector = source.iter().cloned().collect();
+/// let v: IntVector = source.iter().cloned().collect();
 /// let target: Vec<u64> = v.into_iter().collect();
 /// assert_eq!(target, source);
 /// ```
@@ -723,6 +729,12 @@ mod tests {
         for i in 0..64 {
             assert_eq!(v.get(2 * i), i as u64, "Invalid integer [{}].0", i);
             assert_eq!(v.get(2 * i + 1), (i * (i + 1)) as u64, "Invalid integer [{}].1", i);
+        }
+
+        let raw = RawVector::from(v.clone());
+        assert_eq!(raw.len(), v.len() * v.width(), "Invalid length for the extracted RawVector");
+        for i in 0..v.len() {
+            assert_eq!(raw.int(i * v.width(), v.width()), v.get(i), "Invalid value {} in the RawVector", i);
         }
     }
 

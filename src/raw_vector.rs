@@ -337,13 +337,13 @@ impl RawVector {
     /// ```
     pub fn with_len(len: usize, value: bool) -> RawVector {
         let val = bits::filler_value(value);
-        let mut data: Vec<u64> = vec![val; bits::bits_to_words(len)];
-        Self::set_unused_bits(&mut data, len, false);
-
-        RawVector {
+        let data: Vec<u64> = vec![val; bits::bits_to_words(len)];
+        let mut result = RawVector {
             len: len,
             data: data,
-        }
+        };
+        result.set_unused_bits(false);
+        result
     }
 
     /// Creates an empty vector with enough capacity for at least `capacity` bits.
@@ -361,6 +361,30 @@ impl RawVector {
             len: 0,
             data: Vec::with_capacity(bits::bits_to_words(capacity)),
         }
+    }
+
+    /// Returns a copy of the vector with each bit flipped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+    ///
+    /// let mut original = RawVector::with_len(137, false);
+    /// original.set_bit(1, true); original.set_bit(33, true);
+    /// original.set_int(95, 456, 9); original.set_bit(123, true);
+    /// let complement = original.complement();
+    /// for i in 0..137 {
+    ///     assert_eq!(!(complement.bit(i)), original.bit(i));
+    /// }
+    /// ```
+    pub fn complement(&self) -> RawVector {
+        let mut result = self.clone();
+        for word in result.data.iter_mut() {
+            *word = !*word;
+        }
+        result.set_unused_bits(false);
+        result
     }
 
     /// Resizes the vector to a specified length.
@@ -387,14 +411,13 @@ impl RawVector {
 
         // Fill the unused bits if necessary.
         if new_len > self.len() {
-            let old_len = self.len();
-            Self::set_unused_bits(&mut self.data, old_len, value);
+            self.set_unused_bits(value);
         }
 
         // Use more space if necessary.
         self.data.resize(bits::bits_to_words(new_len), bits::filler_value(value));
         self.len = new_len;
-        Self::set_unused_bits(&mut self.data, new_len, false);
+        self.set_unused_bits(false);
     }
 
     /// Clears the vector without freeing the data.
@@ -436,14 +459,14 @@ impl RawVector {
     }
 
     // Set the unused bits in the last integer to the specified value.
-    fn set_unused_bits(data: &mut Vec<u64>, len: usize, value: bool) {
-        let (index, width) = bits::split_offset(len);
+    fn set_unused_bits(&mut self, value: bool) {
+        let (index, width) = bits::split_offset(self.len());
         if width > 0 {
             if value {
-                data[index] |= !bits::low_set(width);
+                self.data[index] |= !bits::low_set(width);
             }
             else {
-                data[index] &= bits::low_set(width);
+                self.data[index] &= bits::low_set(width);
             }
         }
     }
@@ -499,8 +522,7 @@ impl PopRaw for RawVector {
             let result = self.bit(self.len - 1);
             self.len -= 1;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
-            let len_copy = self.len();
-            Self::set_unused_bits(&mut self.data, len_copy, false);
+            self.set_unused_bits(false);
             Some(result)
         } else {
             None
@@ -512,8 +534,7 @@ impl PopRaw for RawVector {
             let result = self.int(self.len - width, width);
             self.len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
-            let len_copy = self.len();
-            Self::set_unused_bits(&mut self.data, len_copy, false);
+            self.set_unused_bits(false);
             Some(result)
         } else {
             None
@@ -860,6 +881,11 @@ mod tests {
             assert_eq!(v.bit(i), i & 1 == 1, "Invalid bit {}", i);
         }
         assert_eq!(v, w, "Fully overwritten vector still depends on the initialization value");
+
+        let complement = v.complement();
+        for i in 0..137 {
+            assert_eq!(!(complement.bit(i)), v.bit(i), "Invalid bit {} in the complement", i);
+        }
     }
 
     #[test]

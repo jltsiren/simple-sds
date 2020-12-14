@@ -113,7 +113,7 @@ pub fn round_up_to_word_size(n: usize) -> usize {
     }
 }
 
-/// Returns an `u64` value consisting entirely of bit `value`.
+/// Returns a `u64` value consisting entirely of bit `value`.
 ///
 /// # Examples
 ///
