@@ -88,6 +88,10 @@ pub trait SetRaw {
 ///     fn int(&self, bit_offset: usize, width: usize) -> u64 {
 ///         bits::read_int(&self.0, bit_offset, width)
 ///     }
+///
+///     fn word(&self, index: usize) -> u64 {
+///         self.0[index]
+///     }
 /// }
 ///
 /// let example = Example(vec![0x330u64, 0x101u64]);
@@ -95,6 +99,7 @@ pub trait SetRaw {
 /// assert!(!example.bit(68));
 /// assert_eq!(example.int(4, 8), 0x33);
 /// assert_eq!(example.int(63, 2), 2);
+/// assert_eq!(example.word(1), 0x101);
 /// ```
 pub trait GetRaw {
     /// Reads a bit from the container.
@@ -119,6 +124,16 @@ pub trait GetRaw {
     /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn int(&self, bit_offset: usize, width: usize) -> u64;
+
+    /// Reads a 64-bit word from the container.
+    ///
+    /// This may be faster than calling `self.int(index * 64, 64)`.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `index * 64` is not a valid offset in the bit array.
+    /// May panic from I/O errors.
+    fn word(&self, index: usize) -> u64;
 }
 
 //-----------------------------------------------------------------------------
@@ -494,6 +509,10 @@ impl GetRaw for RawVector {
 
     fn int(&self, bit_offset: usize, width: usize) -> u64 {
         bits::read_int(&self.data, bit_offset, width)
+    }
+
+    fn word(&self, index: usize) -> u64 {
+        self.data[index]
     }
 }
 
@@ -931,6 +950,18 @@ mod tests {
             assert_eq!(v.int(bit_offset, 64), i * (i + 1), "Invalid integer [{}].1", i); bit_offset += 64;
         }
         assert_eq!(v, w, "Fully overwritten vector still depends on the initialization value");
+    }
+
+    #[test]
+    fn get_words() {
+        let correct: Vec<u64> = vec![0x123456, 0x789ABC, 0xFEDCBA, 0x987654];
+        let mut v = RawVector::with_len(correct.len() * 64, false);
+        for (index, value) in correct.iter().enumerate() {
+            v.set_int(index * 64, *value, 64);
+        }
+        for (index, value) in correct.iter().enumerate() {
+            assert_eq!(v.word(index), *value, "Invalid integer {}", index);
+        }
     }
 
     #[test]
