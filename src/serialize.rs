@@ -416,23 +416,22 @@ macro_rules! serialize_element_vec {
             }
 
             fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                let source_slice: &[$t] = self;
-                let target_slice: &[u8] = unsafe {
-                    slice::from_raw_parts(source_slice.as_ptr() as *const u8, source_slice.len() * mem::size_of::<$t>())
-                };
-                writer.write_all(&target_slice)?;
+                unsafe {
+                    let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<$t>());
+                    writer.write_all(&buf)?;
+                }
                 Ok(())
             }
 
             fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
                 let size = usize::load(reader)?;
+                let mut value: Vec<$t> = Vec::with_capacity(size);
 
-                let mut value: Vec<$t> = vec![$t::default(); size];
-                let target_slice: &mut [$t] = &mut value;
-                let mut source_slice: &mut [u8] = unsafe {
-                    slice::from_raw_parts_mut(target_slice.as_ptr() as *mut u8, target_slice.len() * mem::size_of::<$t>())
-                };
-                reader.read_exact(&mut source_slice)?;
+                unsafe {
+                    let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<$t>());
+                    reader.read_exact(buf)?;
+                    value.set_len(size);
+                }
 
                 Ok(value)
             }
