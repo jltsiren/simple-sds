@@ -183,13 +183,15 @@ mod tests {
     }
 
     fn raw_vector(len: usize) -> RawVector {
-        let mut result = RawVector::new();
+        let mut data = RawVector::with_capacity(len);
         let mut rng = rand::thread_rng();
-        for _ in 0..len {
-            let value: bool = rng.gen();
-            result.push_bit(value);
+        while data.len() < len {
+            let value: u64 =  rng.gen();
+            let bits = cmp::min(bits::WORD_BITS, len - data.len());
+            data.push_int(value, bits);
         }
-        result
+        assert_eq!(data.len(), len, "Invalid length for random RawVector");
+        data
     }
 
     fn test_vector(len: usize, blocks: usize) {

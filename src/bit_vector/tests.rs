@@ -4,10 +4,34 @@ use super::*;
 use crate::ops::{BitVec};
 use crate::raw_vector::{RawVector, GetRaw, SetRaw, PushRaw};
 use crate::serialize::Serialize;
+use crate::bits;
 use crate::serialize;
 
 use std::iter::{DoubleEndedIterator, ExactSizeIterator};
-use std::fs;
+use std::{cmp, fs};
+
+use rand::Rng;
+
+//-----------------------------------------------------------------------------
+
+fn random_raw_vector(len: usize) -> RawVector {
+    let mut data = RawVector::with_capacity(len);
+    let mut rng = rand::thread_rng();
+    while data.len() < len {
+        let value: u64 =  rng.gen();
+        let bits = cmp::min(bits::WORD_BITS, len - data.len());
+        data.push_int(value, bits);
+    }
+    assert_eq!(data.len(), len, "Invalid length for random RawVector");
+    data
+}
+
+fn random_vector(len: usize) -> BitVector {
+    let data = random_raw_vector(len);
+    let bv = BitVector::from(data);
+    assert_eq!(bv.len(), len, "Invalid length for random BitVector");
+    bv
+}
 
 //-----------------------------------------------------------------------------
 
@@ -39,6 +63,17 @@ fn non_empty_vector() {
 }
 
 #[test]
+fn access_bitvector() {
+    let data = random_raw_vector(1791);
+    let bv = BitVector::from(data.clone());
+    assert_eq!(bv.len(), data.len(), "Invalid bitvector length");
+
+    for i in 0..bv.len() {
+        assert_eq!(bv.get(i), data.bit(i), "Invalid bit {}", i);
+    }
+}
+
+#[test]
 fn iterator_conversions() {
     let correct: Vec<bool> = vec![false, true, true, false, true, false, true, true, false, false, false];
     let bv: BitVector = correct.iter().cloned().collect();
@@ -54,42 +89,36 @@ fn iterator_conversions() {
 
 #[test]
 fn double_ended_iterator() {
-    let correct: Vec<bool> = vec![false, true, true, false, true, false, true, true, false, false, false];
+    let bv = random_vector(1563);
 
-    let bv: BitVector = correct.iter().cloned().collect();
-    let mut index = correct.len();
+    let mut index = bv.len();
     let mut iter = bv.iter();
     while let Some(value) = iter.next_back() {
         index -= 1;
-        assert_eq!(value, correct[index], "Invalid value {} when iterating backwards", index);
+        assert_eq!(value, bv.get(index), "Invalid value {} when iterating backwards", index);
     }
 
     let mut next = 0;
-    let mut limit = correct.len();
+    let mut limit = bv.len();
     let mut iter = bv.iter();
     while iter.len() > 0 {
-        assert_eq!(iter.next(), Some(correct[next]), "Invalid value {} (forward)", next);
+        assert_eq!(iter.next(), Some(bv.get(next)), "Invalid value {} (forward)", next);
         next += 1;
         if iter.len() == 0 {
             break;
         }
         limit -= 1;
-        assert_eq!(iter.next_back(), Some(correct[limit]), "Invalid value {} (backward)", limit);
+        assert_eq!(iter.next_back(), Some(bv.get(limit)), "Invalid value {} (backward)", limit);
     }
     assert_eq!(next, limit, "Iterator did not visit all values");
 }
 
 #[test]
 fn serialize_bit_vector() {
-    let mut raw = RawVector::new();
-    for i in 0..64 {
-        raw.push_int(i * (i + 1) * (i + 2), 16);
-    }
+    let original = random_vector(2137);
+    assert_eq!(original.size_in_bytes(), 304, "Invalid BitVector size in bytes");
 
-    let original = BitVector::from(raw);
-    assert_eq!(original.size_in_bytes(), 160, "Invalid BitVector size in bytes");
-
-    let filename = serialize::temp_file_name("bit-vector");
+    let filename = serialize::temp_file_name("bitvector");
     serialize::serialize_to(&original, &filename).unwrap();
 
     let copy: BitVector = serialize::load_from(&filename).unwrap();
@@ -98,12 +127,29 @@ fn serialize_bit_vector() {
     fs::remove_file(&filename).unwrap();
 }
 
-// FIXME large tests
+#[test]
+#[ignore]
+fn large_bitvector() {
+    let original = random_vector(9875321);
+    for (index, value) in original.iter().enumerate() {
+        assert_eq!(value, original.get(index), "Invalid value {} in the bitvector", index);
+    }
+    assert_eq!(original.size_in_bytes(), 1234448, "Invalid BitVector size in bytes");
+
+    let filename = serialize::temp_file_name("large-bitvector");
+    serialize::serialize_to(&original, &filename).unwrap();
+
+    let copy: BitVector = serialize::load_from(&filename).unwrap();
+    assert_eq!(copy, original, "Serialization changed the BitVector");
+
+    fs::remove_file(&filename).unwrap();
+}
+
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Rank + Serialize
+// FIXME tests: Rank + Serialize: empty, nonempty, serialize, large
 // FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
