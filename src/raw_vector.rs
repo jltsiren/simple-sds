@@ -268,15 +268,6 @@ pub struct RawVector {
 
 impl RawVector {
     /// Returns the length of the vector in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let v = RawVector::with_len(137, false);
-    /// assert_eq!(v.len(), 137);
-    /// ```
     pub fn len(&self) -> usize {
         self.len
     }
@@ -287,15 +278,6 @@ impl RawVector {
     }
 
     /// Returns the capacity of the vector in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVector;
-    ///
-    /// let v = RawVector::with_capacity(137);
-    /// assert!(v.capacity() >= 137);
-    /// ```
     pub fn capacity(&self) -> usize {
         bits::words_to_bits(self.data.capacity())
     }
@@ -614,20 +596,6 @@ impl RawVectorWriter {
     pub const DEFAULT_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
     /// Returns the length of the vector in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-len");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
     pub fn len(&self) -> usize {
         self.len
     }

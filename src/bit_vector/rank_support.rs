@@ -33,14 +33,12 @@ use std::{cmp, io};
 /// Rank support structure for plain bitvectors.
 ///
 /// The structure depends on the parent bitvector and assumes that the parent remains unchanged.
-/// It is usually more convenient to use the [`BitVector`] interface.
+/// Using the [`BitVector`] interface is usually more convenient.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RankSupport {
     // No RawVector or bits::read_int because we want to avoid branching.
     samples: Vec<u64>,
 }
-
-// FIXME document, examples
 
 impl RankSupport {
     const BLOCK_SIZE: usize = 512;
@@ -49,8 +47,26 @@ impl RankSupport {
     const WORDS_PER_BLOCK: usize = 8;
     const WORD_MASK: usize = 0x7;
 
+    /// Returns the number of 512-bit blocks in the bitvector.
+    pub fn blocks(&self) -> usize {
+        self.samples.len() / 2
+    }
+
     /// Builds a rank support structure for the parent bitvector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::rank_support::RankSupport;
+    ///
+    /// let data = vec![false, true, true, false, true, false, true, true, false, false, false];
+    /// let bv: BitVector = data.into_iter().collect();
+    /// let rs = RankSupport::new(&bv);
+    /// assert_eq!(rs.blocks(), 1);
+    /// ```
     pub fn new(parent: &BitVector) -> RankSupport {
+        let words = bits::bits_to_words(parent.len());
         let blocks = (parent.len() + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
         let mut samples: Vec<u64> = Vec::with_capacity(2 * blocks);
 
@@ -59,12 +75,12 @@ impl RankSupport {
             samples.push(ones as u64);
             let mut block_ones: usize = 0;
             let mut relative_ranks: u64 = 0;
-            let limit = cmp::min(parent.len(), (block + 1) * Self::WORDS_PER_BLOCK);
-            for word in 0..limit {
+            let block_words = cmp::min(Self::WORDS_PER_BLOCK, words - block * Self::WORDS_PER_BLOCK);
+            for word in 0..block_words {
                 block_ones += parent.data.word(block * Self::WORDS_PER_BLOCK + word).count_ones() as usize;
                 relative_ranks |= (block_ones << (word * Self::RELATIVE_RANK_BITS)) as u64;
             }
-            // We only store relative ranks after words 0..7, so we need to clear the high bit.
+            // Clear the high bit. We don't store the relative rank after all 8 words.
             relative_ranks &= bits::low_set((Self::WORDS_PER_BLOCK - 1) * Self::RELATIVE_RANK_BITS) as u64;
             samples.push(relative_ranks);
             ones += block_ones;
@@ -75,17 +91,27 @@ impl RankSupport {
         }
     }
 
-    /// Returns the number of 512-bit blocks in the bitvector.
-    pub fn blocks(&self) -> usize {
-        self.samples.len() / 2
-    }
-
     /// Returns the rank at the specified index of the bitvector.
     ///
     /// # Arguments
     ///
     /// * `parent`: The parent bitvector.
     /// * `index`: Index in the binary array or value in the integer array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::rank_support::RankSupport;
+    ///
+    /// let data = vec![false, true, true, false, true, false, true, true, false, false, false];
+    /// let bv: BitVector = data.into_iter().collect();
+    /// let rs = RankSupport::new(&bv);
+    /// assert_eq!(rs.rank(&bv, 0), 0);
+    /// assert_eq!(rs.rank(&bv, 1), 0);
+    /// assert_eq!(rs.rank(&bv, 2), 1);
+    /// assert_eq!(rs.rank(&bv, 7), 4);
+    /// ```
     ///
     /// # Panics
     ///
@@ -139,7 +165,68 @@ impl Serialize for RankSupport {
 
 //-----------------------------------------------------------------------------
 
-// FIXME small tests. large ones are in the tests module for bit_vector
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bit_vector::BitVector;
+    use crate::ops::BitVec;
+    use crate::raw_vector::{RawVector, GetRaw, PushRaw};
+    use crate::serialize;
+    use std::fs;
+    use rand::Rng;
+
+    #[test]
+    fn empty_vector() {
+        let bv = BitVector::from(RawVector::new());
+        let rs = RankSupport::new(&bv);
+        assert_eq!(rs.blocks(), 0, "Non-zero rank blocks for empty vector");
+    }
+
+    fn raw_vector(len: usize) -> RawVector {
+        let mut result = RawVector::new();
+        let mut rng = rand::thread_rng();
+        for _ in 0..len {
+            let value: bool = rng.gen();
+            result.push_bit(value);
+        }
+        result
+    }
+
+    fn test_vector(len: usize, blocks: usize) {
+        let data = raw_vector(len);
+        let bv = BitVector::from(data.clone());
+        let rs = RankSupport::new(&bv);
+        assert_eq!(bv.len(), len, "Invalid bitvector length at {}", len);
+        assert_eq!(rs.blocks(), blocks, "Invalid number of rank blocks at {}", len);
+        let mut count: usize = 0;
+        for i in 0..bv.len() {
+            assert_eq!(rs.rank(&bv, i), count, "Invalid rank({}) at {}", i, len);
+            count += data.bit(i) as usize;
+        }
+    }
+
+    #[test]
+    fn non_empty_vector() {
+        test_vector(4095, 8);
+        test_vector(4096, 8);
+        test_vector(4097, 9);
+    }
+
+    #[test]
+    fn serialize_rank_support() {
+        let data = raw_vector(5187);
+        let bv = BitVector::from(data);
+        let original = RankSupport::new(&bv);
+
+        let filename = serialize::temp_file_name("rank-support");
+        serialize::serialize_to(&original, &filename).unwrap();
+
+        let copy: RankSupport = serialize::load_from(&filename).unwrap();
+        assert_eq!(copy, original, "Serialization changed the RankSupport");
+
+        fs::remove_file(&filename).unwrap();
+    }
+}
 
 //-----------------------------------------------------------------------------
 

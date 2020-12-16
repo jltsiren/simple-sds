@@ -99,24 +99,24 @@ fn serialize_bit_vector() {
 }
 
 // FIXME large tests
-// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
 // FIXME tests: Rank + Serialize
 // FIXME large tests
-// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
 // FIXME tests: Select, OneIter + Serialize
 // FIXME large tests
-// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
 // FIXME tests: Complement, ZeroIter + Serialize
 // FIXME large tests
-// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
