@@ -114,7 +114,7 @@ fn double_ended_iterator() {
 }
 
 #[test]
-fn serialize_bit_vector() {
+fn serialize_bitvector() {
     let original = random_vector(2137);
     assert_eq!(original.size_in_bytes(), 304, "Invalid BitVector size in bytes");
 
@@ -149,8 +149,68 @@ fn large_bitvector() {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Rank + Serialize: empty, nonempty, serialize, large
-// FIXME large tests
+#[test]
+fn empty_rank() {
+    let mut empty = BitVector::from(RawVector::new());
+    assert!(!empty.supports_rank(), "Rank support was enabled by default");
+    empty.enable_rank();
+    assert!(empty.supports_rank(), "Failed to enable rank support");
+    assert_eq!(empty.rank(empty.len()), empty.count_ones(), "Invalid rank at vector size");
+}
+
+#[test]
+fn nonempty_rank() {
+    let mut bv = random_vector(1957);
+    assert!(!bv.supports_rank(), "Rank support was enabled by default");
+    bv.enable_rank();
+    assert!(bv.supports_rank(), "Failed to enable rank support");
+    assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
+
+    let mut rank: usize = 0;
+    for i in 0..bv.len() {
+        assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
+        rank += bv.get(i) as usize;
+    }
+}
+
+#[test]
+fn serialize_rank() {
+    let mut original = random_vector(1921);
+    original.enable_rank();
+    assert_eq!(original.size_in_bytes(), 352, "Invalid BitVector size with rank support");
+
+    let filename = serialize::temp_file_name("bitvector-rank");
+    serialize::serialize_to(&original, &filename).unwrap();
+
+    let copy: BitVector = serialize::load_from(&filename).unwrap();
+    assert_eq!(copy, original, "Serialization changed the BitVector");
+
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+#[ignore]
+fn large_rank() {
+    let mut original = random_vector(9871248);
+    original.enable_rank();
+    assert_eq!(original.rank(original.len()), original.count_ones(), "Invalid rank at vector size");
+    assert_eq!(original.size_in_bytes(), 1542432, "Invalid BitVector size in bytes");
+
+    let mut rank: usize = 0;
+    for i in 0..original.len() {
+        assert_eq!(original.rank(i), rank, "Invalid rank at {}", i);
+        rank += original.get(i) as usize;
+    }
+
+    let filename = serialize::temp_file_name("large-bitvector-rank");
+    serialize::serialize_to(&original, &filename).unwrap();
+
+    let copy: BitVector = serialize::load_from(&filename).unwrap();
+    assert_eq!(copy, original, "Serialization changed the BitVector");
+
+    fs::remove_file(&filename).unwrap();
+}
+
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
