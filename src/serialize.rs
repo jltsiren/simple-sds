@@ -104,12 +104,13 @@ use std::{env, io, mem, process, slice};
 /// let example = Example(-123, 456);
 /// assert_eq!(example.size_in_bytes(), 8);
 ///
-/// serialize::serialize_to(&example, "example.dat").unwrap();
+/// let filename = serialize::temp_file_name("serialize");
+/// serialize::serialize_to(&example, &filename).unwrap();
 ///
-/// let copy: Example = serialize::load_from("example.dat").unwrap();
+/// let copy: Example = serialize::load_from(&filename).unwrap();
 /// assert_eq!(copy, example);
 ///
-/// fs::remove_file("example.dat").unwrap();
+/// fs::remove_file(&filename).unwrap();
 /// ```
 pub trait Serialize: Sized {
     /// Serializes the struct to the writer.
@@ -147,6 +148,7 @@ pub trait Serialize: Sized {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self>;
 
     /// Returns the size of the serialized struct in bytes.
+    ///
     /// This should be closely related to the size of the in-memory struct.
     fn size_in_bytes(&self) -> usize;
 }

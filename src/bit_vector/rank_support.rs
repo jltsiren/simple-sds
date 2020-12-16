@@ -21,46 +21,76 @@
 //! The space overhead is 25%.
 
 use crate::bit_vector::BitVector;
+use crate::ops::BitVec;
 use crate::raw_vector::GetRaw;
-//use crate::serialize::Serialize;
+use crate::serialize::Serialize;
 use crate::bits;
 
-//use std::io;
+use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
 /// Rank support structure for plain bitvectors.
 ///
-/// It is usually more convenient to use this through [`BitVector`].
+/// The structure depends on the parent bitvector and assumes that the parent remains unchanged.
+/// It is usually more convenient to use the [`BitVector`] interface.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RankSupport<'a> {
-    parent: &'a BitVector,
+pub struct RankSupport {
     // No RawVector or bits::read_int because we want to avoid branching.
     samples: Vec<u64>,
 }
 
-//-----------------------------------------------------------------------------
-
 // FIXME document, examples
 
-impl<'a> RankSupport<'a> {
-
+impl RankSupport {
     const BLOCK_SIZE: usize = 512;
     const RELATIVE_RANK_BITS: usize = 9;
     const RELATIVE_RANK_MASK: usize = 0x1FF;
     const WORDS_PER_BLOCK: usize = 8;
     const WORD_MASK: usize = 0x7;
 
+    /// Builds a rank support structure for the parent bitvector.
     pub fn new(parent: &BitVector) -> RankSupport {
-        let samples: Vec<u64> = Vec::new();
-        // FIXME build samples
+        let blocks = (parent.len() + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+        let mut samples: Vec<u64> = Vec::with_capacity(2 * blocks);
+
+        let mut ones: usize = 0;
+        for block in 0..blocks {
+            samples.push(ones as u64);
+            let mut block_ones: usize = 0;
+            let mut relative_ranks: u64 = 0;
+            let limit = cmp::min(parent.len(), (block + 1) * Self::WORDS_PER_BLOCK);
+            for word in 0..limit {
+                block_ones += parent.data.word(block * Self::WORDS_PER_BLOCK + word).count_ones() as usize;
+                relative_ranks |= (block_ones << (word * Self::RELATIVE_RANK_BITS)) as u64;
+            }
+            // We only store relative ranks after words 0..7, so we need to clear the high bit.
+            relative_ranks &= bits::low_set((Self::WORDS_PER_BLOCK - 1) * Self::RELATIVE_RANK_BITS) as u64;
+            samples.push(relative_ranks);
+            ones += block_ones;
+        }
+
         RankSupport {
-            parent: parent,
             samples: samples,
         }
     }
 
-    pub fn rank(&self, index: usize) -> usize {
+    /// Returns the number of 512-bit blocks in the bitvector.
+    pub fn blocks(&self) -> usize {
+        self.samples.len() / 2
+    }
+
+    /// Returns the rank at the specified index of the bitvector.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent`: The parent bitvector.
+    /// * `index`: Index in the binary array or value in the integer array.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `index >= parent.len()`.
+    pub fn rank(&self, parent: &BitVector, index: usize) -> usize {
         let block = index / Self::BLOCK_SIZE;
         let (word, offset) = bits::split_offset(index);
 
@@ -76,7 +106,7 @@ impl<'a> RankSupport<'a> {
         let word_start = (self.samples[2 * block + 1] >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;
 
         // Relative rank within the word.
-        let within_word = (self.parent.data.word(word) & bits::low_set(offset)).count_ones() as usize;
+        let within_word = (parent.data.word(word) & bits::low_set(offset)).count_ones() as usize;
 
         block_start + word_start + within_word
     }
@@ -84,8 +114,28 @@ impl<'a> RankSupport<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME impl: SerializeSupport
-// FIXME we need a variant where we provide the parent reference during loading
+impl Serialize for RankSupport {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.samples.serialize_header(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.samples.serialize_body(writer)?;
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let samples = Vec::<u64>::load(reader)?;
+        Ok(RankSupport {
+            samples: samples,
+        })
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        self.samples.size_in_bytes()
+    }
+}
 
 //-----------------------------------------------------------------------------
 

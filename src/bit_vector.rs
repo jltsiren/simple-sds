@@ -1,8 +1,8 @@
 //! An immutable binary array supporting rank, select, and related queries.
 
+use crate::bit_vector::rank_support::RankSupport;
 ///use crate::ops::{BitVec, Rank, Select, Complement};
-//use crate::bit_vector::rank_support::RankSupport;
-use crate::ops::{BitVec};
+use crate::ops::{BitVec, Rank};
 use crate::raw_vector::{RawVector, GetRaw, PushRaw};
 use crate::serialize::Serialize;
 
@@ -36,7 +36,7 @@ mod tests;
 pub struct BitVector {
     ones: usize,
     data: RawVector,
-//    rank: Option<RankSupport>,
+    rank: Option<RankSupport>,
 }
 
 //-----------------------------------------------------------------------------
@@ -129,7 +129,26 @@ impl<'a> BitVec<'a> for BitVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME Rank
+impl<'a> Rank<'a> for BitVector {
+    fn supports_rank(&self) -> bool {
+        self.rank != None
+    }
+
+    fn enable_rank(&mut self) {
+        if !self.supports_rank() {
+            let rank_support = RankSupport::new(self);
+            self.rank = Some(rank_support);
+        }
+    }
+
+    fn rank(&self, index: usize) -> usize {
+        if index >= self.len() {
+            return self.count_ones();
+        }
+        let rank_support = self.rank.as_ref().unwrap();
+        rank_support.rank(self, index)
+    }
+}
 
 //-----------------------------------------------------------------------------
 
@@ -149,24 +168,24 @@ impl Serialize for BitVector {
 
     fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.data.serialize(writer)?;
-//        self.rank.serialize(writer)?;
+        self.rank.serialize(writer)?;
         Ok(())
     }
 
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let ones = usize::load(reader)?;
         let data = RawVector::load(reader)?;
-//        let rank = Option<RankSupport>::load(reader)?;
-        Ok(BitVector {
+        let rank = Option::<RankSupport>::load(reader)?;
+        let result = BitVector {
             ones: ones,
             data: data,
-//            rank: rank,
-        })
+            rank: rank,
+        };
+        Ok(result)
     }
 
     fn size_in_bytes(&self) -> usize {
-//        self.ones.size_in_bytes() + self.data.size_in_bytes() + self.rank.size_in_bytes()
-        self.ones.size_in_bytes() + self.data.size_in_bytes()
+        self.ones.size_in_bytes() + self.data.size_in_bytes() + self.rank.size_in_bytes()
     }
 }
 
@@ -184,7 +203,7 @@ impl From<RawVector> for BitVector {
         BitVector {
             ones: ones,
             data: data,
-//            rank: None,
+            rank: None,
         }
     }
 }
@@ -207,7 +226,7 @@ impl FromIterator<bool> for BitVector {
         BitVector {
             ones: ones,
             data: data,
-//            rank: None,
+            rank: None,
         }
     }
 }
@@ -257,7 +276,7 @@ impl ExactSizeIterator for IntoIter {}
 
 impl FusedIterator for IntoIter {}
 
-impl IntoIterator for BitVector {
+impl<'a> IntoIterator for BitVector {
     type Item = bool;
     type IntoIter = IntoIter;
 

@@ -87,7 +87,7 @@ fn serialize_bit_vector() {
     }
 
     let original = BitVector::from(raw);
-    assert_eq!(original.size_in_bytes(), 152, "Invalid BitVector size in bytes");
+    assert_eq!(original.size_in_bytes(), 160, "Invalid BitVector size in bytes");
 
     let filename = serialize::temp_file_name("bit-vector");
     serialize::serialize_to(&original, &filename).unwrap();
@@ -98,16 +98,25 @@ fn serialize_bit_vector() {
     fs::remove_file(&filename).unwrap();
 }
 
-//-----------------------------------------------------------------------------
-
-// FIXME tests: Rank
-
-//-----------------------------------------------------------------------------
-
-// FIXME tests: Select, OneIter
+// FIXME large tests
+// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Complement, ZeroIter
+// FIXME tests: Rank + Serialize
+// FIXME large tests
+// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+
+//-----------------------------------------------------------------------------
+
+// FIXME tests: Select, OneIter + Serialize
+// FIXME large tests
+// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
+
+//-----------------------------------------------------------------------------
+
+// FIXME tests: Complement, ZeroIter + Serialize
+// FIXME large tests
+// FIXME benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
