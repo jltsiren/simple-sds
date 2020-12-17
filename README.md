@@ -32,4 +32,6 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 ## Notes
 
 * The included `.cargo/config.toml` sets the target CPU to `native`.
-* This crate assumes that `usize` is a 64-bit integer.
+* This crate is designed for the x86_64 architecture with the BMI2 instruction set (Intel Haswell / AMD Excavator or later).
+* Things may not work if the system is not little-endian or if `usize` is not 64-bit.
+* Some operations may be slow without the POPCNT, LZCNT, TZCNT, and PDEP instructions.

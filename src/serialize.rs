@@ -13,9 +13,14 @@
 //!
 //! There are currently three fundamental serialization types:
 //!
-//! * Element. Any 64-bit primitive type in native byte order. The header is empty and the body contains the value.
-//! * [`Vec`] of elements. The header stores the number of elements in the body as `usize`. The body stores the elements.
-//! * `Option<T: Serialize>`. The header stores the number of elements in the body as `usize`. The body stores `T` for `Some(T)` and is empty for `None`.
+//! * Element. Any 64-bit primitive type in native byte order.
+//!   The header is empty and the body contains the value.
+//! * [`Vec`] of elements.
+//!   The header stores the number of elements in the body as `usize`.
+//!   The body stores the elements.
+//! * `Option<T: Serialize>`.
+//!   The header stores the number of elements in the body as `usize`.
+//!   The body stores `T` for `Some(T)` and is empty for `None`.
 //!
 //! # Writer structures
 //!

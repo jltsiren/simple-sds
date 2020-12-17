@@ -15,6 +15,8 @@ const INDEX_SHIFT: usize = 6;
 // Bit mask for transforming a bit offset into an offset in `u64`.
 const OFFSET_MASK: usize = 0b111111;
 
+//-----------------------------------------------------------------------------
+
 /// Returns an integer with the lowest `n` bits set.
 ///
 /// Behavior is undefined if `n > 64`.
@@ -61,6 +63,56 @@ pub fn bit_len(n: u64) -> usize {
         _ => WORD_BITS - (n.leading_zeros() as usize),
     }
 }
+
+// FIXME tests
+/// Returns the bit offset of the set bit of specified rank.
+///
+/// Behavior is undefined if `rank >= n.count_ones()`.
+///
+/// # Arguments
+///
+/// * `n`: An integer.
+/// * `rank`: Rank of the set bit we want to find.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::select(0b00100001_00010000, 0), 4);
+/// assert_eq!(bits::select(0b00100001_00010000, 1), 8);
+/// assert_eq!(bits::select(0b00100001_00010000, 2), 13);
+/// ```
+pub fn select(n: u64, rank: usize) -> usize {
+    // The first argument to `__pdep_u64` has a single 1 at bit offset `rank`. The
+    // number `n` we are interested in is used as a mask. PDEP takes low-order bits
+    // from the value and places them to the offsets specified by the mask. In
+    // particular, the only 1 is placed to the bit offset of the set bit of rank
+    // `rank` in `n`. We get the offset by counting the trailing zeros.
+    #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+    {
+        let pos = unsafe { core::arch::x86_64::_pdep_u64(1u64 << rank, n) };
+        pos.trailing_zeros() as usize
+    }
+
+    // TODO: A better implementation for ARM.
+
+    // This is stupid and slow, but it's good enough fallback for now.
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
+    {
+        let mut offset: usize = 0;
+        let mut ones: usize = 0;
+        loop {
+            ones += ((n >> offset) & 1) as usize;
+            if ones > rank {
+                return offset;
+            }
+            offset += 1;
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
 
 /// Returns the number of bits that can be stored in `n` integers of type `u64`.
 ///
@@ -142,6 +194,26 @@ pub fn filler_value(value: bool) -> u64 {
 pub fn split_offset(bit_offset: usize) -> (usize, usize) {
     (bit_offset >> INDEX_SHIFT, bit_offset & OFFSET_MASK)
 }
+
+/// Combines an index in an array of `u64` and an offset within the integer into a bit offset.
+///
+/// # Arguments
+///
+/// * `index`: Array index.
+/// * `offset`: Offset within the integer.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::bit_offset(1, 59), 123);
+/// ```
+pub fn bit_offset(index: usize, offset: usize) -> usize {
+    (index << INDEX_SHIFT) + offset
+}
+
+//-----------------------------------------------------------------------------
 
 /// Writes an integer into a bit array implemented as an array of `u64` values.
 ///
@@ -291,9 +363,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn environment() {
         assert_eq!(mem::size_of::<usize>(), 8, "Things may not work if usize is not 64 bits");
-//        assert_eq!(cfg!(target_endian), "little", "Only little-endian systems are supported");
+        assert!(cfg!(target_endian = "little"), "Things may not work on a big-endian system");
+        assert!(cfg!(target_arch = "x86_64"), "Things may not work on architectures other than x86_64");
+
+        assert!(cfg!(target_feature = "popcnt"), "Performance may be worse without the POPCNT instruction");
+        assert!(cfg!(target_feature = "lzcnt"), "Performance may be worse without the LZCNT instruction");
+        assert!(cfg!(target_feature = "bmi1"), "Performance may be worse without the TZCNT instruction from BMI1");
+        assert!(cfg!(target_feature = "bmi2"), "Performance may be worse without the PDEP instruction from BMI2");
     }
 }
 

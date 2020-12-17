@@ -116,7 +116,7 @@ fn double_ended_iterator() {
 #[test]
 fn serialize_bitvector() {
     let original = random_vector(2137);
-    assert_eq!(original.size_in_bytes(), 304, "Invalid BitVector size in bytes");
+    assert_eq!(original.size_in_bytes(), 312, "Invalid BitVector size in bytes");
 
     let filename = serialize::temp_file_name("bitvector");
     serialize::serialize_to(&original, &filename).unwrap();
@@ -134,7 +134,7 @@ fn large_bitvector() {
     for (index, value) in original.iter().enumerate() {
         assert_eq!(value, original.get(index), "Invalid value {} in the bitvector", index);
     }
-    assert_eq!(original.size_in_bytes(), 1234448, "Invalid BitVector size in bytes");
+    assert_eq!(original.size_in_bytes(), 1234456, "Invalid BitVector size in bytes");
 
     let filename = serialize::temp_file_name("large-bitvector");
     serialize::serialize_to(&original, &filename).unwrap();
@@ -177,7 +177,7 @@ fn nonempty_rank() {
 fn serialize_rank() {
     let mut original = random_vector(1921);
     original.enable_rank();
-    assert_eq!(original.size_in_bytes(), 352, "Invalid BitVector size with rank support");
+    assert_eq!(original.size_in_bytes(), 360, "Invalid BitVector size with rank support");
 
     let filename = serialize::temp_file_name("bitvector-rank");
     serialize::serialize_to(&original, &filename).unwrap();
@@ -194,7 +194,7 @@ fn large_rank() {
     let mut original = random_vector(9871248);
     original.enable_rank();
     assert_eq!(original.rank(original.len()), original.count_ones(), "Invalid rank at vector size");
-    assert_eq!(original.size_in_bytes(), 1542432, "Invalid BitVector size in bytes");
+    assert_eq!(original.size_in_bytes(), 1542440, "Invalid BitVector size in bytes");
 
     let mut rank: usize = 0;
     for i in 0..original.len() {
@@ -215,13 +215,13 @@ fn large_rank() {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Select, OneIter + Serialize
+// FIXME tests: Select, OneIter, + Serialize
 // FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Complement, ZeroIter + Serialize
+// FIXME tests: Complement, ZeroIter, + Serialize
 // FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 

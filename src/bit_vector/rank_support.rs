@@ -2,14 +2,15 @@
 //!
 //! The structure is the same as `rank_support_v` in [SDSL](https://github.com/simongog/sdsl-lite):
 //!
-//! > Gog, Petri: Optimized succinct data structures for massive data.
-//! > Software: Practice and Experience, 2014.
-//! > [DOI: 10.1002/spe.2198](https://doi.org/10.1002/spe.2198)
+//! > Gog, Petri: Optimized succinct data structures for massive data.  
+//! > Software: Practice and Experience, 2014.  
+//! > DOI: [10.1002/spe.2198](https://doi.org/10.1002/spe.2198)
 //!
 //! The original version is called rank9:
 //!
-//! > Vigna: Broadword Implementation of Rank/Select Queries. WEA 2008.
-//! > [DOI: 10.1007/978-3-540-68552-4_12](https://doi.org/10.1007/978-3-540-68552-4_12)
+//! > Vigna: Broadword Implementation of Rank/Select Queries.  
+//! > WEA 2008.  
+//! > DOI: [10.1007/978-3-540-68552-4_12](https://doi.org/10.1007/978-3-540-68552-4_12)
 //!
 //! We divide the bitvector into blocks of 2^9 = 512 bits.
 //! Each block is further divided into 8 words of 64 bits each.

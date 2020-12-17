@@ -486,7 +486,7 @@ impl SetRaw for RawVector {
 impl GetRaw for RawVector {
     fn bit(&self, bit_offset: usize) -> bool {
         let (index, offset) = bits::split_offset(bit_offset);
-        (self.data[index] & (1u64 << offset)) != 0
+        ((self.data[index] >> offset) & 1) == 1
     }
 
     fn int(&self, bit_offset: usize, width: usize) -> u64 {
