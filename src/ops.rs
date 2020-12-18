@@ -515,20 +515,20 @@ pub trait AccessSub: SubElement {
 
 //-----------------------------------------------------------------------------
 
-/// An immutable structure that can be seen as a binary array or a sorted array of distinct integers.
+/// An immutable structure that can be seen as a bit array or a sorted array of distinct unsigned integers.
 ///
-/// Let `A` be the integer array and `B` the binary array.
+/// Let `A` be the integer array and `B` the bit array.
 /// `B[i] == true` is then equivalent to value `i` being present in array `A`.
 /// Indexes in both arrays are 0-based.
 ///
 /// Some operations deal with the complement of the bitvector.
-/// In the binary array interpretation, all bits in the complement vector are flipped.
+/// In the bit array interpretation, all bits in the complement vector are flipped.
 /// In the integer array interpretation, the complement contains the values in `0..self.len()` missing from the original.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{BitVec, Rank, Select};
+/// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
 /// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
 /// use simple_sds::bits;
 /// use std::cmp;
@@ -665,6 +665,16 @@ pub trait AccessSub: SubElement {
 ///             index: bv_index,
 ///         }
 ///     }
+/// }
+///
+/// impl<'a> PredSucc<'a> for NaiveBitVector {
+///     type OneIter = SelectIter<'a>;
+///
+///     fn supports_pred_succ(&self) -> bool {
+///         true
+///     }
+///
+///     fn enable_pred_succ(&mut self) {}
 ///
 ///     fn predecessor(&'a self, index: usize) -> Self::OneIter {
 ///         let mut result = Self::OneIter {
@@ -734,20 +744,24 @@ pub trait AccessSub: SubElement {
 /// bv.enable_select();
 /// assert!(bv.supports_select());
 /// assert_eq!(bv.select(2).next(), Some((2, 95)));
+/// let v: Vec<(usize, usize)> = bv.one_iter().collect();
+/// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
+///
+/// // PredSucc
+/// bv.enable_pred_succ();
+/// assert!(bv.supports_pred_succ());
 /// assert_eq!(bv.predecessor(0).next(), None);
 /// assert_eq!(bv.predecessor(1).next(), Some((0, 1)));
 /// assert_eq!(bv.predecessor(2).next(), Some((0, 1)));
 /// assert_eq!(bv.successor(122).next(), Some((3, 123)));
 /// assert_eq!(bv.successor(123).next(), Some((3, 123)));
 /// assert_eq!(bv.successor(124).next(), None);
-/// let v: Vec<(usize, usize)> = bv.one_iter().collect();
-/// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
 /// ```
 pub trait BitVec<'a> {
     /// Iterator type over the bit array.
     type Iter: Iterator<Item = bool>;
 
-    /// Returns the length of the binary array or the universe size of the integer array.
+    /// Returns the length of the bit array or the universe size of the integer array.
     fn len(&self) -> usize;
 
     /// Returns `true` if the bitvector is empty.
@@ -755,22 +769,22 @@ pub trait BitVec<'a> {
         self.len() == 0
     }
 
-    /// Returns the length of the integer array or the number of ones in the binary array.
+    /// Returns the length of the integer array or the number of ones in the bit array.
     ///
     /// Because the vector is immutable, the implementation should cache the value during construction.
     fn count_ones(&self) -> usize;
 
-    /// Reads a bit from the binary array.
+    /// Reads a bit from the bit array.
     ///
     /// In the integer array interpretation, returns `true` if value `index` is in the array.
     ///
     /// # Panics
     ///
-    /// May panic if `index` is not a valid index in the binary array.
+    /// May panic if `index` is not a valid index in the bit array.
     /// May panic from I/O errors.
     fn get(&self, index: usize) -> bool;
 
-    /// Returns an iterator over the binary array.
+    /// Returns an iterator over the bit array.
     ///
     /// See traits [`Select`] and [`Complement`] for other iterators.
     ///
@@ -798,7 +812,7 @@ pub trait Rank<'a>: BitVec<'a> {
     /// No effect if rank support has already been enabled.
     fn enable_rank(&mut self);
 
-    /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == true`.
+    /// Returns the number of indexes `i < index` in the bit array such that `self.get(i) == true`.
     ///
     /// In the integer array interpretation, returns the number of values smaller than `index`.
     /// The semantics of the query are the same as in [SDSL](https://github.com/simongog/sdsl-lite).
@@ -809,7 +823,7 @@ pub trait Rank<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     fn rank(&self, index: usize) -> usize;
 
-    /// Returns the number of indexes `i < index` in the binary array such that `self.get(i) == false`.
+    /// Returns the number of indexes `i < index` in the bit array such that `self.get(i) == false`.
     ///
     /// In the integer array interpretation, returns the number of missing values smaller than `index`.
     /// The semantics of the query are the same as in [SDSL](https://github.com/simongog/sdsl-lite).
@@ -825,7 +839,7 @@ pub trait Rank<'a>: BitVec<'a> {
 
 //-----------------------------------------------------------------------------
 
-/// Select / predecessor / successor queries on a bitvector.
+/// Select queries on a bitvector.
 ///
 /// Some bitvector types do not build rank/select support structures by default.
 /// After the vector has been built, select support can be enabled with `self.enable_select()`.
@@ -858,7 +872,8 @@ pub trait Select<'a>: BitVec<'a> {
     /// Returns an iterator at the specified index in the integer array.
     ///
     /// The iterator will return `None` if the index is out of bounds.
-    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == true` and `self.rank(i) == index`.
+    /// In the bit array interpretation, the iterator points to the set bit of the specified rank.
+    /// This means a bit array index `i` such that `self.get(i) == true` and `self.rank(i) == index`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
     ///
     /// # Panics
@@ -867,6 +882,31 @@ pub trait Select<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn select(&'a self, index: usize) -> Self::OneIter;
+}
+
+//-----------------------------------------------------------------------------
+
+/// Predecessor / successor queries on a bitvector.
+///
+/// Some bitvector types do not build rank/select support structures by default.
+/// After the vector has been built, predecessor/successor support can be enabled with `self.enable_pred_succ()`.
+/// This may also enable other support structures.
+///
+/// See [`BitVec`] for an example.
+pub trait PredSucc<'a>: BitVec<'a> {
+    /// Iterator type over (index, value) pairs in the integer array.
+    ///
+    /// The `Item` in the iterator is an (index, value) pair in the integer array.
+    /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
+    type OneIter: Iterator<Item = (usize, usize)>;
+
+    /// Returns `true` if predecessor/successor support has been enabled.
+    fn supports_pred_succ(&self) -> bool;
+
+    /// Enables predecessor/successor support for the vector.
+    ///
+    /// No effect if predecessor/successor support has already been enabled.
+    fn enable_pred_succ(&mut self);
 
     /// Returns an iterator at the largest `v <= value` in the integer array.
     ///
@@ -875,7 +915,7 @@ pub trait Select<'a>: BitVec<'a> {
     ///
     /// # Panics
     ///
-    /// May panic if select support has not been enabled.
+    /// May panic if predecessor/successor support has not been enabled.
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn predecessor(&'a self, value: usize) -> Self::OneIter;
@@ -887,7 +927,7 @@ pub trait Select<'a>: BitVec<'a> {
     ///
     /// # Panics
     ///
-    /// May panic if select support has not been enabled.
+    /// May panic if predecessor/successor support has not been enabled.
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
@@ -895,13 +935,12 @@ pub trait Select<'a>: BitVec<'a> {
 
 //-----------------------------------------------------------------------------
 
-/// Select / predecessor / successor queries on the complement of a bitvector.
+/// Select successor queries on the complement of a bitvector.
 ///
 /// Some bitvector types do not build rank/select support structures by default.
 /// After the vector has been built, select support for the complement can be enabled with `self.enable_complement()`.
 ///
 /// This trait is analogous to [`Select`].
-/// See [`BitVec`] for an example.
 pub trait Complement<'a>: BitVec<'a> {
     /// Iterator type over (index, value) pairs in the complement of the integer array.
     ///
@@ -938,30 +977,6 @@ pub trait Complement<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn complement_select(&'a self, index: usize) -> Self::ZeroIter;
-
-    /// Returns an iterator at the largest `v <= value` missing from the integer array.
-    ///
-    /// The iterator will return `None` if no such value exists.
-    /// In the bit array interpretation, the iterator points to the largest `i <= value` such that `self.get(i) == false`.
-    ///
-    /// # Panics
-    ///
-    /// May panic if select support has not been enabled for the complement.
-    /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
-    fn complement_predecessor(&'a self, value: usize) -> Self::ZeroIter;
-
-    /// Returns an iterator at the smallest `v >= value` missing from the integer array.
-    ///
-    /// The iterator will return `None` if no such value exists.
-    /// In the bit array interpretation, the iterator points to the smallest `i >= value` such that `self.get(i) == false`.
-    ///
-    /// # Panics
-    ///
-    /// May panic if select support has not been enabled for the complement.
-    /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
-    fn complement_successor(&'a self, value: usize) -> Self::ZeroIter;
 }
 
 //-----------------------------------------------------------------------------

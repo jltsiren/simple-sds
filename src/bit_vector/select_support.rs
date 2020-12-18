@@ -28,7 +28,8 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Element, Resize, Pack, BitVec};
+use crate::ops::{Element, Resize, Pack, Access, Push, BitVec, Select};
+use crate::raw_vector::GetRaw;
 use crate::serialize::Serialize;
 use crate::bits;
 
@@ -56,7 +57,10 @@ pub struct SelectSupport {
 
 impl SelectSupport {
     const SUPERBLOCK_SIZE: usize = 4096;
+    const SUPERBLOCK_MASK: usize = 0xFFF;
     const BLOCKS_IN_SUPERBLOCK: usize = 64;
+    const BLOCK_SIZE: usize = 64;
+    const BLOCK_MASK: usize = 0x3F;
 
     /// Returns the number superblocks in the bitvector.
     pub fn superblocks(&self) -> usize {
@@ -65,35 +69,147 @@ impl SelectSupport {
 
     /// Returns the number of long superblocks in the bitvector.
     pub fn long_superblocks(&self) -> usize {
-        self.long.len() / Self::SUPERBLOCK_SIZE
+        (self.long.len() + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE
     }
 
     /// Returns the number of short superblocks in the bitvector.
     pub fn short_superblocks(&self) -> usize {
-        self.short.len() / Self::BLOCKS_IN_SUPERBLOCK
+        (self.short.len() + Self::BLOCKS_IN_SUPERBLOCK - 1) / Self::BLOCKS_IN_SUPERBLOCK
     }
 
-    // FIXME document, example
-    pub fn new(parent: &BitVector) -> SelectSupport {
-//        let words = bits::bits_to_words(parent.len());
-        let superblocks = (parent.len() + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE;
-        let mut samples = IntVector::default(); samples.reserve(superblocks * 2);
-        let mut long = IntVector::default();
-        let mut short = IntVector::default();
-
-        // FIXME build using OneIter. collect SUPERBLOCK_SIZE + 1 ones at a time
-
-        let samples = samples.pack();
-        let long = long.pack();
-        let short = short.pack();
-        SelectSupport {
-            samples: samples,
-            long: long,
-            short: short,
+    // Append a superblock. The buffer should contain all elements in the superblock
+    // and either the first element in the next superblock or a past-the-end sentinel
+    // for the last superblock.
+    fn add_superblock(&mut self, buf: &[u64], long_superblock_min: usize) {
+        let len: usize = (buf[buf.len() - 1] - buf[0]) as usize;
+        let superblock_ptr: u64;
+        if len >= long_superblock_min {
+            superblock_ptr = (2 * self.long.len()) as u64;
+            for (index, value) in buf.iter().enumerate() {
+                if index + 1 < buf.len() {
+                    self.long.push(*value);
+                }
+            }
         }
+        else {
+            superblock_ptr = (2 * self.short.len() + 1) as u64;
+            for (index, value) in buf.iter().enumerate() {
+                if index + 1 < buf.len() && (index & Self::BLOCK_MASK) == 0 {
+                    self.short.push(value - buf[0]);
+                }
+            }
+        }
+        self.samples.push(buf[0]);
+        self.samples.push(superblock_ptr);
     }
 
-    // FIXME select()
+    /// Builds a select support structure for the parent bitvector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::select_support::SelectSupport;
+    ///
+    /// let mut data = vec![false, true, true, false, true, false, true, true, false, false, false];
+    /// let bv: BitVector = data.into_iter().collect();
+    /// let ss = SelectSupport::new(&bv);
+    /// assert_eq!(ss.superblocks(), 1);
+    /// assert_eq!(ss.long_superblocks(), 0);
+    /// assert_eq!(ss.short_superblocks(), 1);
+    /// ```
+    pub fn new(parent: &BitVector) -> SelectSupport {
+        let superblocks = (parent.count_ones() + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE;
+        let log4 = bits::bit_len(parent.len() as u64);
+        let log4 = log4 * log4;
+        let log4 = log4 * log4;
+
+        let mut result = SelectSupport {
+            samples: IntVector::default(),
+            long: IntVector::default(),
+            short: IntVector::default(),
+        };
+        result.samples.reserve(superblocks * 2);
+
+        // The buffer will hold one superblock and a sentinel value from the next superblock.
+        let mut buf: Vec<u64> = Vec::with_capacity(Self::SUPERBLOCK_SIZE + 1);
+        for (_, value) in parent.one_iter() {
+            buf.push(value as u64);
+            if buf.len() > Self::SUPERBLOCK_SIZE {
+                result.add_superblock(&buf, log4);
+                buf[0] = buf[Self::SUPERBLOCK_SIZE];
+                buf.resize(1, 0);
+            }
+        }
+        if buf.len() > 0 {
+            buf.push(parent.len() as u64);
+            result.add_superblock(&buf, log4);
+        }
+
+        result.samples = result.samples.pack();
+        result.long = result.long.pack();
+        result.short = result.short.pack();
+        result
+    }
+
+    /// Returns the value of the specified rank in the parent bitvector.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent`: The parent bitvector.
+    /// * `rank`: Index in the integer array or rank of a set bit in the bit array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::select_support::SelectSupport;
+    ///
+    /// let mut data = vec![false, true, true, false, true, false, true, true, false, false, false];
+    /// let bv: BitVector = data.into_iter().collect();
+    /// let ss = SelectSupport::new(&bv);
+    /// assert_eq!(ss.select(&bv, 0), 1);
+    /// assert_eq!(ss.select(&bv, 1), 2);
+    /// assert_eq!(ss.select(&bv, 4), 7);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if `rank >= parent.count_ones()`.
+    pub fn select(&self, parent: &BitVector, rank: usize) -> usize {
+        let (superblock, offset) = (rank / Self::SUPERBLOCK_SIZE, rank & Self::SUPERBLOCK_MASK);
+        let mut result: usize = self.samples.get(2 * superblock) as usize;
+        if offset == 0 {
+            return result;
+        }
+
+        let ptr = self.samples.get(2 * superblock + 1) as usize;
+        let (ptr, is_short) = (ptr / 2, ptr & 1);
+        if is_short == 0 {
+            result += self.long.get(ptr + offset) as usize;
+        } else {
+            let (block, mut relative_rank) = (offset / Self::BLOCK_SIZE, offset & Self::BLOCK_MASK);
+            result += self.short.get(ptr + block) as usize;
+            // Search within the block until we find the set bit of relative rank `relative_rank`
+            // from the start of the current word.
+            if relative_rank > 0 {
+                let (mut word, word_offset) = bits::split_offset(result);
+                let mut value: u64 = parent.data.word(word) & !bits::low_set(word_offset);
+                loop {
+                    let ones = value.count_ones() as usize;
+                    if ones > relative_rank {
+                        result = bits::bit_offset(word, bits::select(value, relative_rank));
+                        break;
+                    }
+                    relative_rank -= ones;
+                    word += 1;
+                    value = parent.data.word(word);
+                }
+            }
+        }
+
+        result
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -128,6 +244,6 @@ impl Serialize for SelectSupport {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: empty, non-empty, serialize
+// FIXME tests: empty, non-empty, with long blocks, serialize
 
 //-----------------------------------------------------------------------------

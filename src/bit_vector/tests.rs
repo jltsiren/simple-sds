@@ -215,13 +215,13 @@ fn large_rank() {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Select, OneIter, + Serialize
+// FIXME tests: Select, OneIter, PredSucc + Serialize
 // FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Complement, ZeroIter, + Serialize
+// FIXME tests: Complement, ZeroIter + Serialize
 // FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 

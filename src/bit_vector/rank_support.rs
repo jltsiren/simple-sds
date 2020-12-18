@@ -97,7 +97,7 @@ impl RankSupport {
     /// # Arguments
     ///
     /// * `parent`: The parent bitvector.
-    /// * `index`: Index in the binary array or value in the integer array.
+    /// * `index`: Index in the bit array or value in the integer array.
     ///
     /// # Examples
     ///

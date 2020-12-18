@@ -1,9 +1,8 @@
-//! An immutable binary array supporting rank, select, and related queries.
+//! An immutable bit array supporting rank, select, and related queries.
 
 use crate::bit_vector::rank_support::RankSupport;
 use crate::bit_vector::select_support::SelectSupport;
-///use crate::ops::{BitVec, Rank, Select, Complement};
-use crate::ops::{BitVec, Rank, Select};
+use crate::ops::{BitVec, Rank, Select, PredSucc};
 use crate::raw_vector::{RawVector, GetRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -19,20 +18,66 @@ mod tests;
 
 //-----------------------------------------------------------------------------
 
-// TODO: Usage example from BitVec trait
-/// An immutable binary array supporting, rank, select, and related queries.
+/// An immutable bit array supporting, rank, select, and related queries.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
-/// Because most queries require separate support structures, the binary array itself is immutable.
+/// Because most queries require separate support structures, the bit array itself is immutable.
 /// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
 /// The maximum length of the vector is `usize::MAX` bits.
 ///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
-/// * Queries and operations: [`Rank`], [`Select`], [`Complement`]
+/// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`], [`Complement`]
 /// * Serialization: [`Serialize`]
 ///
 /// See [`rank_support`] and [`select_support`] for algorithmic details on rank/select queries.
+/// Predecessor and successor queries depend on both support structures.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bit_vector::BitVector;
+/// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
+/// use simple_sds::raw_vector::{RawVector, SetRaw};
+///
+/// let mut data = RawVector::with_len(137, false);
+/// data.set_bit(1, true); data.set_bit(33, true); data.set_bit(95, true); data.set_bit(123, true);
+/// let mut bv = BitVector::from(data);
+///
+/// // BitVec
+/// assert_eq!(bv.len(), 137);
+/// assert!(!bv.is_empty());
+/// assert_eq!(bv.count_ones(), 4);
+/// assert!(bv.get(33));
+/// assert!(!bv.get(34));
+/// for (index, value) in bv.iter().enumerate() {
+///     assert_eq!(value, bv.get(index));
+/// }
+///
+/// // Rank
+/// bv.enable_rank();
+/// assert!(bv.supports_rank());
+/// assert_eq!(bv.rank(33), 1);
+/// assert_eq!(bv.rank(34), 2);
+/// assert_eq!(bv.complement_rank(65), 63);
+///
+/// // Select
+/// bv.enable_select();
+/// assert!(bv.supports_select());
+/// assert_eq!(bv.select(2).next(), Some((2, 95)));
+/// let v: Vec<(usize, usize)> = bv.one_iter().collect();
+/// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
+///
+/// // PredSucc
+/// bv.enable_pred_succ();
+/// assert!(bv.supports_pred_succ());
+/// assert_eq!(bv.predecessor(0).next(), None);
+/// assert_eq!(bv.predecessor(1).next(), Some((0, 1)));
+/// assert_eq!(bv.predecessor(2).next(), Some((0, 1)));
+/// assert_eq!(bv.successor(122).next(), Some((3, 123)));
+/// assert_eq!(bv.successor(123).next(), Some((3, 123)));
+/// assert_eq!(bv.successor(124).next(), None);
+/// ```
 ///
 /// # Notes
 ///
@@ -165,7 +210,7 @@ impl<'a> Rank<'a> for BitVector {
 /// This can be interpreted as:
 ///
 /// * `(index, value)` or `(i, select(i))` in the integer array; or
-/// * `(rank(j), j)` in the binary array with `j` such that `self.get(j) == true`.
+/// * `(rank(j), j)` in the bit array with `j` such that `self.get(j) == true`.
 ///
 /// Note that `index` is not always the index provided by [`Iterator::enumerate`].
 /// Many [`Select`] queries create iterators in the middle of the bitvector.
@@ -197,6 +242,17 @@ pub struct OneIter<'a> {
     next: (usize, usize),
     // The first (i, candidate for select(i)) we should not visit.
     limit: (usize, usize),
+}
+
+impl<'a> OneIter<'a> {
+    // Build an empty iterator for the parent bitvector.
+    fn empty_iter(parent: &'a BitVector) -> OneIter<'a> {
+        OneIter {
+            parent: parent,
+            next: (parent.count_ones(), parent.len()),
+            limit: (parent.count_ones(), parent.len()),
+        }
+    }
 }
 
 impl<'a> Iterator for OneIter<'a> {
@@ -276,19 +332,51 @@ impl<'a> Select<'a> for BitVector {
         }
     }
 
-    fn select(&'a self, _: usize) -> Self::OneIter {
-        // FIXME
-        self.one_iter()
+    fn select(&'a self, index: usize) -> Self::OneIter {
+         if index >= self.count_ones() {
+             Self::OneIter::empty_iter(self)
+        } else {
+            let select_support = self.select.as_ref().unwrap();
+            let value = select_support.select(self, index);
+            Self::OneIter {
+                parent: self,
+                next: (index, value),
+                limit: (self.count_ones(), self.len()),
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl<'a> PredSucc<'a> for BitVector {
+    type OneIter = OneIter<'a>;
+
+    fn supports_pred_succ(&self) -> bool {
+        self.rank != None && self.select != None
     }
 
-    fn predecessor(&'a self, _: usize) -> Self::OneIter {
-        // FIXME
-        self.one_iter()
+    fn enable_pred_succ(&mut self) {
+        self.enable_rank();
+        self.enable_select();
     }
 
-    fn successor(&'a self, _: usize) -> Self::OneIter {
-        // FIXME
-        self.one_iter()
+    fn predecessor(&'a self, index: usize) -> Self::OneIter {
+        let rank = self.rank(index + 1);
+        if rank == 0 {
+            Self::OneIter::empty_iter(self)
+        } else {
+            self.select(rank - 1)
+        }
+    }
+
+    fn successor(&'a self, index: usize) -> Self::OneIter {
+        let rank = self.rank(index);
+        if rank >= self.count_ones() {
+            Self::OneIter::empty_iter(self)
+        } else {
+            self.select(rank)
+        }
     }
 }
 
