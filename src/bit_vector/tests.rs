@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::raw_vector::{RawVector, GetRaw, SetRaw, PushRaw};
+use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::serialize;
 

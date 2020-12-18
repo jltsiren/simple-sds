@@ -3,7 +3,7 @@
 use crate::bit_vector::rank_support::RankSupport;
 use crate::bit_vector::select_support::SelectSupport;
 use crate::ops::{BitVec, Rank, Select, PredSucc};
-use crate::raw_vector::{RawVector, GetRaw, PushRaw};
+use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
 
@@ -38,7 +38,7 @@ mod tests;
 /// ```
 /// use simple_sds::bit_vector::BitVector;
 /// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
-/// use simple_sds::raw_vector::{RawVector, SetRaw};
+/// use simple_sds::raw_vector::{RawVector, AccessRaw};
 ///
 /// let mut data = RawVector::with_len(137, false);
 /// data.set_bit(1, true); data.set_bit(33, true); data.set_bit(95, true); data.set_bit(123, true);

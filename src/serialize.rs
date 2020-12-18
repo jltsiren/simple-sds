@@ -18,7 +18,7 @@
 //! * [`Vec`] of elements.
 //!   The header stores the number of elements in the body as `usize`.
 //!   The body stores the elements.
-//! * `Option<T: Serialize>`.
+//! * `Option<T>`.
 //!   The header stores the number of elements in the body as `usize`.
 //!   The body stores `T` for `Some(T)` and is empty for `None`.
 //!

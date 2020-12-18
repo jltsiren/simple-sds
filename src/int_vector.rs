@@ -1,7 +1,7 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::raw_vector::{RawVector, RawVectorWriter, SetRaw, GetRaw, PushRaw, PopRaw};
+use crate::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
 use crate::serialize::{Serialize, Writer, FlushMode};
 use crate::bits;
 

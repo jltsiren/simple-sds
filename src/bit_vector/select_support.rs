@@ -29,7 +29,7 @@
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
 use crate::ops::{Element, Resize, Pack, Access, Push, BitVec, Select};
-use crate::raw_vector::GetRaw;
+use crate::raw_vector::AccessRaw;
 use crate::serialize::Serialize;
 use crate::bits;
 

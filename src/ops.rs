@@ -529,7 +529,7 @@ pub trait AccessSub: SubElement {
 ///
 /// ```
 /// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
-/// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+/// use simple_sds::raw_vector::{RawVector, AccessRaw};
 /// use simple_sds::bits;
 /// use std::cmp;
 ///

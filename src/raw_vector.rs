@@ -9,77 +9,17 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
-/// Write bits and variable-width integers to a bit array.
+/// Read/write bits and variable-width integers from/to a bit array.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::raw_vector::SetRaw;
+/// use simple_sds::raw_vector::AccessRaw;
 /// use simple_sds::bits;
 ///
 /// struct Example(Vec<u64>);
 ///
-/// impl SetRaw for Example {
-///     fn set_bit(&mut self, bit_offset: usize, value: bool) {
-///         let (index, offset) = bits::split_offset(bit_offset);
-///         self.0[index] &= !(1u64 << offset);
-///         self.0[index] |= (value as u64) << offset;
-///     }
-///
-///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-///         bits::write_int(&mut self.0, bit_offset, value, width);
-///     }
-/// }
-///
-/// let mut example = Example(vec![0u64; 2]);
-/// example.set_int(4, 0x33, 8);
-/// example.set_int(63, 2, 2);
-/// example.set_bit(72, true);
-/// assert_eq!(example.0[0], 0x330);
-/// assert_eq!(example.0[1], 0x101);
-/// ```
-pub trait SetRaw {
-    /// Writes a bit to the container.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Offset in the bit array.
-    /// * `value`: The value of the bit.
-    ///
-    /// # Panics
-    ///
-    /// May panic if `bit_offset` is not a valid offset in the bit array.
-    /// May panic from I/O errors.
-    fn set_bit(&mut self, bit_offset: usize, value: bool);
-
-    /// Writes an integer to the container.
-    ///
-    /// Behavior is undefined if `width > 64`.
-    ///
-    /// # Arguments
-    ///
-    /// * `bit_offset`: Starting offset in the bit array.
-    /// * `value`: The integer to be written.
-    /// * `width`: The width of the integer in bits.
-    ///
-    /// # Panics
-    ///
-    /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
-    /// May panic from I/O errors.
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
-}
-
-/// Read bits and variable-width integers from a bit array.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::raw_vector::GetRaw;
-/// use simple_sds::bits;
-///
-/// struct Example(Vec<u64>);
-///
-/// impl GetRaw for Example {
+/// impl AccessRaw for Example {
 ///     fn bit(&self, bit_offset: usize) -> bool {
 ///         let (index, offset) = bits::split_offset(bit_offset);
 ///         (self.0[index] & (1u64 << offset)) != 0
@@ -92,17 +32,39 @@ pub trait SetRaw {
 ///     fn word(&self, index: usize) -> u64 {
 ///         self.0[index]
 ///     }
+///
+///     fn is_mutable(&self) -> bool {
+///         true
+///     }
+///
+///     fn set_bit(&mut self, bit_offset: usize, value: bool) {
+///         let (index, offset) = bits::split_offset(bit_offset);
+///         self.0[index] &= !(1u64 << offset);
+///         self.0[index] |= (value as u64) << offset;
+///     }
+///
+///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+///         bits::write_int(&mut self.0, bit_offset, value, width);
+///     }
 /// }
 ///
-/// let example = Example(vec![0x330u64, 0x101u64]);
+/// let mut example = Example(vec![0u64; 2]);
+/// assert!(example.is_mutable());
+///
+/// example.set_int(4, 0x33, 8);
+/// example.set_int(63, 2, 2);
+/// example.set_bit(72, true);
+/// assert_eq!(example.0[0], 0x330);
+/// assert_eq!(example.0[1], 0x101);
+///
 /// assert!(example.bit(72));
 /// assert!(!example.bit(68));
 /// assert_eq!(example.int(4, 8), 0x33);
 /// assert_eq!(example.int(63, 2), 2);
 /// assert_eq!(example.word(1), 0x101);
 /// ```
-pub trait GetRaw {
-    /// Reads a bit from the container.
+pub trait AccessRaw {
+    /// Reads a bit from the array.
     ///
     /// # Panics
     ///
@@ -134,6 +96,42 @@ pub trait GetRaw {
     /// May panic if `index * 64` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn word(&self, index: usize) -> u64;
+
+    /// Returns `true` if the underlying data is mutable.
+    ///
+    /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
+    fn is_mutable(&self) -> bool;
+
+    /// Writes a bit to the container.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Offset in the bit array.
+    /// * `value`: The value of the bit.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `bit_offset` is not a valid offset in the bit array.
+    /// May panic if the underlying data is not mutable.
+    /// May panic from I/O errors.
+    fn set_bit(&mut self, bit_offset: usize, value: bool);
+
+    /// Writes an integer to the container.
+    ///
+    /// Behavior is undefined if `width > 64`.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_offset`: Starting offset in the bit array.
+    /// * `value`: The integer to be written.
+    /// * `width`: The width of the integer in bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
+    /// May panic if the underlying data is not mutable.
+    /// May panic from I/O errors.
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
 
 //-----------------------------------------------------------------------------
@@ -287,7 +285,7 @@ impl RawVector {
     /// # Examples
     ///
     /// ```
-    /// use simple_sds::raw_vector::{RawVector, SetRaw};
+    /// use simple_sds::raw_vector::{RawVector, AccessRaw};
     ///
     /// let mut v = RawVector::with_len(137, false);
     /// assert_eq!(v.count_ones(), 0);
@@ -365,7 +363,7 @@ impl RawVector {
     /// # Examples
     ///
     /// ```
-    /// use simple_sds::raw_vector::{RawVector, GetRaw, SetRaw};
+    /// use simple_sds::raw_vector::{RawVector, AccessRaw};
     ///
     /// let mut original = RawVector::with_len(137, false);
     /// original.set_bit(1, true); original.set_bit(33, true);
@@ -471,19 +469,7 @@ impl RawVector {
 
 //-----------------------------------------------------------------------------
 
-impl SetRaw for RawVector {
-    fn set_bit(&mut self, bit_offset: usize, value: bool) {
-        let (index, offset) = bits::split_offset(bit_offset);
-        self.data[index] &= !(1u64 << offset);
-        self.data[index] |= (value as u64) << offset;
-    }
-
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-        bits::write_int(&mut self.data, bit_offset, value, width);
-    }
-}
-
-impl GetRaw for RawVector {
+impl AccessRaw for RawVector {
     fn bit(&self, bit_offset: usize) -> bool {
         let (index, offset) = bits::split_offset(bit_offset);
         ((self.data[index] >> offset) & 1) == 1
@@ -495,6 +481,20 @@ impl GetRaw for RawVector {
 
     fn word(&self, index: usize) -> u64 {
         self.data[index]
+    }
+
+    fn is_mutable(&self) -> bool {
+        true
+    }
+
+    fn set_bit(&mut self, bit_offset: usize, value: bool) {
+        let (index, offset) = bits::split_offset(bit_offset);
+        self.data[index] &= !(1u64 << offset);
+        self.data[index] |= (value as u64) << offset;
+    }
+
+    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
 
