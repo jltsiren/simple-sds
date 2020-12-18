@@ -82,6 +82,7 @@ mod tests;
 /// # Notes
 ///
 /// * `BitVector` never panics from I/O errors.
+/// * [`Select::one_iter`] for `BitVector` does not need select support.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitVector {
     ones: usize,
@@ -216,7 +217,7 @@ impl<'a> Rank<'a> for BitVector {
 /// Many [`Select`] queries create iterators in the middle of the bitvector.
 ///
 /// The bitvector is assumed to be at least somewhat dense.
-/// If the frequency of ones is o(1 / 64), iteration may be inefficient.
+/// If the frequency of ones is less than 1/64, iteration may be inefficient.
 ///
 /// # Examples
 ///

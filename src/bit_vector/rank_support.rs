@@ -171,7 +171,7 @@ mod tests {
     use super::*;
     use crate::bit_vector::BitVector;
     use crate::ops::BitVec;
-    use crate::raw_vector::{RawVector, GetRaw, PushRaw};
+    use crate::raw_vector::{RawVector, PushRaw};
     use crate::serialize;
     use std::fs;
     use rand::Rng;
@@ -204,7 +204,7 @@ mod tests {
         let mut count: usize = 0;
         for i in 0..bv.len() {
             assert_eq!(rs.rank(&bv, i), count, "Invalid rank({}) at {}", i, len);
-            count += data.bit(i) as usize;
+            count += bv.get(i) as usize;
         }
     }
 
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_rank_support() {
+    fn serialize() {
         let data = raw_vector(5187);
         let bv = BitVector::from(data);
         let original = RankSupport::new(&bv);

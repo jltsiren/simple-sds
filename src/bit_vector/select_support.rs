@@ -87,7 +87,7 @@ impl SelectSupport {
             superblock_ptr = (2 * self.long.len()) as u64;
             for (index, value) in buf.iter().enumerate() {
                 if index + 1 < buf.len() {
-                    self.long.push(*value);
+                    self.long.push(*value - buf[0]);
                 }
             }
         }
@@ -244,6 +244,85 @@ impl Serialize for SelectSupport {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: empty, non-empty, with long blocks, serialize
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bit_vector::BitVector;
+    use crate::ops::BitVec;
+    use crate::raw_vector::{RawVector, PushRaw};
+    use crate::serialize;
+    use std::fs;
+    use rand::distributions::{Bernoulli, Distribution};
+
+    #[test]
+    fn empty_vector() {
+        let bv = BitVector::from(RawVector::new());
+        let ss = SelectSupport::new(&bv);
+        assert_eq!(ss.superblocks(), 0, "Non-zero select superblocks for empty vector");
+        assert_eq!(ss.long_superblocks(), 0, "Non-zero long superblocks for empty vector");
+        assert_eq!(ss.short_superblocks(), 0, "Non-zero short superblocks for empty vector");
+    }
+
+    fn with_density(len: usize, density: f64) -> RawVector {
+        let mut data = RawVector::with_capacity(len);
+        let mut rng = rand::thread_rng();
+        let dist = Bernoulli::new(density).unwrap();
+        let mut iter = dist.sample_iter(&mut rng);
+        while data.len() < len {
+            data.push_bit(iter.next().unwrap());
+        }
+        assert_eq!(data.len(), len, "Invalid length for random RawVector");
+        data
+    }
+
+    fn test_vector(len: usize, density: f64) {
+        let data = with_density(len, density);
+        let bv = BitVector::from(data.clone());
+        let ss = SelectSupport::new(&bv);
+        assert_eq!(bv.len(), len, "test_vector({}, {}): invalid bitvector length", len, density);
+
+        let superblocks = ss.superblocks();
+        let long = ss.long_superblocks();
+        let short = ss.short_superblocks();
+        assert_eq!(superblocks, long + short, "test_vector({}, {}): block counts do not match", len, density);
+
+        // This test assumes that the number of ones is within 6 stdevs of the expected.
+        let ones: f64 = bv.count_ones() as f64;
+        let expected: f64 = len as f64 * density;
+        let stdev: f64 = (len as f64 * density * (1.0 - density)).sqrt();
+        assert!(ones >= expected - 6.0 * stdev && ones <= expected + 6.0 * stdev,
+            "test_vector({}, {}): unexpected number of ones: {}", len, density, ones);
+
+        let mut next: usize = 0;
+        for i in 0..bv.count_ones() {
+            let value = ss.select(&bv, i);
+            assert!(value >= next, "test_vector({}, {}): select({}) == {}, expected at least {}", len, density, i, value, next);
+            assert!(bv.get(value), "test_vector({}, {}): select({}) == {} is not set", len, density, i, value);
+            next = value + 1;
+        }
+    }
+
+    #[test]
+    fn non_empty_vector() {
+        test_vector(8131, 0.1);
+        test_vector(8192, 0.5);
+        test_vector(8266, 0.9);
+    }
+
+    #[test]
+    fn serialize() {
+        let data = with_density(5187, 0.5);
+        let bv = BitVector::from(data);
+        let original = SelectSupport::new(&bv);
+
+        let filename = serialize::temp_file_name("select-support");
+        serialize::serialize_to(&original, &filename).unwrap();
+
+        let copy: SelectSupport = serialize::load_from(&filename).unwrap();
+        assert_eq!(copy, original, "Serialization changed the SelectSupport");
+
+        fs::remove_file(&filename).unwrap();
+    }
+}
 
 //-----------------------------------------------------------------------------

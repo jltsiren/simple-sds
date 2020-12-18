@@ -64,7 +64,6 @@ pub fn bit_len(n: u64) -> usize {
     }
 }
 
-// FIXME tests
 /// Returns the bit offset of the set bit of specified rank.
 ///
 /// Behavior is undefined if `rank >= n.count_ones()`.
@@ -322,7 +321,23 @@ mod tests {
     }
 
     #[test]
-    fn read_write_test() {
+    fn select_test() {
+        let values: Vec<(u64, usize, usize)> = vec![
+        (0x0000_0000_0000_0001, 0, 0),
+        (0x8000_0000_0000_0000, 0, 63),
+        (0x8000_0000_0000_0001, 0, 0),
+        (0x8000_0000_0000_0001, 1, 63),
+        (0x8000_0010_0000_0001, 0, 0),
+        (0x8000_0010_0000_0001, 1, 36),
+        (0x8000_0010_0000_0001, 2, 63),
+        ];
+        for (value, rank, result) in values.iter() {
+            assert_eq!(select(*value, *rank), *result, "select({:X}, {}) failed", value, rank);
+        }
+    }
+
+    #[test]
+    fn read_write() {
         let mut correct: Vec<(u64, u64, u64, u64)> = Vec::new();
         let mut rng = rand::thread_rng();
         for _ in 0..64 {

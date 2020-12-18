@@ -1,39 +1,117 @@
 use super::*;
 
-///use crate::ops::{BitVec, Rank, Select, Complement};
-use crate::ops::{BitVec};
 use crate::raw_vector::{RawVector, GetRaw, SetRaw, PushRaw};
 use crate::serialize::Serialize;
-use crate::bits;
 use crate::serialize;
 
 use std::iter::{DoubleEndedIterator, ExactSizeIterator};
-use std::{cmp, fs};
+use std::fs;
 
-use rand::Rng;
+use rand::distributions::{Bernoulli, Distribution};
 
 //-----------------------------------------------------------------------------
 
-fn random_raw_vector(len: usize) -> RawVector {
+fn random_raw_vector(len: usize, density: f64) -> RawVector {
     let mut data = RawVector::with_capacity(len);
     let mut rng = rand::thread_rng();
+    let dist = Bernoulli::new(density).unwrap();
+    let mut iter = dist.sample_iter(&mut rng);
     while data.len() < len {
-        let value: u64 =  rng.gen();
-        let bits = cmp::min(bits::WORD_BITS, len - data.len());
-        data.push_int(value, bits);
+        data.push_bit(iter.next().unwrap());
     }
     assert_eq!(data.len(), len, "Invalid length for random RawVector");
     data
 }
 
-fn random_vector(len: usize) -> BitVector {
-    let data = random_raw_vector(len);
+fn random_vector(len: usize, density: f64) -> BitVector {
+    let data = random_raw_vector(len, density);
     let bv = BitVector::from(data);
     assert_eq!(bv.len(), len, "Invalid length for random BitVector");
+
+    // This test assumes that the number of ones is within 6 stdevs of the expected.
+    let ones: f64 = bv.count_ones() as f64;
+    let expected: f64 = len as f64 * density;
+    let stdev: f64 = (len as f64 * density * (1.0 - density)).sqrt();
+    assert!(ones >= expected - 6.0 * stdev && ones <= expected + 6.0 * stdev,
+        "random_vector({}, {}): unexpected number of ones: {}", len, density, ones);
+
     bv
 }
 
+// Each region is specified as (ones, density).
+// The region continues with unset bits until we would generate the next set bit.
+fn non_uniform_vector(regions: &[(usize, f64)]) -> BitVector {
+    let mut data = RawVector::new();
+    let mut rng = rand::thread_rng();
+    let mut total_ones: usize = 0;
+    for (ones, density) in regions.iter() {
+        let dist = Bernoulli::new(*density).unwrap();
+        let mut generated: usize = 0;
+        let mut iter = dist.sample_iter(&mut rng);
+        loop {
+            let bit = iter.next().unwrap();
+            generated += bit as usize;
+            if generated > *ones {
+                break;
+            }
+            data.push_bit(bit);
+        }
+        total_ones += *ones;
+    }
+
+    let bv = BitVector::from(data);
+    assert_eq!(bv.count_ones(), total_ones, "Invalid number of ones in the non-uniform BitVector");
+
+    bv
+}
+
+fn try_serialize(bv: &BitVector, base_name: &str, expected_size: Option<usize>) {
+    if let Some(bytes) = expected_size {
+        assert_eq!(bv.size_in_bytes(), bytes, "Invalid BitVector size in bytes");
+    }
+
+    let filename = serialize::temp_file_name(base_name);
+    serialize::serialize_to(bv, &filename).unwrap();
+
+    let copy: BitVector = serialize::load_from(&filename).unwrap();
+    assert_eq!(copy, *bv, "Serialization changed the BitVector");
+
+    fs::remove_file(&filename).unwrap();
+}
+
 //-----------------------------------------------------------------------------
+
+fn try_iter(bv: &BitVector) {
+    assert_eq!(bv.iter().len(), bv.len(), "Invalid Iter length");
+
+    // Forward.
+    for (index, value) in bv.iter().enumerate() {
+        assert_eq!(value, bv.get(index), "Invalid value {} (forward)", index);
+    }
+
+    // Backward.
+    let mut index = bv.len();
+    let mut iter = bv.iter();
+    while let Some(value) = iter.next_back() {
+        index -= 1;
+        assert_eq!(value, bv.get(index), "Invalid value {} (backward)", index);
+    }
+
+    // Meet in the middle.
+    let mut next = 0;
+    let mut limit = bv.len();
+    let mut iter = bv.iter();
+    while iter.len() > 0 {
+        assert_eq!(iter.next(), Some(bv.get(next)), "Invalid value {} (forward, bidirectional)", next);
+        next += 1;
+        if iter.len() == 0 {
+            break;
+        }
+        limit -= 1;
+        assert_eq!(iter.next_back(), Some(bv.get(limit)), "Invalid value {} (backward, bidirectional)", limit);
+    }
+    assert_eq!(next, limit, "Iterator did not visit all values");
+}
 
 #[test]
 fn empty_vector() {
@@ -63,8 +141,8 @@ fn non_empty_vector() {
 }
 
 #[test]
-fn access_bitvector() {
-    let data = random_raw_vector(1791);
+fn access() {
+    let data = random_raw_vector(1791, 0.5);
     let bv = BitVector::from(data.clone());
     assert_eq!(bv.len(), data.len(), "Invalid bitvector length");
 
@@ -79,75 +157,44 @@ fn iterator_conversions() {
     let bv: BitVector = correct.iter().cloned().collect();
     assert_eq!(bv.len(), correct.len(), "Invalid length for a bitvector built from an iterator");
 
-    for (index, value) in bv.iter().enumerate() {
-        assert_eq!(value, correct[index], "Invalid value {} in the bitvector", index);
-    }
-
     let copy: Vec<bool> = bv.into_iter().collect();
     assert_eq!(copy, correct, "Iterator conversions changed the values");
 }
 
 #[test]
-fn double_ended_iterator() {
-    let bv = random_vector(1563);
-
-    let mut index = bv.len();
-    let mut iter = bv.iter();
-    while let Some(value) = iter.next_back() {
-        index -= 1;
-        assert_eq!(value, bv.get(index), "Invalid value {} when iterating backwards", index);
-    }
-
-    let mut next = 0;
-    let mut limit = bv.len();
-    let mut iter = bv.iter();
-    while iter.len() > 0 {
-        assert_eq!(iter.next(), Some(bv.get(next)), "Invalid value {} (forward)", next);
-        next += 1;
-        if iter.len() == 0 {
-            break;
-        }
-        limit -= 1;
-        assert_eq!(iter.next_back(), Some(bv.get(limit)), "Invalid value {} (backward)", limit);
-    }
-    assert_eq!(next, limit, "Iterator did not visit all values");
+fn iter() {
+    let bv = random_vector(1563, 0.5);
+    try_iter(&bv);
 }
 
 #[test]
-fn serialize_bitvector() {
-    let original = random_vector(2137);
-    assert_eq!(original.size_in_bytes(), 312, "Invalid BitVector size in bytes");
-
-    let filename = serialize::temp_file_name("bitvector");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: BitVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the BitVector");
-
-    fs::remove_file(&filename).unwrap();
+fn serialize() {
+    let bv = random_vector(2137, 0.5);
+    try_serialize(&bv, "bitvector", Some(312));
 }
 
 #[test]
 #[ignore]
-fn large_bitvector() {
-    let original = random_vector(9875321);
-    for (index, value) in original.iter().enumerate() {
-        assert_eq!(value, original.get(index), "Invalid value {} in the bitvector", index);
-    }
-    assert_eq!(original.size_in_bytes(), 1234456, "Invalid BitVector size in bytes");
-
-    let filename = serialize::temp_file_name("large-bitvector");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: BitVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the BitVector");
-
-    fs::remove_file(&filename).unwrap();
+fn large() {
+    let bv = random_vector(9875321, 0.5);
+    try_iter(&bv);
+    try_serialize(&bv, "large-bitvector", Some(1234456));
 }
 
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
+
+fn try_rank(bv: &BitVector) {
+    assert!(bv.supports_rank(), "Failed to enable rank support");
+    assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
+
+    let mut rank: usize = 0;
+    for i in 0..bv.len() {
+        assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
+        rank += bv.get(i) as usize;
+    }
+}
 
 #[test]
 fn empty_rank() {
@@ -160,63 +207,198 @@ fn empty_rank() {
 
 #[test]
 fn nonempty_rank() {
-    let mut bv = random_vector(1957);
+    let mut bv = random_vector(1957, 0.5);
     assert!(!bv.supports_rank(), "Rank support was enabled by default");
     bv.enable_rank();
-    assert!(bv.supports_rank(), "Failed to enable rank support");
-    assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
-
-    let mut rank: usize = 0;
-    for i in 0..bv.len() {
-        assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
-        rank += bv.get(i) as usize;
-    }
+    try_rank(&bv);
 }
 
 #[test]
 fn serialize_rank() {
-    let mut original = random_vector(1921);
-    original.enable_rank();
-    assert_eq!(original.size_in_bytes(), 360, "Invalid BitVector size with rank support");
-
-    let filename = serialize::temp_file_name("bitvector-rank");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: BitVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the BitVector");
-
-    fs::remove_file(&filename).unwrap();
+    let mut bv = random_vector(1921, 0.5);
+    bv.enable_rank();
+    try_serialize(&bv, "bitvector-rank", Some(360));
 }
 
 #[test]
 #[ignore]
 fn large_rank() {
-    let mut original = random_vector(9871248);
-    original.enable_rank();
-    assert_eq!(original.rank(original.len()), original.count_ones(), "Invalid rank at vector size");
-    assert_eq!(original.size_in_bytes(), 1542440, "Invalid BitVector size in bytes");
-
-    let mut rank: usize = 0;
-    for i in 0..original.len() {
-        assert_eq!(original.rank(i), rank, "Invalid rank at {}", i);
-        rank += original.get(i) as usize;
-    }
-
-    let filename = serialize::temp_file_name("large-bitvector-rank");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: BitVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the BitVector");
-
-    fs::remove_file(&filename).unwrap();
+    let mut bv = random_vector(9871248, 0.5);
+    bv.enable_rank();
+    try_rank(&bv);
+    try_serialize(&bv, "large-bitvector-rank", Some(1542440));
 }
 
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: Select, OneIter, PredSucc + Serialize
-// FIXME large tests
+fn try_select(bv: &BitVector) {
+    assert!(bv.supports_select(), "Failed to enable select support");
+    assert_eq!(bv.select(bv.count_ones()).next(), None, "Got a result for select(self.len())");
+
+    let mut next: usize = 0;
+    for i in 0..bv.count_ones() {
+        let value = bv.select(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select({})", i);
+        assert!(value.1 >= next, "select({}) == {}, expected at least {}", i, value.1, next);
+        assert!(bv.get(value.1), "select({}) == {} is not set", i, value.1);
+        next = value.1 + 1;
+    }
+}
+
+fn try_one_iter(bv: &BitVector) {
+    assert_eq!(bv.one_iter().len(), bv.count_ones(), "Invalid OneIter length");
+
+    // Iterate forward.
+    let mut next: (usize, usize) = (0, 0);
+    for (index, value) in bv.one_iter() {
+        assert_eq!(index, next.0, "Invalid rank from OneIter (forward)");
+        assert!(value >= next.1, "Too small value from OneIter (forward)");
+        assert!(bv.get(value), "OneIter returned an unset bit (forward)");
+        next = (next.0 + 1, value + 1);
+    }
+
+    // Iterate backward.
+    let mut limit: (usize, usize) = (bv.count_ones(), bv.len());
+    let mut iter = bv.one_iter();
+    while let Some((index, value)) = iter.next_back() {
+        assert_eq!(index, limit.0 - 1, "Invalid rank from OneIter (backward)");
+        assert!(value < limit.1, "Too small value from OneIter (backward)");
+        assert!(bv.get(value), "OneIter returned an unset bit (backward)");
+        limit = (limit.0 - 1, value);
+    }
+
+    // Meet in the middle.
+    let mut next: (usize, usize) = (0, 0);
+    let mut limit: (usize, usize) = (bv.count_ones(), bv.len());
+    let mut iter = bv.one_iter();
+    while iter.len() > 0 {
+        let (index, value) = iter.next().unwrap();
+        assert_eq!(index, next.0, "Invalid rank from OneIter (forward, bidirectional)");
+        assert!(value >= next.1, "Too small value from OneIter (forward, bidirectional)");
+        assert!(bv.get(value), "OneIter returned an unset bit (forward, bidirectional)");
+        next = (next.0 + 1, value + 1);
+
+        if iter.len() == 0 {
+            break;
+        }
+
+        let (index, value) = iter.next_back().unwrap();
+        assert_eq!(index, limit.0 - 1, "Invalid rank from OneIter (backward, bidirectional)");
+        assert!(value < limit.1, "Too small value from OneIter (backward, bidirectional)");
+        assert!(bv.get(value), "OneIter returned an unset bit (backward, bidirectional)");
+        limit = (limit.0 - 1, value);
+    }
+    assert_eq!(next.0, limit.0, "Iterator did not visit all values");
+}
+
+fn try_pred_succ(bv: &BitVector) {
+    assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
+
+    for i in 0..bv.len() {
+        let rank = bv.rank(i);
+        let pred_result = bv.predecessor(i).next();
+        let succ_result = bv.successor(i).next();
+        if bv.get(i) {
+            assert_eq!(pred_result, Some((rank, i)), "Invalid predecessor result at a set bit");
+            assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
+        } else {
+            if rank == 0 {
+                assert_eq!(pred_result, None, "Got a predecessor result before the first set bit");
+            } else {
+                if let Some((pred_rank, pred_value)) = pred_result {
+                    let new_rank = bv.rank(pred_value);
+                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
+                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
+                    assert!(bv.get(pred_value), "Predecessor returned an unset bit");
+                } else {
+                    panic!("Could not find a predecessor");
+                }
+            }
+            if rank == bv.count_ones() {
+                assert_eq!(succ_result, None, "Got a successor result after the last set bit");
+            } else {
+                if let Some((succ_rank, succ_value)) = succ_result {
+                    let new_rank = bv.rank(succ_value);
+                    assert_eq!(new_rank, rank, "The returned value was not the successor");
+                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
+                    assert!(bv.get(succ_value), "Successor returned an unset bit");
+                } else {
+                    panic!("Could not find a successor");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn empty_select() {
+    let mut empty = BitVector::from(RawVector::new());
+    assert!(!empty.supports_select(), "Select support was enabled by default");
+    empty.enable_select();
+    assert!(empty.supports_select(), "Failed to enable select support");
+    assert_eq!(empty.select(empty.len()).next(), None, "Invalid select at vector size");
+}
+
+#[test]
+fn nonempty_select() {
+    let mut bv = random_vector(1957, 0.5);
+    assert!(!bv.supports_select(), "Select support was enabled by default");
+    bv.enable_select();
+    try_select(&bv);
+}
+
+#[test]
+fn sparse_select() {
+    let mut bv = random_vector(4200, 0.01);
+    assert!(!bv.supports_select(), "Select support was enabled by default");
+    bv.enable_select();
+    try_select(&bv);
+}
+
+#[test]
+fn one_iter() {
+    let bv = random_vector(3122, 0.5);
+    try_one_iter(&bv);
+}
+
+#[test]
+fn pred_succ() {
+    let mut bv = random_vector(2377, 0.5);
+    assert!(!bv.supports_pred_succ(), "Predecessor/successor support was enabled by default");
+    bv.enable_pred_succ();
+    try_pred_succ(&bv);
+}
+
+#[test]
+fn serialize_select() {
+    let mut bv = random_vector(1921, 0.5);
+    let old_size = bv.size_in_bytes();
+    bv.enable_select();
+    assert!(bv.size_in_bytes() > old_size, "Select support did not increase the size in bytes");
+    try_serialize(&bv, "bitvector-select", None);
+}
+
+#[test]
+#[ignore]
+fn large_select() {
+    let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
+    let mut bv = non_uniform_vector(&regions);
+    bv.enable_select();
+    bv.enable_pred_succ();
+
+    let ss = bv.select.as_ref().unwrap();
+    assert_eq!(ss.superblocks(), 7, "Invalid number of select superblocks");
+    assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
+    assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
+
+    try_select(&bv);
+    try_one_iter(&bv);
+    try_pred_succ(&bv);
+    try_serialize(&bv, "large-bitvector-select", None);
+}
+
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------

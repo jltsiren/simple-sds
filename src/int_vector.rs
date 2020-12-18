@@ -624,7 +624,7 @@ mod tests {
     use rand::Rng;
 
     #[test]
-    fn empty_int_vector() {
+    fn empty_vector() {
         let empty = IntVector::default();
         assert!(empty.is_empty(), "Created a non-empty empty vector");
         assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
@@ -798,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_int_vector() {
+    fn serialize() {
         let mut original = IntVector::new(16).unwrap();
         for i in 0..64 {
             original.push(i * (i + 1) * (i + 2));

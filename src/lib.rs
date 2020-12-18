@@ -1,7 +1,7 @@
 //! Simple succinct data structures.
 //!
 //! This is a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures.
-//! The plan is to implement the subset of SDSL I am currently using and to extend it a bit.
+//! The plan is to implement the subset of [SDSL](https://github.com/simongog/sdsl-lite) I am currently using and to extend it a bit.
 //!
 //! # Notes
 //!
