@@ -9,7 +9,7 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
-/// Read/write bits and variable-width integers from/to a bit array.
+/// Random access to bits and variable-width integers in a bit array.
 ///
 /// # Examples
 ///

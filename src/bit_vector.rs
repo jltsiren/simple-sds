@@ -2,13 +2,13 @@
 
 use crate::bit_vector::rank_support::RankSupport;
 use crate::bit_vector::select_support::SelectSupport;
-use crate::ops::{BitVec, Rank, Select, PredSucc};
+use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
 
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator};
-use std::io;
+use std::{io, marker};
 
 pub mod rank_support;
 pub mod select_support;
@@ -27,7 +27,7 @@ mod tests;
 ///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
-/// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`], [`Complement`]
+/// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`], [`SelectZero`]
 /// * Serialization: [`Serialize`]
 ///
 /// See [`rank_support`] and [`select_support`] for algorithmic details on rank/select queries.
@@ -37,7 +37,7 @@ mod tests;
 ///
 /// ```
 /// use simple_sds::bit_vector::BitVector;
-/// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
+/// use simple_sds::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
 /// use simple_sds::raw_vector::{RawVector, AccessRaw};
 ///
 /// let mut data = RawVector::with_len(137, false);
@@ -59,7 +59,7 @@ mod tests;
 /// assert!(bv.supports_rank());
 /// assert_eq!(bv.rank(33), 1);
 /// assert_eq!(bv.rank(34), 2);
-/// assert_eq!(bv.complement_rank(65), 63);
+/// assert_eq!(bv.rank_zero(65), 63);
 ///
 /// // Select
 /// bv.enable_select();
@@ -67,6 +67,13 @@ mod tests;
 /// assert_eq!(bv.select(2).next(), Some((2, 95)));
 /// let v: Vec<(usize, usize)> = bv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
+///
+/// // SelectZero
+/// bv.enable_select_zero();
+/// assert!(bv.supports_select_zero());
+/// assert_eq!(bv.select_zero(2).next(), Some((2, 3)));
+/// let v: Vec<(usize, usize)> = bv.zero_iter().take(4).collect();
+/// assert_eq!(v, vec![(0, 0), (1, 2), (2, 3), (3, 4)]);
 ///
 /// // PredSucc
 /// bv.enable_pred_succ();
@@ -82,13 +89,14 @@ mod tests;
 /// # Notes
 ///
 /// * `BitVector` never panics from I/O errors.
-/// * [`Select::one_iter`] for `BitVector` does not need select support.
+/// * [`Select::one_iter`] and [`SelectZero::zero_iter`] for `BitVector` does not need select support.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitVector {
     ones: usize,
     data: RawVector,
     rank: Option<RankSupport>,
-    select: Option<SelectSupport>,
+    select: Option<SelectSupport<Identity>>,
+    select_zero: Option<SelectSupport<Complement>>,
 }
 
 //-----------------------------------------------------------------------------
@@ -204,8 +212,65 @@ impl<'a> Rank<'a> for BitVector {
 
 //-----------------------------------------------------------------------------
 
+/// An implicit transformation of [`BitVector`] into another vector of the same length.
+///
+/// Types that implement this trait can be used as parameters for [`SelectSupport`] and [`OneIter`].
+pub trait Transformation {
+    /// Reads a 64-bit word from the transformed bitvector.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent`: The parent bitvector.
+    /// * `index`: Read the word starting at offset `index * 64` of the bit array.
+    fn word(parent: &BitVector, index: usize) -> u64;
+
+    /// Returns the length of the integer array or the number of ones in the bit array of the transformed bitvector.
+    fn count_ones(parent: &BitVector) -> usize;
+
+    /// Returns an iterator over the set bits in the transformed bitvector.
+    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self>;
+}
+
+/// The bitvector as it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Identity {}
+
+impl Transformation for Identity {
+    fn word(parent: &BitVector, index: usize) -> u64 {
+        parent.data.word(index)
+    }
+
+    fn count_ones(parent: &BitVector) -> usize {
+        parent.count_ones()
+    }
+
+    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self> {
+        parent.one_iter()
+    }
+}
+
+/// The bitvector implicitly transformed into its complement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Complement {}
+
+impl Transformation for Complement {
+    fn word(parent: &BitVector, index: usize) -> u64 {
+        !parent.data.word(index)
+    }
+
+    fn count_ones(parent: &BitVector) -> usize {
+        parent.len() - parent.count_ones()
+    }
+
+    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self> {
+        parent.zero_iter()
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 // TODO recommend SparseVector for sparse bitvectors
-/// An iterator over the set bits in a [`BitVector`].
+/// An iterator over the set bits in an implicitly transformed [`BitVector`].
 ///
 /// The type of `Item` is `(usize, usize)`.
 /// This can be interpreted as:
@@ -214,19 +279,22 @@ impl<'a> Rank<'a> for BitVector {
 /// * `(rank(j), j)` in the bit array with `j` such that `self.get(j) == true`.
 ///
 /// Note that `index` is not always the index provided by [`Iterator::enumerate`].
-/// Many [`Select`] queries create iterators in the middle of the bitvector.
+/// Queries may create iterators in the middle of the bitvector.
 ///
 /// The bitvector is assumed to be at least somewhat dense.
 /// If the frequency of ones is less than 1/64, iteration may be inefficient.
+///
+/// This type must be parametrized with a [`Transformation`].
 ///
 /// # Examples
 ///
 /// ```
 /// use simple_sds::bit_vector::BitVector;
-/// use simple_sds::ops::{BitVec, Select};
+/// use simple_sds::ops::{BitVec, Select, SelectZero};
 ///
 /// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
 /// let bv: BitVector = source.into_iter().collect();
+///
 /// let mut iter = bv.one_iter();
 /// assert_eq!(iter.len(), bv.count_ones());
 /// assert_eq!(iter.next(), Some((0, 0)));
@@ -235,28 +303,37 @@ impl<'a> Rank<'a> for BitVector {
 /// assert_eq!(iter.next(), Some((3, 5)));
 /// assert_eq!(iter.next(), Some((4, 6)));
 /// assert_eq!(iter.next(), None);
+///
+/// let mut iter = bv.zero_iter();
+/// assert_eq!(iter.next(), Some((0, 1)));
+/// assert_eq!(iter.next(), Some((1, 4)));
+/// assert_eq!(iter.next(), Some((2, 7)));
+/// assert_eq!(iter.next(), None);
 /// ```
 #[derive(Clone, Debug)]
-pub struct OneIter<'a> {
+pub struct OneIter<'a, T: Transformation + ?Sized> {
     parent: &'a BitVector,
     // The first (i, candidate for select(i)) we have not visited.
     next: (usize, usize),
     // The first (i, candidate for select(i)) we should not visit.
     limit: (usize, usize),
+    // We use `T` only for accessing static methods.
+    _marker: marker::PhantomData<T>,
 }
 
-impl<'a> OneIter<'a> {
+impl<'a, T: Transformation + ?Sized> OneIter<'a, T> {
     // Build an empty iterator for the parent bitvector.
-    fn empty_iter(parent: &'a BitVector) -> OneIter<'a> {
+    fn empty_iter(parent: &'a BitVector) -> OneIter<'a, T> {
         OneIter {
             parent: parent,
-            next: (parent.count_ones(), parent.len()),
-            limit: (parent.count_ones(), parent.len()),
+            next: (T::count_ones(parent), parent.len()),
+            limit: (T::count_ones(parent), parent.len()),
+            _marker: marker::PhantomData,
         }
     }
 }
 
-impl<'a> Iterator for OneIter<'a> {
+impl<'a, T: Transformation + ?Sized> Iterator for OneIter<'a, T> {
     type Item = (usize, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -265,7 +342,7 @@ impl<'a> Iterator for OneIter<'a> {
         } else {
             let (mut index, mut offset) = bits::split_offset(self.next.1);
             loop {
-                let word = self.parent.data.word(index) & !bits::low_set(offset);
+                let word = T::word(self.parent, index) & !bits::low_set(offset);
                 if word == 0 {
                     index += 1; offset = 0;
                 } else {
@@ -284,7 +361,7 @@ impl<'a> Iterator for OneIter<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for OneIter<'a> {
+impl<'a, T: Transformation + ?Sized> DoubleEndedIterator for OneIter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.next.0 >= self.limit.0 {
             None
@@ -292,7 +369,7 @@ impl<'a> DoubleEndedIterator for OneIter<'a> {
             self.limit = (self.limit.0 - 1, self.limit.1 - 1);
             let (mut index, mut offset) = bits::split_offset(self.limit.1);
             loop {
-                let word = self.parent.data.word(index) & bits::low_set(offset + 1);
+                let word = T::word(self.parent, index) & bits::low_set(offset + 1);
                 if word == 0 {
                     index -= 1; offset = 63;
                 } else {
@@ -305,14 +382,14 @@ impl<'a> DoubleEndedIterator for OneIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for OneIter<'a> {}
+impl<'a, T: Transformation + ?Sized> ExactSizeIterator for OneIter<'a, T> {}
 
-impl<'a> FusedIterator for OneIter<'a> {}
+impl<'a, T: Transformation + ?Sized> FusedIterator for OneIter<'a, T> {}
 
 //-----------------------------------------------------------------------------
 
 impl<'a> Select<'a> for BitVector {
-    type OneIter = OneIter<'a>;
+    type OneIter = OneIter<'a, Identity>;
 
     fn supports_select(&self) -> bool {
         self.select != None
@@ -320,7 +397,7 @@ impl<'a> Select<'a> for BitVector {
 
     fn enable_select(&mut self) {
         if !self.supports_select() {
-            let select_support = SelectSupport::new(self);
+            let select_support = SelectSupport::<Identity>::new(self);
             self.select = Some(select_support);
         }
     }
@@ -329,7 +406,8 @@ impl<'a> Select<'a> for BitVector {
         Self::OneIter {
             parent: self,
             next: (0, 0),
-            limit: (self.count_ones(), self.len()),
+            limit: (Identity::count_ones(self), self.len()),
+            _marker: marker::PhantomData,
         }
     }
 
@@ -342,7 +420,49 @@ impl<'a> Select<'a> for BitVector {
             Self::OneIter {
                 parent: self,
                 next: (index, value),
-                limit: (self.count_ones(), self.len()),
+                limit: (Identity::count_ones(self), self.len()),
+                _marker: marker::PhantomData,
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl<'a> SelectZero<'a> for BitVector {
+    type ZeroIter = OneIter<'a, Complement>;
+
+    fn supports_select_zero(&self) -> bool {
+        self.select_zero != None
+    }
+
+    fn enable_select_zero(&mut self) {
+        if !self.supports_select_zero() {
+            let select_support = SelectSupport::<Complement>::new(self);
+            self.select_zero = Some(select_support);
+        }
+    }
+
+    fn zero_iter(&'a self) -> Self::ZeroIter {
+        Self::ZeroIter {
+            parent: self,
+            next: (0, 0),
+            limit: (Complement::count_ones(self), self.len()),
+            _marker: marker::PhantomData,
+        }
+    }
+
+    fn select_zero(&'a self, index: usize) -> Self::ZeroIter {
+         if index >= self.count_ones() {
+             Self::ZeroIter::empty_iter(self)
+        } else {
+            let select_support = self.select_zero.as_ref().unwrap();
+            let value = select_support.select(self, index);
+            Self::ZeroIter {
+                parent: self,
+                next: (index, value),
+                limit: (Complement::count_ones(self), self.len()),
+                _marker: marker::PhantomData,
             }
         }
     }
@@ -351,7 +471,7 @@ impl<'a> Select<'a> for BitVector {
 //-----------------------------------------------------------------------------
 
 impl<'a> PredSucc<'a> for BitVector {
-    type OneIter = OneIter<'a>;
+    type OneIter = OneIter<'a, Identity>;
 
     fn supports_pred_succ(&self) -> bool {
         self.rank != None && self.select != None
@@ -383,10 +503,6 @@ impl<'a> PredSucc<'a> for BitVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME Complement + ZeroIter
-
-//-----------------------------------------------------------------------------
-
 impl Serialize for BitVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.ones.serialize(writer)?;
@@ -397,6 +513,7 @@ impl Serialize for BitVector {
         self.data.serialize(writer)?;
         self.rank.serialize(writer)?;
         self.select.serialize(writer)?;
+        self.select_zero.serialize(writer)?;
         Ok(())
     }
 
@@ -404,12 +521,14 @@ impl Serialize for BitVector {
         let ones = usize::load(reader)?;
         let data = RawVector::load(reader)?;
         let rank = Option::<RankSupport>::load(reader)?;
-        let select = Option::<SelectSupport>::load(reader)?;
+        let select = Option::<SelectSupport<Identity>>::load(reader)?;
+        let select_zero = Option::<SelectSupport<Complement>>::load(reader)?;
         let result = BitVector {
             ones: ones,
             data: data,
             rank: rank,
             select: select,
+            select_zero: select_zero,
         };
         Ok(result)
     }
@@ -418,7 +537,8 @@ impl Serialize for BitVector {
         self.ones.size_in_bytes() +
         self.data.size_in_bytes() +
         self.rank.size_in_bytes() +
-        self.select.size_in_bytes()
+        self.select.size_in_bytes() +
+        self.select_zero.size_in_bytes()
     }
 }
 
@@ -438,6 +558,7 @@ impl From<RawVector> for BitVector {
             data: data,
             rank: None,
             select: None,
+            select_zero: None,
         }
     }
 }
@@ -462,6 +583,7 @@ impl FromIterator<bool> for BitVector {
             data: data,
             rank: None,
             select: None,
+            select_zero: None,
         }
     }
 }

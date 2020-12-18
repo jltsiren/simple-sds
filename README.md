@@ -1,6 +1,6 @@
 # Simple succinct data structures
 
-This is a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures. The plan is to implement the subset of SDSL I am currently using and to extend it a bit.
+This is a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures. The plan is to implement the subset of [SDSL](https://github.com/simongog/sdsl-lite) I am currently using and to extend it a bit.
 
 ## Implemented functionality
 
@@ -11,6 +11,13 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 * `IntVector`: A bit-packed vector of fixed-width integers implemented on top of `RawVector`. Like `sdsl::int_vector` but also supports stack functionality.
 * `IntVectorWriter`: An append-only version of `IntVector` that writes the structure directly to a file. Like a subset of `sdsl::int_vector_buffer`.
 
+### Bitvectors
+
+* `BitVector`: A plain immutable bitvector.
+  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries using optional support structures.
+  * Iterators over set bits, unset bits, and all bits.
+  * Implemented on top of `RawVector`.
+
 ## Planned functionality
 
 ### Integer vectors
@@ -20,14 +27,7 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 
 ### Bitvectors
 
-* `BitVector`: A plain immutable bitvector supporting `rank()`, `select()`, and `select_0()`. Implemented on top of `RawVector`. The support structures for all three queries are optional.
-* `SparseVector`: An Elias-Fano encoded immutable bitvector supporting `rank()` and `select()`. Comparable to `sdsl::sd_vector`.
-* `v.rank(i)`: The number of ones in `v[0..i]`.
-* Select support implies support for predecessor/successor queries:
-  * `v.select(i)`: Value `a[i]`. Note that `select()` is 0-based, unlike in SDSL.
-  * `v.predecessor(i)`: Largest `a[j] <= i`.
-  * `v.successor(i)`: Smallest `a[j] >= i`.
-  * These queries assume that the vector encodes a sorted integer array `a`. They return iterators over pairs `(i, a[i])`.
+* `SparseVector`: An Elias-Fano encoded immutable bitvector. Comparable to `sdsl::sd_vector`.
 
 ## Notes
 

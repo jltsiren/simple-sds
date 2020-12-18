@@ -170,7 +170,7 @@ fn iter() {
 #[test]
 fn serialize() {
     let bv = random_vector(2137, 0.5);
-    try_serialize(&bv, "bitvector", Some(312));
+    try_serialize(&bv, "bitvector", Some(320));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn serialize() {
 fn large() {
     let bv = random_vector(9875321, 0.5);
     try_iter(&bv);
-    try_serialize(&bv, "large-bitvector", Some(1234456));
+    try_serialize(&bv, "large-bitvector", Some(1234464));
 }
 
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
@@ -217,7 +217,7 @@ fn nonempty_rank() {
 fn serialize_rank() {
     let mut bv = random_vector(1921, 0.5);
     bv.enable_rank();
-    try_serialize(&bv, "bitvector-rank", Some(360));
+    try_serialize(&bv, "bitvector-rank", Some(368));
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn large_rank() {
     let mut bv = random_vector(9871248, 0.5);
     bv.enable_rank();
     try_rank(&bv);
-    try_serialize(&bv, "large-bitvector-rank", Some(1542440));
+    try_serialize(&bv, "large-bitvector-rank", Some(1542448));
 }
 
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
@@ -293,6 +293,75 @@ fn try_one_iter(bv: &BitVector) {
     assert_eq!(next.0, limit.0, "Iterator did not visit all values");
 }
 
+#[test]
+fn empty_select() {
+    let mut empty = BitVector::from(RawVector::new());
+    assert!(!empty.supports_select(), "Select support was enabled by default");
+    empty.enable_select();
+    assert!(empty.supports_select(), "Failed to enable select support");
+    assert_eq!(empty.select(empty.len()).next(), None, "Invalid select at vector size");
+}
+
+#[test]
+fn nonempty_select() {
+    let mut bv = random_vector(1957, 0.5);
+    assert!(!bv.supports_select(), "Select support was enabled by default");
+    bv.enable_select();
+    assert!(bv.supports_select(), "Failed to enable select support");
+    try_select(&bv);
+}
+
+#[test]
+fn sparse_select() {
+    let mut bv = random_vector(4200, 0.01);
+    assert!(!bv.supports_select(), "Select support was enabled by default");
+    bv.enable_select();
+    try_select(&bv);
+}
+
+#[test]
+fn one_iter() {
+    let bv = random_vector(3122, 0.5);
+    try_one_iter(&bv);
+}
+
+#[test]
+fn serialize_select() {
+    let mut bv = random_vector(1921, 0.5);
+    let old_size = bv.size_in_bytes();
+    bv.enable_select();
+    assert!(bv.size_in_bytes() > old_size, "Select support did not increase the size in bytes");
+    try_serialize(&bv, "bitvector-select", None);
+}
+
+#[test]
+#[ignore]
+fn large_select() {
+    let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
+    let mut bv = non_uniform_vector(&regions);
+    bv.enable_select();
+    bv.enable_pred_succ();
+
+    let ss = bv.select.as_ref().unwrap();
+    assert_eq!(ss.superblocks(), 7, "Invalid number of select superblocks");
+    assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
+    assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
+
+    try_select(&bv);
+    try_one_iter(&bv);
+    try_serialize(&bv, "large-bitvector-select", None);
+}
+
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
+
+//-----------------------------------------------------------------------------
+
+// FIXME tests: SelectZero, ZeroIter + Serialize
+// FIXME large tests
+// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
+
+//-----------------------------------------------------------------------------
+
 fn try_pred_succ(bv: &BitVector) {
     assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
 
@@ -333,78 +402,44 @@ fn try_pred_succ(bv: &BitVector) {
 }
 
 #[test]
-fn empty_select() {
+fn empty_pred_succ() {
     let mut empty = BitVector::from(RawVector::new());
-    assert!(!empty.supports_select(), "Select support was enabled by default");
-    empty.enable_select();
-    assert!(empty.supports_select(), "Failed to enable select support");
-    assert_eq!(empty.select(empty.len()).next(), None, "Invalid select at vector size");
+    assert!(!empty.supports_pred_succ(), "Predecessor/successor support was enabled by default");
+    empty.enable_pred_succ();
+    assert!(empty.supports_pred_succ(), "Failed to enable predecessor/successor support");
+    assert_eq!(empty.predecessor(0).next(), None, "Invalid predecessor at 0");
+    assert_eq!(empty.successor(empty.len()).next(), None, "Invalid successor at vector size");
 }
 
 #[test]
-fn nonempty_select() {
-    let mut bv = random_vector(1957, 0.5);
-    assert!(!bv.supports_select(), "Select support was enabled by default");
-    bv.enable_select();
-    try_select(&bv);
-}
-
-#[test]
-fn sparse_select() {
-    let mut bv = random_vector(4200, 0.01);
-    assert!(!bv.supports_select(), "Select support was enabled by default");
-    bv.enable_select();
-    try_select(&bv);
-}
-
-#[test]
-fn one_iter() {
-    let bv = random_vector(3122, 0.5);
-    try_one_iter(&bv);
-}
-
-#[test]
-fn pred_succ() {
-    let mut bv = random_vector(2377, 0.5);
+fn nonempty_pred_succ() {
+    let mut bv = random_vector(2466, 0.5);
     assert!(!bv.supports_pred_succ(), "Predecessor/successor support was enabled by default");
     bv.enable_pred_succ();
+    assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
     try_pred_succ(&bv);
 }
 
 #[test]
-fn serialize_select() {
-    let mut bv = random_vector(1921, 0.5);
+fn serialize_pred_succ() {
+    let mut bv = random_vector(1893, 0.5);
     let old_size = bv.size_in_bytes();
-    bv.enable_select();
-    assert!(bv.size_in_bytes() > old_size, "Select support did not increase the size in bytes");
-    try_serialize(&bv, "bitvector-select", None);
+    bv.enable_pred_succ();
+    assert!(bv.size_in_bytes() > old_size, "Predecessor/successor support did not increase the size in bytes");
+    try_serialize(&bv, "bitvector-pred-succ", None);
 }
 
 #[test]
 #[ignore]
-fn large_select() {
+fn large_pred_succ() {
     let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
     let mut bv = non_uniform_vector(&regions);
-    bv.enable_select();
     bv.enable_pred_succ();
 
-    let ss = bv.select.as_ref().unwrap();
-    assert_eq!(ss.superblocks(), 7, "Invalid number of select superblocks");
-    assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
-    assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
-
-    try_select(&bv);
-    try_one_iter(&bv);
     try_pred_succ(&bv);
-    try_serialize(&bv, "large-bitvector-select", None);
+    try_serialize(&bv, "large-bitvector-pred-succ", None);
 }
 
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
-
-//-----------------------------------------------------------------------------
-
-// FIXME tests: Complement, ZeroIter + Serialize
-// FIXME large tests
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------

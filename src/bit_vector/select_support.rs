@@ -26,14 +26,13 @@
 //!
 //! The space overhead is 18.75% in the worst case.
 
-use crate::bit_vector::BitVector;
+use crate::bit_vector::{BitVector, Transformation};
 use crate::int_vector::IntVector;
-use crate::ops::{Element, Resize, Pack, Access, Push, BitVec, Select};
-use crate::raw_vector::AccessRaw;
+use crate::ops::{Element, Resize, Pack, Access, Push, BitVec};
 use crate::serialize::Serialize;
 use crate::bits;
 
-use std::io;
+use std::{io, marker};
 
 //-----------------------------------------------------------------------------
 
@@ -41,8 +40,10 @@ use std::io;
 ///
 /// The structure depends on the parent bitvector and assumes that the parent remains unchanged.
 /// Using the [`BitVector`] interface is usually more convenient.
+///
+/// This type must be parametrized with a [`Transformation`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SelectSupport {
+pub struct SelectSupport<T: Transformation> {
     // (superblock sample, 2 * index + is_short) for each superblock.
     samples: IntVector,
 
@@ -53,9 +54,12 @@ pub struct SelectSupport {
     // If the superblock is short, the index from the superblock array points to the
     // first block sample in this array.
     short: IntVector,
+
+    // We use `T` only for accessing static methods.
+    _marker: marker::PhantomData<T>,
 }
 
-impl SelectSupport {
+impl<T: Transformation> SelectSupport<T> {
     const SUPERBLOCK_SIZE: usize = 4096;
     const SUPERBLOCK_MASK: usize = 0xFFF;
     const BLOCKS_IN_SUPERBLOCK: usize = 64;
@@ -108,18 +112,18 @@ impl SelectSupport {
     /// # Examples
     ///
     /// ```
-    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::{BitVector, Identity};
     /// use simple_sds::bit_vector::select_support::SelectSupport;
     ///
     /// let mut data = vec![false, true, true, false, true, false, true, true, false, false, false];
     /// let bv: BitVector = data.into_iter().collect();
-    /// let ss = SelectSupport::new(&bv);
+    /// let ss = SelectSupport::<Identity>::new(&bv);
     /// assert_eq!(ss.superblocks(), 1);
     /// assert_eq!(ss.long_superblocks(), 0);
     /// assert_eq!(ss.short_superblocks(), 1);
     /// ```
-    pub fn new(parent: &BitVector) -> SelectSupport {
-        let superblocks = (parent.count_ones() + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE;
+    pub fn new(parent: &BitVector) -> SelectSupport<T> {
+        let superblocks = (T::count_ones(parent) + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE;
         let log4 = bits::bit_len(parent.len() as u64);
         let log4 = log4 * log4;
         let log4 = log4 * log4;
@@ -128,12 +132,13 @@ impl SelectSupport {
             samples: IntVector::default(),
             long: IntVector::default(),
             short: IntVector::default(),
+            _marker: marker::PhantomData,
         };
         result.samples.reserve(superblocks * 2);
 
         // The buffer will hold one superblock and a sentinel value from the next superblock.
         let mut buf: Vec<u64> = Vec::with_capacity(Self::SUPERBLOCK_SIZE + 1);
-        for (_, value) in parent.one_iter() {
+        for (_, value) in T::one_iter(parent) {
             buf.push(value as u64);
             if buf.len() > Self::SUPERBLOCK_SIZE {
                 result.add_superblock(&buf, log4);
@@ -162,12 +167,12 @@ impl SelectSupport {
     /// # Examples
     ///
     /// ```
-    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::bit_vector::{BitVector, Identity};
     /// use simple_sds::bit_vector::select_support::SelectSupport;
     ///
     /// let mut data = vec![false, true, true, false, true, false, true, true, false, false, false];
     /// let bv: BitVector = data.into_iter().collect();
-    /// let ss = SelectSupport::new(&bv);
+    /// let ss = SelectSupport::<Identity>::new(&bv);
     /// assert_eq!(ss.select(&bv, 0), 1);
     /// assert_eq!(ss.select(&bv, 1), 2);
     /// assert_eq!(ss.select(&bv, 4), 7);
@@ -175,7 +180,7 @@ impl SelectSupport {
     ///
     /// # Panics
     ///
-    /// May panic if `rank >= parent.count_ones()`.
+    /// May panic if `rank >= T::count_ones(parent)`.
     pub fn select(&self, parent: &BitVector, rank: usize) -> usize {
         let (superblock, offset) = (rank / Self::SUPERBLOCK_SIZE, rank & Self::SUPERBLOCK_MASK);
         let mut result: usize = self.samples.get(2 * superblock) as usize;
@@ -194,7 +199,7 @@ impl SelectSupport {
             // from the start of the current word.
             if relative_rank > 0 {
                 let (mut word, word_offset) = bits::split_offset(result);
-                let mut value: u64 = parent.data.word(word) & !bits::low_set(word_offset);
+                let mut value: u64 = T::word(parent, word) & !bits::low_set(word_offset);
                 loop {
                     let ones = value.count_ones() as usize;
                     if ones > relative_rank {
@@ -203,7 +208,7 @@ impl SelectSupport {
                     }
                     relative_rank -= ones;
                     word += 1;
-                    value = parent.data.word(word);
+                    value = T::word(parent, word);
                 }
             }
         }
@@ -214,19 +219,19 @@ impl SelectSupport {
 
 //-----------------------------------------------------------------------------
 
-impl Serialize for SelectSupport {
-    fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
+impl<T: Transformation> Serialize for SelectSupport<T> {
+    fn serialize_header<W: io::Write>(&self, _: &mut W) -> io::Result<()> {
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.samples.serialize(writer)?;
         self.long.serialize(writer)?;
         self.short.serialize(writer)?;
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<W: io::Read>(reader: &mut W) -> io::Result<Self> {
         let samples = IntVector::load(reader)?;
         let long = IntVector::load(reader)?;
         let short = IntVector::load(reader)?;
@@ -234,6 +239,7 @@ impl Serialize for SelectSupport {
             samples: samples,
             long: long,
             short: short,
+            _marker: marker::PhantomData,
         })
     }
 
@@ -247,7 +253,7 @@ impl Serialize for SelectSupport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bit_vector::BitVector;
+    use crate::bit_vector::{BitVector, Identity};
     use crate::ops::BitVec;
     use crate::raw_vector::{RawVector, PushRaw};
     use crate::serialize;
@@ -257,7 +263,7 @@ mod tests {
     #[test]
     fn empty_vector() {
         let bv = BitVector::from(RawVector::new());
-        let ss = SelectSupport::new(&bv);
+        let ss = SelectSupport::<Identity>::new(&bv);
         assert_eq!(ss.superblocks(), 0, "Non-zero select superblocks for empty vector");
         assert_eq!(ss.long_superblocks(), 0, "Non-zero long superblocks for empty vector");
         assert_eq!(ss.short_superblocks(), 0, "Non-zero short superblocks for empty vector");
@@ -278,7 +284,7 @@ mod tests {
     fn test_vector(len: usize, density: f64) {
         let data = with_density(len, density);
         let bv = BitVector::from(data.clone());
-        let ss = SelectSupport::new(&bv);
+        let ss = SelectSupport::<Identity>::new(&bv);
         assert_eq!(bv.len(), len, "test_vector({}, {}): invalid bitvector length", len, density);
 
         let superblocks = ss.superblocks();
@@ -313,12 +319,12 @@ mod tests {
     fn serialize() {
         let data = with_density(5187, 0.5);
         let bv = BitVector::from(data);
-        let original = SelectSupport::new(&bv);
+        let original = SelectSupport::<Identity>::new(&bv);
 
         let filename = serialize::temp_file_name("select-support");
         serialize::serialize_to(&original, &filename).unwrap();
 
-        let copy: SelectSupport = serialize::load_from(&filename).unwrap();
+        let copy: SelectSupport<Identity> = serialize::load_from(&filename).unwrap();
         assert_eq!(copy, original, "Serialization changed the SelectSupport");
 
         fs::remove_file(&filename).unwrap();

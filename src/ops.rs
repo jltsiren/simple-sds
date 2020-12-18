@@ -738,7 +738,7 @@ pub trait AccessSub: SubElement {
 /// assert!(bv.supports_rank());
 /// assert_eq!(bv.rank(33), 1);
 /// assert_eq!(bv.rank(34), 2);
-/// assert_eq!(bv.complement_rank(65), 63);
+/// assert_eq!(bv.rank_zero(65), 63);
 ///
 /// // Select
 /// bv.enable_select();
@@ -786,7 +786,7 @@ pub trait BitVec<'a> {
 
     /// Returns an iterator over the bit array.
     ///
-    /// See traits [`Select`] and [`Complement`] for other iterators.
+    /// See traits [`Select`] and [`SelectZero`] for other iterators.
     ///
     /// # Panics
     ///
@@ -832,7 +832,7 @@ pub trait Rank<'a>: BitVec<'a> {
     ///
     /// May panic if rank support has not been enabled.
     /// May panic from I/O errors.
-    fn complement_rank(&self, index: usize) -> usize {
+    fn rank_zero(&self, index: usize) -> usize {
         index - self.rank(index)
     }
 }
@@ -860,7 +860,9 @@ pub trait Select<'a>: BitVec<'a> {
     /// No effect if select support has already been enabled.
     fn enable_select(&mut self);
 
-    /// Returns an iterator over the entire bitvector.
+    /// Returns an iterator over the integer array.
+    ///
+    /// In the bit array interpretation, the iterator will visit all set bits.
     ///
     /// # Panics
     ///
@@ -882,6 +884,54 @@ pub trait Select<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn select(&'a self, index: usize) -> Self::OneIter;
+}
+
+//-----------------------------------------------------------------------------
+
+/// Select successor queries on the complement of a bitvector.
+///
+/// Some bitvector types do not build rank/select support structures by default.
+/// After the vector has been built, select support for the complement can be enabled with `self.enable_complement()`.
+///
+/// This trait is analogous to [`Select`].
+pub trait SelectZero<'a>: BitVec<'a> {
+    /// Iterator type over (index, value) pairs in the complement of the integer array.
+    ///
+    /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
+    /// This can be interpreted as `(i, select_zero(i))` or `(rank_zero(j), j)`.
+    type ZeroIter: Iterator<Item = (usize, usize)>;
+
+    /// Returns `true` if select support has been enabled for the complement.
+    fn supports_select_zero(&self) -> bool;
+
+    /// Enables select support for the complement vector.
+    ///
+    /// No effect if select support has already been enabled for the complement.
+    fn enable_select_zero(&mut self);
+
+    /// Returns an iterator over the integer array of the complement vector.
+    ///
+    /// In the bit array interpretation, the iterator will visit all unset bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled for the complement.
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reasons.
+    fn zero_iter(&'a self) -> Self::ZeroIter;
+
+    /// Returns an iterator at the specified index in the complement of the integer array.
+    ///
+    /// The iterator will return `None` if the index is out of bounds.
+    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.rank_zero(i) == index`.
+    /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
+    ///
+    /// # Panics
+    ///
+    /// May panic if select support has not been enabled for the complement.
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reasons.
+    fn select_zero(&'a self, index: usize) -> Self::ZeroIter;
 }
 
 //-----------------------------------------------------------------------------
@@ -931,52 +981,6 @@ pub trait PredSucc<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
-}
-
-//-----------------------------------------------------------------------------
-
-/// Select successor queries on the complement of a bitvector.
-///
-/// Some bitvector types do not build rank/select support structures by default.
-/// After the vector has been built, select support for the complement can be enabled with `self.enable_complement()`.
-///
-/// This trait is analogous to [`Select`].
-pub trait Complement<'a>: BitVec<'a> {
-    /// Iterator type over (index, value) pairs in the complement of the integer array.
-    ///
-    /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
-    /// This can be interpreted as `(i, complement_select(i))` or `(complement_rank(j), j)`.
-    type ZeroIter: Iterator<Item = (usize, usize)>;
-
-    /// Returns `true` if select support has been enabled for the complement.
-    fn supports_complement(&self) -> bool;
-
-    /// Enables select support for the complement vector.
-    ///
-    /// No effect if select support has already been enabled for the complement.
-    fn enable_complement(&mut self);
-
-    /// Returns an iterator over the complement vector.
-    ///
-    /// # Panics
-    ///
-    /// May panic if select support has not been enabled for the complement.
-    /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
-    fn zero_iter(&'a self) -> Self::ZeroIter;
-
-    /// Returns an iterator at the specified index in the complement of the integer array.
-    ///
-    /// The iterator will return `None` if the index is out of bounds.
-    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.complement_rank(i) == index`.
-    /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
-    ///
-    /// # Panics
-    ///
-    /// May panic if select support has not been enabled for the complement.
-    /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
-    fn complement_select(&'a self, index: usize) -> Self::ZeroIter;
 }
 
 //-----------------------------------------------------------------------------
