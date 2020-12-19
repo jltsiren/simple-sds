@@ -38,7 +38,7 @@ use std::{cmp, io};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RankSupport {
     // No RawVector or bits::read_int because we want to avoid branching.
-    samples: Vec<u64>,
+    samples: Vec<(u64, u64)>,
 }
 
 impl RankSupport {
@@ -50,7 +50,7 @@ impl RankSupport {
 
     /// Returns the number of 512-bit blocks in the bitvector.
     pub fn blocks(&self) -> usize {
-        self.samples.len() / 2
+        self.samples.len()
     }
 
     /// Builds a rank support structure for the parent bitvector.
@@ -69,11 +69,10 @@ impl RankSupport {
     pub fn new(parent: &BitVector) -> RankSupport {
         let words = bits::bits_to_words(parent.len());
         let blocks = (parent.len() + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
-        let mut samples: Vec<u64> = Vec::with_capacity(2 * blocks);
+        let mut samples: Vec<(u64, u64)> = Vec::with_capacity(blocks);
 
         let mut ones: usize = 0;
         for block in 0..blocks {
-            samples.push(ones as u64);
             let mut block_ones: usize = 0;
             let mut relative_ranks: u64 = 0;
             let block_words = cmp::min(Self::WORDS_PER_BLOCK, words - block * Self::WORDS_PER_BLOCK);
@@ -82,8 +81,8 @@ impl RankSupport {
                 relative_ranks |= (block_ones << (word * Self::RELATIVE_RANK_BITS)) as u64;
             }
             // Clear the high bit. We don't store the relative rank after all 8 words.
-            relative_ranks &= bits::low_set((Self::WORDS_PER_BLOCK - 1) * Self::RELATIVE_RANK_BITS) as u64;
-            samples.push(relative_ranks);
+            relative_ranks &= bits::low_set((Self::WORDS_PER_BLOCK - 1) * Self::RELATIVE_RANK_BITS);
+            samples.push((ones as u64, relative_ranks));
             ones += block_ones;
         }
 
@@ -121,8 +120,8 @@ impl RankSupport {
         let block = index / Self::BLOCK_SIZE;
         let (word, offset) = bits::split_offset(index);
 
-        // Rank at the start of the block.
-        let block_start = self.samples[2 * block] as usize;
+        // Rank at the start of the block and relative ranks at the start of the words.
+        let (block_start, relative_ranks) = self.samples[block];
 
         // Transform the absolute word index into a relative word index within the block.
         // Then reorder the words 0..8 to 1..8, 0, because the second sample stores relative
@@ -130,12 +129,12 @@ impl RankSupport {
         let relative = ((word & Self::WORD_MASK) + Self::WORDS_PER_BLOCK - 1) & Self::WORD_MASK;
 
         // Relative rank at the start of the word.
-        let word_start = (self.samples[2 * block + 1] >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;
+        let word_start = (relative_ranks >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;
 
         // Relative rank within the word.
         let within_word = (parent.data.word(word) & bits::low_set(offset)).count_ones() as usize;
 
-        block_start + word_start + within_word
+        block_start as usize + word_start + within_word
     }
 }
 
@@ -153,7 +152,7 @@ impl Serialize for RankSupport {
     }
 
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-        let samples = Vec::<u64>::load(reader)?;
+        let samples = Vec::<(u64, u64)>::load(reader)?;
         Ok(RankSupport {
             samples: samples,
         })

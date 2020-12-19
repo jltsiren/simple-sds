@@ -15,9 +15,9 @@
 //!
 //! * Element. Any 64-bit primitive type in native byte order.
 //!   The header is empty and the body contains the value.
-//! * [`Vec`] of elements.
-//!   The header stores the number of elements in the body as `usize`.
-//!   The body stores the elements.
+//! * [`Vec`] of elements or pairs of elements.
+//!   The header stores the number of items in the vector as `usize`.
+//!   The body stores the items.
 //! * `Option<T>`.
 //!   The header stores the number of elements in the body as `usize`.
 //!   The body stores `T` for `Some(T)` and is empty for `None`.
@@ -405,9 +405,6 @@ macro_rules! serialize_element {
     }
 }
 
-serialize_element!(f64);
-serialize_element!(i64);
-serialize_element!(isize);
 serialize_element!(u64);
 serialize_element!(usize);
 
@@ -447,12 +444,42 @@ macro_rules! serialize_element_vec {
                 mem::size_of::<usize>() + self.len() * mem::size_of::<$t>()
             }
         }
+
+        impl Serialize for Vec<($t, $t)> {
+            fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+                let size = self.len();
+                size.serialize(writer)?;
+                Ok(())
+            }
+
+            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+                unsafe {
+                    let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, 2 * self.len() * mem::size_of::<$t>());
+                    writer.write_all(&buf)?;
+                }
+                Ok(())
+            }
+
+            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+                let size = usize::load(reader)?;
+                let mut value: Vec<($t, $t)> = Vec::with_capacity(size);
+
+                unsafe {
+                    let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, 2 * size * mem::size_of::<$t>());
+                    reader.read_exact(buf)?;
+                    value.set_len(size);
+                }
+
+                Ok(value)
+            }
+
+            fn size_in_bytes(&self) -> usize {
+                mem::size_of::<usize>() + 2 * self.len() * mem::size_of::<$t>()
+            }
+        }
     }
 }
 
-serialize_element_vec!(f64);
-serialize_element_vec!(i64);
-serialize_element_vec!(isize);
 serialize_element_vec!(u64);
 serialize_element_vec!(usize);
 
