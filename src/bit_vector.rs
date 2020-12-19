@@ -271,7 +271,12 @@ impl Transformation for Complement {
     }
 
     fn word(parent: &BitVector, index: usize) -> u64 {
-        !parent.data.word(index)
+        let (last_index, offset) = bits::split_offset(parent.len());
+        if index == last_index {
+            (!parent.data.word(index)) & bits::low_set(offset)
+        } else {
+            !parent.data.word(index)
+        }
     }
 
     fn count_ones(parent: &BitVector) -> usize {
@@ -356,18 +361,16 @@ impl<'a, T: Transformation + ?Sized> Iterator for OneIter<'a, T> {
         if self.next.0 >= self.limit.0 {
             None
         } else {
-            let (mut index, mut offset) = bits::split_offset(self.next.1);
-            loop {
-                let word = T::word(self.parent, index) & !bits::low_set(offset);
-                if word == 0 {
-                    index += 1; offset = 0;
-                } else {
-                    offset = word.trailing_zeros() as usize;
-                    let result = (self.next.0, bits::bit_offset(index, offset));
-                    self.next = (result.0 + 1, result.1 + 1);
-                    return Some(result);
-                }
+            let (mut index, offset) = bits::split_offset(self.next.1);
+            let mut word = T::word(self.parent, index) & !bits::low_set(offset);
+            while word == 0 {
+                index += 1;
+                word = T::word(self.parent, index);
             }
+            let offset = word.trailing_zeros() as usize;
+            let result = (self.next.0, bits::bit_offset(index, offset));
+            self.next = (result.0 + 1, result.1 + 1);
+            return Some(result);
         }
     }
 

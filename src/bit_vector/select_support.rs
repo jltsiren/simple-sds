@@ -137,13 +137,20 @@ impl<T: Transformation> SelectSupport<T> {
         result.samples.reserve(superblocks * 2);
 
         // The buffer will hold one superblock and a sentinel value from the next superblock.
+        // Explicit iteration is faster than using OneIter.
         let mut buf: Vec<u64> = Vec::with_capacity(Self::SUPERBLOCK_SIZE + 1);
-        for (_, value) in T::one_iter(parent) {
-            buf.push(value as u64);
-            if buf.len() > Self::SUPERBLOCK_SIZE {
-                result.add_superblock(&buf, log4);
-                buf[0] = buf[Self::SUPERBLOCK_SIZE];
-                buf.resize(1, 0);
+        let words = bits::bits_to_words(parent.len());
+        for index in 0..words {
+            let mut word = T::word(parent, index);
+            while word != 0 {
+                let offset = word.trailing_zeros() as usize;
+                buf.push(bits::bit_offset(index, offset) as u64);
+                word &= !bits::low_set(offset + 1);
+                if buf.len() > Self::SUPERBLOCK_SIZE {
+                    result.add_superblock(&buf, log4);
+                    buf[0] = buf[Self::SUPERBLOCK_SIZE];
+                    buf.resize(1, 0);
+                }
             }
         }
         if buf.len() > 0 {

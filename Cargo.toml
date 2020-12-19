@@ -8,7 +8,17 @@ license = "MIT"
 readme = "README.md"
 # repository = "https://github.com/jltsiren/simple-sds"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+libc = { version = "0.2", optional = true }
+rand = { version = "0.7", optional = true }
 
 [dev-dependencies]
-rand = "0.7.3"
+rand = "0.7"
+
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"
+required-features = ["libc", "rand"]
+test = false
+bench = false
+doc = false
