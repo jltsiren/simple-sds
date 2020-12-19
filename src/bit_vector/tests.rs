@@ -40,7 +40,8 @@ fn random_vector(len: usize, density: f64) -> BitVector {
 
 // Each region is specified as (ones, density).
 // The region continues with unset bits until we would generate the next set bit.
-fn non_uniform_vector(regions: &[(usize, f64)]) -> BitVector {
+// The final bitvector may be complemented if necessary.
+fn non_uniform_vector(regions: &[(usize, f64)], complement: bool) -> BitVector {
     let mut data = RawVector::new();
     let mut rng = rand::thread_rng();
     let mut total_ones: usize = 0;
@@ -59,6 +60,10 @@ fn non_uniform_vector(regions: &[(usize, f64)]) -> BitVector {
         total_ones += *ones;
     }
 
+    if complement {
+        data = data.complement();
+        total_ones = data.len() - total_ones;
+    }
     let bv = BitVector::from(data);
     assert_eq!(bv.count_ones(), total_ones, "Invalid number of ones in the non-uniform BitVector");
 
@@ -235,7 +240,7 @@ fn large_rank() {
 
 fn try_select(bv: &BitVector) {
     assert!(bv.supports_select(), "Failed to enable select support");
-    assert_eq!(bv.select(bv.count_ones()).next(), None, "Got a result for select(self.len())");
+    assert_eq!(bv.select(bv.count_ones()).next(), None, "Got a result for select past the end");
 
     let mut next: usize = 0;
     for i in 0..bv.count_ones() {
@@ -247,37 +252,37 @@ fn try_select(bv: &BitVector) {
     }
 }
 
-fn try_one_iter(bv: &BitVector) {
-    assert_eq!(bv.one_iter().len(), bv.count_ones(), "Invalid OneIter length");
+fn try_one_iter<T: Transformation>(bv: &BitVector) {
+    assert_eq!(T::one_iter(bv).len(), T::count_ones(bv), "Invalid OneIter length");
 
     // Iterate forward.
     let mut next: (usize, usize) = (0, 0);
-    for (index, value) in bv.one_iter() {
+    for (index, value) in T::one_iter(bv) {
         assert_eq!(index, next.0, "Invalid rank from OneIter (forward)");
         assert!(value >= next.1, "Too small value from OneIter (forward)");
-        assert!(bv.get(value), "OneIter returned an unset bit (forward)");
+        assert!(T::bit(bv, value), "OneIter returned an unset bit (forward)");
         next = (next.0 + 1, value + 1);
     }
 
     // Iterate backward.
-    let mut limit: (usize, usize) = (bv.count_ones(), bv.len());
-    let mut iter = bv.one_iter();
+    let mut limit: (usize, usize) = (T::count_ones(bv), bv.len());
+    let mut iter = T::one_iter(bv);
     while let Some((index, value)) = iter.next_back() {
         assert_eq!(index, limit.0 - 1, "Invalid rank from OneIter (backward)");
         assert!(value < limit.1, "Too small value from OneIter (backward)");
-        assert!(bv.get(value), "OneIter returned an unset bit (backward)");
+        assert!(T::bit(bv, value), "OneIter returned an unset bit (backward)");
         limit = (limit.0 - 1, value);
     }
 
     // Meet in the middle.
     let mut next: (usize, usize) = (0, 0);
-    let mut limit: (usize, usize) = (bv.count_ones(), bv.len());
-    let mut iter = bv.one_iter();
+    let mut limit: (usize, usize) = (T::count_ones(bv), bv.len());
+    let mut iter = T::one_iter(bv);
     while iter.len() > 0 {
         let (index, value) = iter.next().unwrap();
         assert_eq!(index, next.0, "Invalid rank from OneIter (forward, bidirectional)");
         assert!(value >= next.1, "Too small value from OneIter (forward, bidirectional)");
-        assert!(bv.get(value), "OneIter returned an unset bit (forward, bidirectional)");
+        assert!(T::bit(bv, value), "OneIter returned an unset bit (forward, bidirectional)");
         next = (next.0 + 1, value + 1);
 
         if iter.len() == 0 {
@@ -287,7 +292,7 @@ fn try_one_iter(bv: &BitVector) {
         let (index, value) = iter.next_back().unwrap();
         assert_eq!(index, limit.0 - 1, "Invalid rank from OneIter (backward, bidirectional)");
         assert!(value < limit.1, "Too small value from OneIter (backward, bidirectional)");
-        assert!(bv.get(value), "OneIter returned an unset bit (backward, bidirectional)");
+        assert!(T::bit(bv, value), "OneIter returned an unset bit (backward, bidirectional)");
         limit = (limit.0 - 1, value);
     }
     assert_eq!(next.0, limit.0, "Iterator did not visit all values");
@@ -299,7 +304,7 @@ fn empty_select() {
     assert!(!empty.supports_select(), "Select support was enabled by default");
     empty.enable_select();
     assert!(empty.supports_select(), "Failed to enable select support");
-    assert_eq!(empty.select(empty.len()).next(), None, "Invalid select at vector size");
+    assert_eq!(empty.select(empty.count_ones()).next(), None, "Got a result for select past the end");
 }
 
 #[test]
@@ -322,7 +327,7 @@ fn sparse_select() {
 #[test]
 fn one_iter() {
     let bv = random_vector(3122, 0.5);
-    try_one_iter(&bv);
+    try_one_iter::<Identity>(&bv);
 }
 
 #[test]
@@ -338,9 +343,8 @@ fn serialize_select() {
 #[ignore]
 fn large_select() {
     let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
-    let mut bv = non_uniform_vector(&regions);
+    let mut bv = non_uniform_vector(&regions, false);
     bv.enable_select();
-    bv.enable_pred_succ();
 
     let ss = bv.select.as_ref().unwrap();
     assert_eq!(ss.superblocks(), 7, "Invalid number of select superblocks");
@@ -348,7 +352,7 @@ fn large_select() {
     assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
 
     try_select(&bv);
-    try_one_iter(&bv);
+    try_one_iter::<Identity>(&bv);
     try_serialize(&bv, "large-bitvector-select", None);
 }
 
@@ -356,8 +360,78 @@ fn large_select() {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests: SelectZero, ZeroIter + Serialize
-// FIXME large tests
+fn try_select_zero(bv: &BitVector) {
+    assert!(bv.supports_select_zero(), "Failed to enable select zero support");
+    assert_eq!(bv.select_zero(Complement::count_ones(bv)).next(), None, "Got a result for select past the end");
+
+    let mut next: usize = 0;
+    for i in 0..Complement::count_ones(bv) {
+        let value = bv.select_zero(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select_zero({})", i);
+        assert!(value.1 >= next, "select_zero({}) == {}, expected at least {}", i, value.1, next);
+        assert!(!bv.get(value.1), "select_zero({}) == {} is set", i, value.1);
+        next = value.1 + 1;
+    }
+}
+
+#[test]
+fn empty_select_zero() {
+    let mut empty = BitVector::from(RawVector::new());
+    assert!(!empty.supports_select_zero(), "Select zero support was enabled by default");
+    empty.enable_select_zero();
+    assert!(empty.supports_select_zero(), "Failed to enable select zero support");
+    assert_eq!(empty.select_zero(Complement::count_ones(&empty)).next(), None, "Got a result for select past the end");
+}
+
+#[test]
+fn nonempty_select_zero() {
+    let mut bv = random_vector(2133, 0.5);
+    assert!(!bv.supports_select_zero(), "Select zero support was enabled by default");
+    bv.enable_select_zero();
+    assert!(bv.supports_select_zero(), "Failed to enable select zero support");
+    try_select_zero(&bv);
+}
+
+#[test]
+fn sparse_select_zero() {
+    let mut bv = random_vector(3647, 0.99);
+    assert!(!bv.supports_select_zero(), "Select zero support was enabled by default");
+    bv.enable_select_zero();
+    try_select_zero(&bv);
+}
+
+#[test]
+fn zero_iter() {
+    let bv = random_vector(3354, 0.5);
+    try_one_iter::<Complement>(&bv);
+}
+
+#[test]
+fn serialize_select_zero() {
+    let mut bv = random_vector(1764, 0.5);
+    let old_size = bv.size_in_bytes();
+    bv.enable_select_zero();
+    assert!(bv.size_in_bytes() > old_size, "Select zero support did not increase the size in bytes");
+    try_serialize(&bv, "bitvector-select-zero", None);
+}
+
+#[test]
+#[ignore]
+fn large_select_zero() {
+    let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
+    let mut bv = non_uniform_vector(&regions, true);
+    bv.enable_select_zero();
+
+    let ss = bv.select_zero.as_ref().unwrap();
+    assert_eq!(ss.superblocks(), 7, "Invalid number of select superblocks");
+    assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
+    assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
+
+    try_select_zero(&bv);
+    try_one_iter::<Complement>(&bv);
+    try_serialize(&bv, "large-bitvector-select-zero", None);
+}
+
 // TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
@@ -433,7 +507,7 @@ fn serialize_pred_succ() {
 #[ignore]
 fn large_pred_succ() {
     let regions: Vec<(usize, f64)> = vec![(4096, 0.5), (4096, 0.01), (8192, 0.5), (8192, 0.01), (4096, 0.5)];
-    let mut bv = non_uniform_vector(&regions);
+    let mut bv = non_uniform_vector(&regions, false);
     bv.enable_pred_succ();
 
     try_pred_succ(&bv);

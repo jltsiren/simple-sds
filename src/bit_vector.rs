@@ -216,6 +216,14 @@ impl<'a> Rank<'a> for BitVector {
 ///
 /// Types that implement this trait can be used as parameters for [`SelectSupport`] and [`OneIter`].
 pub trait Transformation {
+    /// Reads a bit from the transformed bitvector.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent`: The parent bitvector.
+    /// * `index`: Index in the bit array.
+    fn bit(parent: &BitVector, index: usize) -> bool;
+
     /// Reads a 64-bit word from the transformed bitvector.
     ///
     /// # Arguments
@@ -236,6 +244,10 @@ pub trait Transformation {
 pub struct Identity {}
 
 impl Transformation for Identity {
+    fn bit(parent: &BitVector, index: usize) -> bool {
+        parent.get(index)
+    }
+
     fn word(parent: &BitVector, index: usize) -> u64 {
         parent.data.word(index)
     }
@@ -254,6 +266,10 @@ impl Transformation for Identity {
 pub struct Complement {}
 
 impl Transformation for Complement {
+    fn bit(parent: &BitVector, index: usize) -> bool {
+        !parent.get(index)
+    }
+
     fn word(parent: &BitVector, index: usize) -> u64 {
         !parent.data.word(index)
     }
@@ -412,7 +428,7 @@ impl<'a> Select<'a> for BitVector {
     }
 
     fn select(&'a self, index: usize) -> Self::OneIter {
-         if index >= self.count_ones() {
+         if index >= Identity::count_ones(self) {
              Self::OneIter::empty_iter(self)
         } else {
             let select_support = self.select.as_ref().unwrap();
@@ -453,7 +469,7 @@ impl<'a> SelectZero<'a> for BitVector {
     }
 
     fn select_zero(&'a self, index: usize) -> Self::ZeroIter {
-         if index >= self.count_ones() {
+         if index >= Complement::count_ones(self) {
              Self::ZeroIter::empty_iter(self)
         } else {
             let select_support = self.select_zero.as_ref().unwrap();
