@@ -5,19 +5,27 @@ use crate::serialize::Serialize;
 use crate::serialize;
 
 use std::iter::{DoubleEndedIterator, ExactSizeIterator};
-use std::fs;
+use std::{cmp, fs};
 
 use rand::distributions::{Bernoulli, Distribution};
+use rand::Rng;
 
 //-----------------------------------------------------------------------------
 
 fn random_raw_vector(len: usize, density: f64) -> RawVector {
     let mut data = RawVector::with_capacity(len);
     let mut rng = rand::thread_rng();
-    let dist = Bernoulli::new(density).unwrap();
-    let mut iter = dist.sample_iter(&mut rng);
-    while data.len() < len {
-        data.push_bit(iter.next().unwrap());
+    if density == 0.5 {
+        while data.len() < len {
+            data.push_int(rng.gen(), cmp::min(len - data.len(), 64));
+        }
+    }
+    else {
+        let dist = Bernoulli::new(density).unwrap();
+        let mut iter = dist.sample_iter(&mut rng);
+        while data.len() < len {
+            data.push_bit(iter.next().unwrap());
+        }
     }
     assert_eq!(data.len(), len, "Invalid length for random RawVector");
     data
@@ -186,8 +194,6 @@ fn large() {
     try_serialize(&bv, "large-bitvector", Some(1234464));
 }
 
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
-
 //-----------------------------------------------------------------------------
 
 fn try_rank(bv: &BitVector) {
@@ -233,8 +239,6 @@ fn large_rank() {
     try_rank(&bv);
     try_serialize(&bv, "large-bitvector-rank", Some(1542448));
 }
-
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
@@ -356,8 +360,6 @@ fn large_select() {
     try_serialize(&bv, "large-bitvector-select", None);
 }
 
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
-
 //-----------------------------------------------------------------------------
 
 fn try_select_zero(bv: &BitVector) {
@@ -431,8 +433,6 @@ fn large_select_zero() {
     try_one_iter::<Complement>(&bv);
     try_serialize(&bv, "large-bitvector-select-zero", None);
 }
-
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------
 
@@ -513,7 +513,5 @@ fn large_pred_succ() {
     try_pred_succ(&bv);
     try_serialize(&bv, "large-bitvector-pred-succ", None);
 }
-
-// TODO benchmarks: repeated tests vs tests where the exact query depends on the previous result
 
 //-----------------------------------------------------------------------------

@@ -11,6 +11,12 @@ use rand::distributions::{Bernoulli, Distribution};
 
 //-----------------------------------------------------------------------------
 
+// TODO: More general benchmarks
+// Parameters: length density, queries
+// More operations: get, select_zero, one_iter (forward/backward)
+// Consistent output format
+// Memory usage
+
 fn main() {
     let bit_len: usize = 32;
     let density: f64 = 0.5;

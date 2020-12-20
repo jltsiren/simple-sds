@@ -600,9 +600,7 @@ pub trait AccessSub: SubElement {
 ///         let mut result: usize = 0;
 ///         let index = cmp::min(self.len(), index);
 ///         for i in 0..index {
-///             if self.get(i) {
-///                 result += 1;
-///             }
+///             result += self.get(i) as usize;
 ///         }
 ///         result
 ///     }
@@ -743,7 +741,10 @@ pub trait AccessSub: SubElement {
 /// // Select
 /// bv.enable_select();
 /// assert!(bv.supports_select());
-/// assert_eq!(bv.select(2).next(), Some((2, 95)));
+/// let mut iter = bv.select(2);
+/// assert_eq!(iter.next(), Some((2, 95)));
+/// assert_eq!(iter.next(), Some((3, 123)));
+/// assert_eq!(iter.next(), None);
 /// let v: Vec<(usize, usize)> = bv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
 ///
