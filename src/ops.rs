@@ -833,6 +833,7 @@ pub trait Rank<'a>: BitVec<'a> {
     ///
     /// May panic if rank support has not been enabled.
     /// May panic from I/O errors.
+    #[inline]
     fn rank_zero(&self, index: usize) -> usize {
         index - self.rank(index)
     }

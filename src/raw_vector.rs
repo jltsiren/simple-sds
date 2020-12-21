@@ -33,6 +33,10 @@ use std::io;
 ///         self.0[index]
 ///     }
 ///
+///     unsafe fn word_unchecked(&self, index: usize) -> u64 {
+///         *self.0.get_unchecked(index)
+///     }
+///
 ///     fn is_mutable(&self) -> bool {
 ///         true
 ///     }
@@ -96,6 +100,11 @@ pub trait AccessRaw {
     /// May panic if `index * 64` is not a valid offset in the bit array.
     /// May panic from I/O errors.
     fn word(&self, index: usize) -> u64;
+
+    /// Unsafe version of [`AccessRaw::word`] without bounds checks.
+    ///
+    /// Behavior is undefined in situations where the safe versions may panic.
+    unsafe fn word_unchecked(&self, index: usize) -> u64;
 
     /// Returns `true` if the underlying data is mutable.
     ///
@@ -266,16 +275,19 @@ pub struct RawVector {
 
 impl RawVector {
     /// Returns the length of the vector in bits.
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Returns `true` if the vector is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the capacity of the vector in bits.
+    #[inline]
     pub fn capacity(&self) -> usize {
         bits::words_to_bits(self.data.capacity())
     }
@@ -470,29 +482,40 @@ impl RawVector {
 //-----------------------------------------------------------------------------
 
 impl AccessRaw for RawVector {
+    #[inline]
     fn bit(&self, bit_offset: usize) -> bool {
         let (index, offset) = bits::split_offset(bit_offset);
         ((self.data[index] >> offset) & 1) == 1
     }
 
+    #[inline]
     fn int(&self, bit_offset: usize, width: usize) -> u64 {
         bits::read_int(&self.data, bit_offset, width)
     }
 
+    #[inline]
     fn word(&self, index: usize) -> u64 {
         self.data[index]
     }
 
+    #[inline]
+    unsafe fn word_unchecked(&self, index: usize) -> u64 {
+        *self.data.get_unchecked(index)
+    }
+
+    #[inline]
     fn is_mutable(&self) -> bool {
         true
     }
 
+    #[inline]
     fn set_bit(&mut self, bit_offset: usize, value: bool) {
         let (index, offset) = bits::split_offset(bit_offset);
         self.data[index] &= !(1u64 << offset);
         self.data[index] |= (value as u64) << offset;
     }
 
+    #[inline]
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
         bits::write_int(&mut self.data, bit_offset, value, width);
     }
@@ -572,6 +595,7 @@ impl Serialize for RawVector {
 //-----------------------------------------------------------------------------
 
 impl AsRef<Vec<u64>> for RawVector {
+    #[inline]
     fn as_ref(&self) -> &Vec<u64> {
         &(self.data)
     }
@@ -596,11 +620,13 @@ impl RawVectorWriter {
     pub const DEFAULT_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
     /// Returns the length of the vector in bits.
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Returns `true` if the vector is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -929,6 +955,12 @@ mod tests {
         }
         for (index, value) in correct.iter().enumerate() {
             assert_eq!(v.word(index), *value, "Invalid integer {}", index);
+        }
+
+        unsafe {
+            for (index, value) in correct.iter().enumerate() {
+                assert_eq!(v.word_unchecked(index), *value, "Invalid integer {} (unchecked)", index);
+            }
         }
     }
 

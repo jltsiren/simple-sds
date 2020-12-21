@@ -78,8 +78,17 @@ const HIGH_SET: [u64; 65] = [
 ///
 /// assert_eq!(bits::low_set(13), 0x1FFF);
 /// ```
+#[inline]
 pub fn low_set(n: usize) -> u64 {
     LOW_SET[n]
+}
+
+/// Unsafe version of [`low_set`].
+///
+/// Behavior is undefined if `n > 64`.
+#[inline]
+pub unsafe fn low_set_unchecked(n: usize) -> u64 {
+    *LOW_SET.get_unchecked(n)
 }
 
 /// Returns an integer with the highest `n` bits set.
@@ -93,8 +102,17 @@ pub fn low_set(n: usize) -> u64 {
 ///
 /// assert_eq!(bits::high_set(13), 0xFFF8_0000_0000_0000);
 /// ```
+#[inline]
 pub fn high_set(n: usize) -> u64 {
     HIGH_SET[n]
+}
+
+/// Unsafe version of [`high_set`].
+///
+/// Behavior is undefined if `n > 64`.
+#[inline]
+pub unsafe fn high_set_unchecked(n: usize) -> u64 {
+    *HIGH_SET.get_unchecked(n)
 }
 
 /// Returns the length of the binary representation of integer `n`.
@@ -107,6 +125,7 @@ pub fn high_set(n: usize) -> u64 {
 /// assert_eq!(bits::bit_len(0), 1);
 /// assert_eq!(bits::bit_len(0x1FFF), 13);
 /// ```
+#[inline]
 pub fn bit_len(n: u64) -> usize {
     match n {
         0 => 1,
@@ -132,6 +151,7 @@ pub fn bit_len(n: u64) -> usize {
 /// assert_eq!(bits::select(0b00100001_00010000, 1), 8);
 /// assert_eq!(bits::select(0b00100001_00010000, 2), 13);
 /// ```
+#[inline]
 pub fn select(n: u64, rank: usize) -> usize {
     // The first argument to `__pdep_u64` has a single 1 at bit offset `rank`. The
     // number `n` we are interested in is used as a mask. PDEP takes low-order bits
@@ -174,6 +194,7 @@ pub fn select(n: u64, rank: usize) -> usize {
 ///
 /// assert_eq!(bits::words_to_bits(3), 192);
 /// ```
+#[inline]
 pub fn words_to_bits(n: usize) -> usize {
     n * WORD_BITS
 }
@@ -190,6 +211,7 @@ pub fn words_to_bits(n: usize) -> usize {
 /// assert_eq!(bits::bits_to_words(64), 1);
 /// assert_eq!(bits::bits_to_words(65), 2);
 /// ```
+#[inline]
 pub fn bits_to_words(n: usize) -> usize {
     (n + WORD_BITS - 1) / WORD_BITS
 }
@@ -207,6 +229,7 @@ pub fn bits_to_words(n: usize) -> usize {
 /// assert_eq!(bits::round_up_to_word_size(64), 64);
 /// assert_eq!(bits::round_up_to_word_size(65), 128);
 /// ```
+#[inline]
 pub fn round_up_to_word_size(n: usize) -> usize {
     match n {
         0 => WORD_BITS,
@@ -224,6 +247,7 @@ pub fn round_up_to_word_size(n: usize) -> usize {
 /// assert_eq!(bits::filler_value(false), 0);
 /// assert_eq!(bits::filler_value(true), !0u64);
 /// ```
+#[inline]
 pub fn filler_value(value: bool) -> u64 {
     match value {
         true  => !0u64,
@@ -240,6 +264,7 @@ pub fn filler_value(value: bool) -> u64 {
 ///
 /// assert_eq!(bits::split_offset(123), (1, 59));
 /// ```
+#[inline]
 pub fn split_offset(bit_offset: usize) -> (usize, usize) {
     (bit_offset >> INDEX_SHIFT, bit_offset & OFFSET_MASK)
 }
@@ -258,6 +283,7 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 ///
 /// assert_eq!(bits::bit_offset(1, 59), 123);
 /// ```
+#[inline]
 pub fn bit_offset(index: usize, offset: usize) -> usize {
     (index << INDEX_SHIFT) + offset
 }
@@ -295,10 +321,10 @@ pub fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: us
     let (index, offset) = split_offset(bit_offset);
 
     if offset + width <= WORD_BITS {
-        array[index] &= high_set(WORD_BITS - width - offset) | low_set(offset);
+        array[index] &= unsafe { high_set_unchecked(WORD_BITS - width - offset) | low_set_unchecked(offset) };
         array[index] |= value << offset;
     } else {
-        array[index] &= low_set(offset);
+        array[index] &= unsafe { low_set_unchecked(offset) };
         array[index] |= value << offset;
         array[index + 1] &= high_set(2 * WORD_BITS - width - offset);
         array[index + 1] |= value >> (WORD_BITS - offset);
@@ -333,9 +359,9 @@ pub fn read_int<T: Index<usize, Output = u64>>(array: &T, bit_offset: usize, wid
     let first = array[index] >> offset;
 
     if offset + width <= WORD_BITS {
-        first & low_set(width)
+        first & unsafe { low_set_unchecked(width) }
     } else {
-        first | ((array[index + 1] & low_set((offset + width) & OFFSET_MASK)) << (WORD_BITS - offset))
+        first | ((array[index + 1] & unsafe { low_set_unchecked((offset + width) & OFFSET_MASK) }) << (WORD_BITS - offset))
     }
 }
 
@@ -351,14 +377,26 @@ mod tests {
     fn low_set_test() {
         assert_eq!(low_set(0), 0u64, "low_set(0) failed");
         assert_eq!(low_set(13), 0x1FFF, "low_set(13) failed");
-        assert_eq!(low_set(64), !0u64, "low_set(64) failed")
+        assert_eq!(low_set(64), !0u64, "low_set(64) failed");
+
+        unsafe {
+            assert_eq!(low_set_unchecked(0), 0u64, "low_set_unchecked(0) failed");
+            assert_eq!(low_set_unchecked(13), 0x1FFF, "low_set_unchecked(13) failed");
+            assert_eq!(low_set_unchecked(64), !0u64, "low_set_unchecked(64) failed")
+        }
     }
 
     #[test]
     fn high_set_test() {
         assert_eq!(high_set(0), 0, "high_set(0) failed");
         assert_eq!(high_set(13), 0xFFF8_0000_0000_0000, "high_set(13) failed");
-        assert_eq!(high_set(64), !0u64, "high_set(64) failed")
+        assert_eq!(high_set(64), !0u64, "high_set(64) failed");
+
+        unsafe {
+            assert_eq!(high_set_unchecked(0), 0, "high_set_unchecked(0) failed");
+            assert_eq!(high_set_unchecked(13), 0xFFF8_0000_0000_0000, "high_set_unchecked(13) failed");
+            assert_eq!(high_set_unchecked(64), !0u64, "high_set_unchecked(64) failed")
+        }
     }
 
     #[test]

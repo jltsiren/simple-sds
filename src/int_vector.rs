@@ -162,10 +162,12 @@ impl IntVector {
 impl Element for IntVector {
     type Item = u64;
 
+    #[inline]
     fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     fn width(&self) -> usize {
         self.width
     }
@@ -189,6 +191,7 @@ impl Resize for IntVector {
         self.len = 0;
     }
 
+    #[inline]
     fn capacity(&self) -> usize {
         self.data.capacity() / self.width()
     }
@@ -216,20 +219,24 @@ impl Pack for IntVector {
 }
 
 impl Access for IntVector {
+    #[inline]
     fn get(&self, index: usize) -> <Self as Element>::Item {
         self.data.int(index * self.width(), self.width)
     }
 
+    #[inline]
     fn is_mutable(&self) -> bool {
         true
     }
 
+    #[inline]
     fn set(&mut self, index: usize, value: <Self as Element>::Item) {
         self.data.set_int(index * self.width(), value, self.width());
     }
 }
 
 impl Push for IntVector {
+    #[inline]
     fn push(&mut self, value: <Self as Element>::Item) {
         self.data.push_int(value, self.width());
         self.len += 1;
@@ -237,6 +244,7 @@ impl Push for IntVector {
 }
 
 impl Pop for IntVector {
+    #[inline]
     fn pop(&mut self) -> Option<<Self as Element>::Item> {
         if self.len() > 0 {
             self.len -= 1;
@@ -287,6 +295,7 @@ impl Default for IntVector {
 }
 
 impl AsRef<RawVector> for IntVector {
+    #[inline]
     fn as_ref(&self) -> &RawVector {
         &(self.data)
     }
@@ -337,6 +346,7 @@ impl<'a> Iterator for Iter<'a> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.limit - self.next;
         (remaining, Some(remaining))
@@ -393,6 +403,7 @@ impl Iterator for IntoIter {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.parent.len() - self.index;
         (remaining, Some(remaining))
@@ -528,16 +539,19 @@ impl IntVectorWriter {
 impl Element for IntVectorWriter {
     type Item = u64;
 
+    #[inline]
     fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     fn width(&self) -> usize {
         self.width
     }
 }
 
 impl Push for IntVectorWriter {
+    #[inline]
     fn push(&mut self, value: <Self as Element>::Item) {
         self.writer.push_int(value, self.width());
         self.len += 1;

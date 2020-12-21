@@ -132,7 +132,31 @@ impl RankSupport {
         let word_start = (relative_ranks >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;
 
         // Relative rank within the word.
-        let within_word = (parent.data.word(word) & bits::low_set(offset)).count_ones() as usize;
+        let within_word = (parent.data.word(word) & unsafe { bits::low_set_unchecked(offset) }).count_ones() as usize;
+
+        block_start as usize + word_start + within_word
+    }
+
+    /// Unsafe version of [`RankSupport::rank`] without bounds checks.
+    ///
+    /// Behavior is undefined if `index >= parent.len()`.
+    pub unsafe fn rank_unchecked(&self, parent: &BitVector, index: usize) -> usize {
+        let block = index / Self::BLOCK_SIZE;
+        let (word, offset) = bits::split_offset(index);
+
+        // Rank at the start of the block and relative ranks at the start of the words.
+        let (block_start, relative_ranks) = *self.samples.get_unchecked(block);
+
+        // Transform the absolute word index into a relative word index within the block.
+        // Then reorder the words 0..8 to 1..8, 0, because the second sample stores relative
+        // ranks for words 1..8.
+        let relative = ((word & Self::WORD_MASK) + Self::WORDS_PER_BLOCK - 1) & Self::WORD_MASK;
+
+        // Relative rank at the start of the word.
+        let word_start = (relative_ranks >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;
+
+        // Relative rank within the word.
+        let within_word = (parent.data.word_unchecked(word) & bits::low_set_unchecked(offset)).count_ones() as usize;
 
         block_start as usize + word_start + within_word
     }
@@ -200,10 +224,19 @@ mod tests {
         let rs = RankSupport::new(&bv);
         assert_eq!(bv.len(), len, "Invalid bitvector length at {}", len);
         assert_eq!(rs.blocks(), blocks, "Invalid number of rank blocks at {}", len);
+
         let mut count: usize = 0;
         for i in 0..bv.len() {
             assert_eq!(rs.rank(&bv, i), count, "Invalid rank({}) at {}", i, len);
             count += bv.get(i) as usize;
+        }
+
+        unsafe {
+            let mut count: usize = 0;
+            for i in 0..bv.len() {
+                assert_eq!(rs.rank_unchecked(&bv, i), count, "Invalid rank_unchecked({}) at {}", i, len);
+                count += bv.get(i) as usize;
+            }
         }
     }
 

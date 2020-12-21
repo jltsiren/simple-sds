@@ -84,26 +84,24 @@ impl<T: Transformation> SelectSupport<T> {
     // Append a superblock. The buffer should contain all elements in the superblock
     // and either the first element in the next superblock or a past-the-end sentinel
     // for the last superblock.
-    fn add_superblock(&mut self, buf: &[u64], long_superblock_min: usize) {
-        let len: usize = (buf[buf.len() - 1] - buf[0]) as usize;
+    unsafe fn add_superblock(&mut self, buf: &[u64], long_superblock_min: usize) {
+        let len: usize = (*buf.get_unchecked(buf.len() - 1) - *buf.get_unchecked(0)) as usize;
         let superblock_ptr: u64;
         if len >= long_superblock_min {
             superblock_ptr = (2 * self.long.len()) as u64;
-            for (index, value) in buf.iter().enumerate() {
-                if index + 1 < buf.len() {
-                    self.long.push(*value - buf[0]);
-                }
+            for value in buf.iter().take(buf.len() - 1) {
+                self.long.push(*value - *buf.get_unchecked(0));
             }
         }
         else {
             superblock_ptr = (2 * self.short.len() + 1) as u64;
-            for (index, value) in buf.iter().enumerate() {
-                if index + 1 < buf.len() && (index & Self::BLOCK_MASK) == 0 {
-                    self.short.push(value - buf[0]);
+            for (index, value) in buf.iter().enumerate().take(buf.len() - 1) {
+                if (index & Self::BLOCK_MASK) == 0 {
+                    self.short.push(value - *buf.get_unchecked(0));
                 }
             }
         }
-        self.samples.push(buf[0]);
+        self.samples.push(*buf.get_unchecked(0));
         self.samples.push(superblock_ptr);
     }
 
@@ -141,13 +139,13 @@ impl<T: Transformation> SelectSupport<T> {
         let mut buf: Vec<u64> = Vec::with_capacity(Self::SUPERBLOCK_SIZE + 1);
         let words = bits::bits_to_words(parent.len());
         for index in 0..words {
-            let mut word = T::word(parent, index);
+            let mut word = unsafe { T::word_unchecked(parent, index) };
             while word != 0 {
                 let offset = word.trailing_zeros() as usize;
                 buf.push(bits::bit_offset(index, offset) as u64);
-                word &= !bits::low_set(offset + 1);
+                word &= unsafe { !bits::low_set_unchecked(offset + 1) };
                 if buf.len() > Self::SUPERBLOCK_SIZE {
-                    result.add_superblock(&buf, log4);
+                    unsafe { result.add_superblock(&buf, log4); }
                     buf[0] = buf[Self::SUPERBLOCK_SIZE];
                     buf.resize(1, 0);
                 }
@@ -155,7 +153,7 @@ impl<T: Transformation> SelectSupport<T> {
         }
         if buf.len() > 0 {
             buf.push(parent.len() as u64);
-            result.add_superblock(&buf, log4);
+            unsafe { result.add_superblock(&buf, log4); }
         }
 
         result.samples = result.samples.pack();
@@ -206,7 +204,7 @@ impl<T: Transformation> SelectSupport<T> {
             // from the start of the current word.
             if relative_rank > 0 {
                 let (mut word, word_offset) = bits::split_offset(result);
-                let mut value: u64 = T::word(parent, word) & !bits::low_set(word_offset);
+                let mut value: u64 = T::word(parent, word) & unsafe { !bits::low_set_unchecked(word_offset) };
                 loop {
                     let ones = value.count_ones() as usize;
                     if ones > relative_rank {
@@ -216,6 +214,44 @@ impl<T: Transformation> SelectSupport<T> {
                     relative_rank -= ones;
                     word += 1;
                     value = T::word(parent, word);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Unsafe version of [`SelectSupport::select`] without some bounds checks.
+    ///
+    /// Behavior is undefined if `rank >= T::count_ones(parent)`.
+    pub unsafe fn select_unchecked(&self, parent: &BitVector, rank: usize) -> usize {
+        let (superblock, offset) = (rank / Self::SUPERBLOCK_SIZE, rank & Self::SUPERBLOCK_MASK);
+        let mut result: usize = self.samples.get(2 * superblock) as usize;
+        if offset == 0 {
+            return result;
+        }
+
+        let ptr = self.samples.get(2 * superblock + 1) as usize;
+        let (ptr, is_short) = (ptr / 2, ptr & 1);
+        if is_short == 0 {
+            result += self.long.get(ptr + offset) as usize;
+        } else {
+            let (block, mut relative_rank) = (offset / Self::BLOCK_SIZE, offset & Self::BLOCK_MASK);
+            result += self.short.get(ptr + block) as usize;
+            // Search within the block until we find the set bit of relative rank `relative_rank`
+            // from the start of the current word.
+            if relative_rank > 0 {
+                let (mut word, word_offset) = bits::split_offset(result);
+                let mut value: u64 = T::word_unchecked(parent, word) & !bits::low_set_unchecked(word_offset);
+                loop {
+                    let ones = value.count_ones() as usize;
+                    if ones > relative_rank {
+                        result = bits::bit_offset(word, bits::select(value, relative_rank));
+                        break;
+                    }
+                    relative_rank -= ones;
+                    word += 1;
+                    value = T::word_unchecked(parent, word);
                 }
             }
         }
@@ -312,6 +348,16 @@ mod tests {
             assert!(value >= next, "test_vector({}, {}): select({}) == {}, expected at least {}", len, density, i, value, next);
             assert!(bv.get(value), "test_vector({}, {}): select({}) == {} is not set", len, density, i, value);
             next = value + 1;
+        }
+
+        unsafe {
+            let mut next: usize = 0;
+            for i in 0..bv.count_ones() {
+                let value = ss.select_unchecked(&bv, i);
+                assert!(value >= next, "test_vector({}, {}): select_unchecked({}) == {}, expected at least {}", len, density, i, value, next);
+                assert!(bv.get(value), "test_vector({}, {}): select_unchecked({}) == {} is not set", len, density, i, value);
+                next = value + 1;
+            }
         }
     }
 

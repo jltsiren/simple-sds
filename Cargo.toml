@@ -6,7 +6,7 @@ edition = "2018"
 description = "Basic succinct data structures."
 license = "MIT"
 readme = "README.md"
-# repository = "https://github.com/jltsiren/simple-sds"
+repository = "https://github.com/jltsiren/simple-sds"
 
 [dependencies]
 libc = { version = "0.2", optional = true }

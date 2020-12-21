@@ -92,7 +92,7 @@ mod tests;
 /// # Notes
 ///
 /// * `BitVector` never panics from I/O errors.
-/// * [`Select::one_iter`] and [`SelectZero::zero_iter`] for `BitVector` does not need select support.
+/// * [`Select::one_iter`] and [`SelectZero::zero_iter`] for `BitVector` do not need select support.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitVector {
     ones: usize,
@@ -143,6 +143,7 @@ impl<'a> Iterator for Iter<'a> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.limit - self.next;
         (remaining, Some(remaining))
@@ -169,14 +170,17 @@ impl<'a> FusedIterator for Iter<'a> {}
 impl<'a> BitVec<'a> for BitVector {
     type Iter = Iter<'a>;
 
+    #[inline]
     fn len(&self) -> usize {
         self.data.len()
     }
 
+    #[inline]
     fn count_ones(&self) -> usize {
         self.ones
     }
 
+    #[inline]
     fn get(&self, index: usize) -> bool {
         self.data.bit(index)
     }
@@ -209,7 +213,7 @@ impl<'a> Rank<'a> for BitVector {
             return self.count_ones();
         }
         let rank_support = self.rank.as_ref().unwrap();
-        rank_support.rank(self, index)
+        unsafe { rank_support.rank_unchecked(self, index) }
     }
 }
 
@@ -225,6 +229,10 @@ pub trait Transformation {
     ///
     /// * `parent`: The parent bitvector.
     /// * `index`: Index in the bit array.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `index` is not a valid offset in the bit array.
     fn bit(parent: &BitVector, index: usize) -> bool;
 
     /// Reads a 64-bit word from the transformed bitvector.
@@ -233,7 +241,16 @@ pub trait Transformation {
     ///
     /// * `parent`: The parent bitvector.
     /// * `index`: Read the word starting at offset `index * 64` of the bit array.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `index * 64` is not a valid offset in the bit array.
     fn word(parent: &BitVector, index: usize) -> u64;
+
+    /// Unsafe version of [`Transformation::word`] without bounds checks.
+    ///
+    /// Behavior is undefined if `index * 64` is not a valid offset in the bit array.
+    unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64;
 
     /// Returns the length of the integer array or the number of ones in the bit array of the transformed bitvector.
     fn count_ones(parent: &BitVector) -> usize;
@@ -247,14 +264,22 @@ pub trait Transformation {
 pub struct Identity {}
 
 impl Transformation for Identity {
+    #[inline]
     fn bit(parent: &BitVector, index: usize) -> bool {
         parent.get(index)
     }
 
+    #[inline]
     fn word(parent: &BitVector, index: usize) -> u64 {
         parent.data.word(index)
     }
 
+    #[inline]
+    unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
+        parent.data.word_unchecked(index)
+    }
+
+    #[inline]
     fn count_ones(parent: &BitVector) -> usize {
         parent.count_ones()
     }
@@ -269,19 +294,30 @@ impl Transformation for Identity {
 pub struct Complement {}
 
 impl Transformation for Complement {
+    #[inline]
     fn bit(parent: &BitVector, index: usize) -> bool {
         !parent.get(index)
     }
 
     fn word(parent: &BitVector, index: usize) -> u64 {
         let (last_index, offset) = bits::split_offset(parent.len());
-        if index == last_index {
-            (!parent.data.word(index)) & bits::low_set(offset)
+        if index >= last_index {
+            (!parent.data.word(index)) & unsafe { bits::low_set_unchecked(offset) }
         } else {
-            !parent.data.word(index)
+            unsafe { !parent.data.word_unchecked(index) }
         }
     }
 
+    unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
+        let (last_index, offset) = bits::split_offset(parent.len());
+        if index >= last_index {
+            (!parent.data.word_unchecked(index)) & bits::low_set_unchecked(offset)
+        } else {
+            !parent.data.word_unchecked(index)
+        }
+    }
+
+    #[inline]
     fn count_ones(parent: &BitVector) -> usize {
         parent.len() - parent.count_ones()
     }
@@ -365,18 +401,21 @@ impl<'a, T: Transformation + ?Sized> Iterator for OneIter<'a, T> {
             None
         } else {
             let (mut index, offset) = bits::split_offset(self.next.1);
-            let mut word = T::word(self.parent, index) & !bits::low_set(offset);
+            // We trust that the iterator has been initialized properly and the above check
+            // guarantees that `self.next.1 < self.limit.1` and `self.limit.1 <= self.parent.len()`.
+            let mut word = unsafe { T::word_unchecked(self.parent, index) & !bits::low_set_unchecked(offset) };
             while word == 0 {
                 index += 1;
-                word = T::word(self.parent, index);
+                word = unsafe { T::word_unchecked(self.parent, index) };
             }
             let offset = word.trailing_zeros() as usize;
             let result = (self.next.0, bits::bit_offset(index, offset));
             self.next = (result.0 + 1, result.1 + 1);
-            return Some(result);
+            Some(result)
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.limit.0 - self.next.0;
         (remaining, Some(remaining))
@@ -389,17 +428,17 @@ impl<'a, T: Transformation + ?Sized> DoubleEndedIterator for OneIter<'a, T> {
             None
         } else {
             self.limit = (self.limit.0 - 1, self.limit.1 - 1);
-            let (mut index, mut offset) = bits::split_offset(self.limit.1);
-            loop {
-                let word = T::word(self.parent, index) & bits::low_set(offset + 1);
-                if word == 0 {
-                    index -= 1; offset = 63;
-                } else {
-                    offset = bits::WORD_BITS - 1 - (word.leading_zeros() as usize);
-                    self.limit.1 = bits::bit_offset(index, offset);
-                    return Some(self.limit);
-                }
+            let (mut index, offset) = bits::split_offset(self.limit.1);
+            // We trust that the iterator has been initialized properly and the above check
+            // guarantees that `self.next.1 <= self.limit.1` and `self.limit.1 < self.parent.len()`.
+            let mut word = unsafe { T::word_unchecked(self.parent, index) & bits::low_set_unchecked(offset + 1) };
+            while word == 0 {
+                index -= 1;
+                word = unsafe { T::word_unchecked(self.parent, index) };
             }
+            let offset = bits::WORD_BITS - 1 - (word.leading_zeros() as usize);
+            self.limit.1 = bits::bit_offset(index, offset);
+            Some(self.limit)
         }
     }
 }
@@ -438,7 +477,7 @@ impl<'a> Select<'a> for BitVector {
              Self::OneIter::empty_iter(self)
         } else {
             let select_support = self.select.as_ref().unwrap();
-            let value = select_support.select(self, index);
+            let value = unsafe { select_support.select_unchecked(self, index) };
             Self::OneIter {
                 parent: self,
                 next: (index, value),
@@ -479,7 +518,7 @@ impl<'a> SelectZero<'a> for BitVector {
              Self::ZeroIter::empty_iter(self)
         } else {
             let select_support = self.select_zero.as_ref().unwrap();
-            let value = select_support.select(self, index);
+            let value = unsafe { select_support.select_unchecked(self, index) };
             Self::ZeroIter {
                 parent: self,
                 next: (index, value),
@@ -567,6 +606,7 @@ impl Serialize for BitVector {
 //-----------------------------------------------------------------------------
 
 impl AsRef<RawVector> for BitVector {
+    #[inline]
     fn as_ref(&self) -> &RawVector {
         &(self.data)
     }
@@ -645,6 +685,7 @@ impl Iterator for IntoIter {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.parent.len() - self.index;
         (remaining, Some(remaining))
