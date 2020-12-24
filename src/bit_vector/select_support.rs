@@ -208,7 +208,7 @@ impl<T: Transformation> SelectSupport<T> {
                 loop {
                     let ones = value.count_ones() as usize;
                     if ones > relative_rank {
-                        result = bits::bit_offset(word, bits::select(value, relative_rank));
+                        result = bits::bit_offset(word, unsafe { bits::select(value, relative_rank) });
                         break;
                     }
                     relative_rank -= ones;

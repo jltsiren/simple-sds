@@ -28,6 +28,7 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 ### Bitvectors
 
 * `SparseVector`: An Elias-Fano encoded immutable bitvector. Comparable to `sdsl::sd_vector`.
+* `select_zero()` for `SparseVector`?
 
 ## Notes
 

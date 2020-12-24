@@ -26,7 +26,7 @@ use std::io;
 ///     }
 ///
 ///     fn int(&self, bit_offset: usize, width: usize) -> u64 {
-///         bits::read_int(&self.0, bit_offset, width)
+///         unsafe { bits::read_int(&self.0, bit_offset, width) }
 ///     }
 ///
 ///     fn word(&self, index: usize) -> u64 {
@@ -48,7 +48,7 @@ use std::io;
 ///     }
 ///
 ///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-///         bits::write_int(&mut self.0, bit_offset, value, width);
+///         unsafe { bits::write_int(&mut self.0, bit_offset, value, width); }
 ///     }
 /// }
 ///
@@ -490,7 +490,7 @@ impl AccessRaw for RawVector {
 
     #[inline]
     fn int(&self, bit_offset: usize, width: usize) -> u64 {
-        bits::read_int(&self.data, bit_offset, width)
+        unsafe { bits::read_int(&self.data, bit_offset, width) }
     }
 
     #[inline]
@@ -517,7 +517,7 @@ impl AccessRaw for RawVector {
 
     #[inline]
     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-        bits::write_int(&mut self.data, bit_offset, value, width);
+        unsafe { bits::write_int(&mut self.data, bit_offset, value, width); }
     }
 }
 
@@ -535,7 +535,7 @@ impl PushRaw for RawVector {
         if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        bits::write_int(&mut self.data, self.len, value, width);
+        unsafe { bits::write_int(&mut self.data, self.len, value, width); }
         self.len += width;
     }
 }

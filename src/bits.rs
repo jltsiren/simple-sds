@@ -69,8 +69,6 @@ const HIGH_SET: [u64; 65] = [
 
 /// Returns an integer with the lowest `n` bits set.
 ///
-/// Behavior is undefined if `n > 64`.
-///
 /// # Examples
 ///
 /// ```
@@ -78,6 +76,10 @@ const HIGH_SET: [u64; 65] = [
 ///
 /// assert_eq!(bits::low_set(13), 0x1FFF);
 /// ```
+///
+/// # Panics
+///
+/// May panic if `n > 64`.
 #[inline]
 pub fn low_set(n: usize) -> u64 {
     LOW_SET[n]
@@ -93,8 +95,6 @@ pub unsafe fn low_set_unchecked(n: usize) -> u64 {
 
 /// Returns an integer with the highest `n` bits set.
 ///
-/// Behavior is undefined if `n > 64`.
-///
 /// # Examples
 ///
 /// ```
@@ -102,6 +102,10 @@ pub unsafe fn low_set_unchecked(n: usize) -> u64 {
 ///
 /// assert_eq!(bits::high_set(13), 0xFFF8_0000_0000_0000);
 /// ```
+///
+/// # Panics
+///
+/// May panic if `n > 64`.
 #[inline]
 pub fn high_set(n: usize) -> u64 {
     HIGH_SET[n]
@@ -147,12 +151,14 @@ pub fn bit_len(n: u64) -> usize {
 /// ```
 /// use simple_sds::bits;
 ///
-/// assert_eq!(bits::select(0b00100001_00010000, 0), 4);
-/// assert_eq!(bits::select(0b00100001_00010000, 1), 8);
-/// assert_eq!(bits::select(0b00100001_00010000, 2), 13);
+/// unsafe {
+///     assert_eq!(bits::select(0b00100001_00010000, 0), 4);
+///     assert_eq!(bits::select(0b00100001_00010000, 1), 8);
+///     assert_eq!(bits::select(0b00100001_00010000, 2), 13);
+/// }
 /// ```
 #[inline]
-pub fn select(n: u64, rank: usize) -> usize {
+pub unsafe fn select(n: u64, rank: usize) -> usize {
     // The first argument to `__pdep_u64` has a single 1 at bit offset `rank`. The
     // number `n` we are interested in is used as a mask. PDEP takes low-order bits
     // from the value and places them to the offsets specified by the mask. In
@@ -160,7 +166,7 @@ pub fn select(n: u64, rank: usize) -> usize {
     // `rank` in `n`. We get the offset by counting the trailing zeros.
     #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
     {
-        let pos = unsafe { core::arch::x86_64::_pdep_u64(1u64 << rank, n) };
+        let pos = core::arch::x86_64::_pdep_u64(1u64 << rank, n);
         pos.trailing_zeros() as usize
     }
 
@@ -271,6 +277,8 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 
 /// Combines an index in an array of `u64` and an offset within the integer into a bit offset.
 ///
+/// Behavior is undefined result would be `> usize::MAX`.
+///
 /// # Arguments
 ///
 /// * `index`: Array index.
@@ -306,32 +314,32 @@ pub fn bit_offset(index: usize, offset: usize) -> usize {
 /// use simple_sds::bits;
 ///
 /// let mut array: Vec<u64> = vec![0];
-/// bits::write_int(&mut array, 0, 7, 4);
-/// bits::write_int(&mut array, 4, 3, 4);
+/// unsafe {
+///     bits::write_int(&mut array, 0, 7, 4);
+///     bits::write_int(&mut array, 4, 3, 4);
+/// }
 /// assert_eq!(array[0], 0x37);
 /// ```
 ///
 /// # Panics
 ///
-/// Panics if `width > 64`.
 /// May panic if `(bit_offset + width - 1) / 64` is not a valid index in the array.
-pub fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: usize, value: u64, width: usize) {
-
+pub unsafe fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: usize, value: u64, width: usize) {
     let value = value & low_set(width);
     let (index, offset) = split_offset(bit_offset);
 
     if offset + width <= WORD_BITS {
-        array[index] &= unsafe { high_set_unchecked(WORD_BITS - width - offset) | low_set_unchecked(offset) };
+        array[index] &= high_set_unchecked(WORD_BITS - width - offset) | low_set_unchecked(offset);
         array[index] |= value << offset;
     } else {
-        array[index] &= unsafe { low_set_unchecked(offset) };
+        array[index] &= low_set_unchecked(offset);
         array[index] |= value << offset;
         array[index + 1] &= high_set(2 * WORD_BITS - width - offset);
         array[index + 1] |= value >> (WORD_BITS - offset);
     }
 }
 
-/// Reads an integer from an bit array implemented as an array of `u64` values.
+/// Reads an integer from a bit array implemented as an array of `u64` values.
 ///
 /// Behavior is undefined if `width > 64`.
 ///
@@ -346,22 +354,23 @@ pub fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_offset: us
 /// use simple_sds::bits;
 ///
 /// let array: Vec<u64> = vec![0x37];
-/// assert_eq!(bits::read_int(&array, 0, 4), 7);
-/// assert_eq!(bits::read_int(&array, 4, 4), 3);
+/// unsafe {
+///     assert_eq!(bits::read_int(&array, 0, 4), 7);
+///     assert_eq!(bits::read_int(&array, 4, 4), 3);
+/// }
 /// ```
 ///
 /// # Panics
 ///
 /// May panic if `(bit_offset + width - 1) / 64` is not a valid index in the array.
-pub fn read_int<T: Index<usize, Output = u64>>(array: &T, bit_offset: usize, width: usize) -> u64 {
-
+pub unsafe fn read_int<T: Index<usize, Output = u64>>(array: &T, bit_offset: usize, width: usize) -> u64 {
     let (index, offset) = split_offset(bit_offset);
     let first = array[index] >> offset;
 
     if offset + width <= WORD_BITS {
-        first & unsafe { low_set_unchecked(width) }
+        first & low_set_unchecked(width)
     } else {
-        first | ((array[index + 1] & unsafe { low_set_unchecked((offset + width) & OFFSET_MASK) }) << (WORD_BITS - offset))
+        first | ((array[index + 1] & low_set_unchecked((offset + width) & OFFSET_MASK)) << (WORD_BITS - offset))
     }
 }
 
@@ -420,7 +429,7 @@ mod tests {
         (0x8000_0010_0000_0001, 2, 63),
         ];
         for (value, rank, result) in values.iter() {
-            assert_eq!(select(*value, *rank), *result, "select({:X}, {}) failed", value, rank);
+            unsafe { assert_eq!(select(*value, *rank), *result, "select({:X}, {}) failed", value, rank); }
         }
     }
 
@@ -437,32 +446,38 @@ mod tests {
         let mut array: Vec<u64> = vec![0; 256];
         let mut bit_offset = 0;
         for i in 0..64 {
-            write_int(&mut array, bit_offset, correct[i].0, 31); bit_offset += 31;
-            write_int(&mut array, bit_offset, correct[i].1, 64); bit_offset += 64;
-            write_int(&mut array, bit_offset, correct[i].2, 35); bit_offset += 35;
-            write_int(&mut array, bit_offset, correct[i].3, 63); bit_offset += 63;
+            unsafe {
+                write_int(&mut array, bit_offset, correct[i].0, 31); bit_offset += 31;
+                write_int(&mut array, bit_offset, correct[i].1, 64); bit_offset += 64;
+                write_int(&mut array, bit_offset, correct[i].2, 35); bit_offset += 35;
+                write_int(&mut array, bit_offset, correct[i].3, 63); bit_offset += 63;
+            }
         }
 
         bit_offset = 0;
         for i in 0..64 {
-            assert_eq!(read_int(&array, bit_offset, 31), correct[i].0, "Invalid value at [{}].0", i); bit_offset += 31;
-            assert_eq!(read_int(&array, bit_offset, 64), correct[i].1, "Invalid value at [{}].1", i); bit_offset += 64;
-            assert_eq!(read_int(&array, bit_offset, 35), correct[i].2, "Invalid value at [{}].2", i); bit_offset += 35;
-            assert_eq!(read_int(&array, bit_offset, 63), correct[i].3, "Invalid value at [{}].3", i); bit_offset += 63;
+            unsafe {
+                assert_eq!(read_int(&array, bit_offset, 31), correct[i].0, "Invalid value at [{}].0", i); bit_offset += 31;
+                assert_eq!(read_int(&array, bit_offset, 64), correct[i].1, "Invalid value at [{}].1", i); bit_offset += 64;
+                assert_eq!(read_int(&array, bit_offset, 35), correct[i].2, "Invalid value at [{}].2", i); bit_offset += 35;
+                assert_eq!(read_int(&array, bit_offset, 63), correct[i].3, "Invalid value at [{}].3", i); bit_offset += 63;
+            }
         }
     }
 
     #[test]
     fn no_extra_bits() {
         let mut array: Vec<u64> = vec![0; 2];
-        write_int(&mut array, 16, 2, 16);
-        write_int(&mut array, 48, 2, 16);
-        write_int(&mut array, 32, !0u64, 16); // This should not overwrite the integer at offset 48.
-        write_int(&mut array, 0, !0u64, 16); // This should not overwrite the other integers.
-        assert_eq!(read_int(&array, 0, 16), 0xFFFF, "Incorrect 16-bit integer at offset 0");
-        assert_eq!(read_int(&array, 16, 16), 2, "Incorrect 16-bit integer at offset 16");
-        assert_eq!(read_int(&array, 32, 16), 0xFFFF, "Incorrect 16-bit integer at offset 32");
-        assert_eq!(read_int(&array, 48, 16), 2, "Incorrect 16-bit integer at offset 48");
+        unsafe {
+            write_int(&mut array, 16, 2, 16);
+            write_int(&mut array, 48, 2, 16);
+            write_int(&mut array, 32, !0u64, 16); // This should not overwrite the integer at offset 48.
+            write_int(&mut array, 0, !0u64, 16); // This should not overwrite the other integers.
+            assert_eq!(read_int(&array, 0, 16), 0xFFFF, "Incorrect 16-bit integer at offset 0");
+            assert_eq!(read_int(&array, 16, 16), 2, "Incorrect 16-bit integer at offset 16");
+            assert_eq!(read_int(&array, 32, 16), 0xFFFF, "Incorrect 16-bit integer at offset 32");
+            assert_eq!(read_int(&array, 48, 16), 2, "Incorrect 16-bit integer at offset 48");
+        }
     }
 
     #[test]

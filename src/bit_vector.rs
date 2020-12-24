@@ -23,7 +23,7 @@ mod tests;
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
 /// Because most queries require separate support structures, the bit array itself is immutable.
 /// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
-/// The maximum length of the vector is `usize::MAX` bits.
+/// The maximum length of the vector is approximately `usize::MAX` bits.
 ///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
@@ -329,7 +329,6 @@ impl Transformation for Complement {
 
 //-----------------------------------------------------------------------------
 
-// TODO recommend SparseVector for sparse bitvectors
 /// An iterator over the set bits in an implicitly transformed [`BitVector`].
 ///
 /// The type of `Item` is `(usize, usize)`.
