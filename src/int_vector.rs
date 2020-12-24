@@ -66,7 +66,6 @@ impl IntVector {
     /// Creates an initialized vector of specified length and width.
     /// 
     /// Returns `None` if the width is invalid.
-    /// Behavior is undefined if `len * width > usize::MAX`.
     ///
     /// # Arguments
     ///
@@ -87,13 +86,17 @@ impl IntVector {
     ///     assert_eq!(v.get(i), 1234);
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the vector would exceed the maximum length.
     pub fn with_len(len: usize, width: usize, value: u64) -> Option<IntVector> {
         if width == 0 || width > bits::WORD_BITS {
             return None;
         }
         let mut data = RawVector::with_capacity(len * width);
         for _ in 0..len {
-            data.push_int(value, width);
+            unsafe { data.push_int(value, width); }
         }
         Some(IntVector {
             len: len,
@@ -105,7 +108,6 @@ impl IntVector {
     /// Creates an empty vector with enough capacity for at least the specified number of elements of specified width.
     ///
     /// Returns `None` if the width is invalid.
-    /// Behavior is undefined if `capacity * width > usize::MAX`.
     ///
     /// # Arguments
     ///
@@ -123,6 +125,10 @@ impl IntVector {
     /// assert_eq!(v.width(), 13);
     /// assert!(v.capacity() >= 4);
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the capacity would exceed the maximum length.
     pub fn with_capacity(capacity: usize, width: usize) -> Option<IntVector> {
         if width == 0 || width > bits::WORD_BITS {
             None
@@ -170,6 +176,11 @@ impl Element for IntVector {
     #[inline]
     fn width(&self) -> usize {
         self.width
+    }
+
+    #[inline]
+    fn max_len(&self) -> usize {
+        usize::MAX / self.width()
     }
 }
 
@@ -221,7 +232,7 @@ impl Pack for IntVector {
 impl Access for IntVector {
     #[inline]
     fn get(&self, index: usize) -> <Self as Element>::Item {
-        self.data.int(index * self.width(), self.width)
+        unsafe { self.data.int(index * self.width(), self.width()) }
     }
 
     #[inline]
@@ -231,14 +242,14 @@ impl Access for IntVector {
 
     #[inline]
     fn set(&mut self, index: usize, value: <Self as Element>::Item) {
-        self.data.set_int(index * self.width(), value, self.width());
+        unsafe { self.data.set_int(index * self.width(), value, self.width()); }
     }
 }
 
 impl Push for IntVector {
     #[inline]
     fn push(&mut self, value: <Self as Element>::Item) {
-        self.data.push_int(value, self.width());
+        unsafe { self.data.push_int(value, self.width()); }
         self.len += 1;
     }    
 }
@@ -249,7 +260,7 @@ impl Pop for IntVector {
         if self.len() > 0 {
             self.len -= 1;
         }
-        self.data.pop_int(self.width())
+        unsafe { self.data.pop_int(self.width()) }
     }    
 }
 
@@ -489,7 +500,6 @@ impl IntVectorWriter {
     ///
     /// If the file already exists, it will be overwritten.
     /// Actual buffer size may be slightly higher than requested.
-    /// Behavior is undefined if `buf_len * width > usize::MAX`.
     ///
     /// # Arguments
     ///
@@ -516,6 +526,10 @@ impl IntVectorWriter {
     ///
     /// Returns an error of the kind [`ErrorKind::Other`] if the width is invalid.
     /// Any I/O errors will be passed through.
+    ///
+    /// # Panics
+    ///
+    /// May panic if buffer length would exceed the maximum length.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, width: usize, buf_len: usize) -> io::Result<IntVectorWriter> {
         if width == 0 || width > bits::WORD_BITS {
             return Err(Error::new(ErrorKind::Other, format!("invalid element width: {}", width)));
@@ -548,12 +562,17 @@ impl Element for IntVectorWriter {
     fn width(&self) -> usize {
         self.width
     }
+
+    #[inline]
+    fn max_len(&self) -> usize {
+        usize::MAX / self.width()
+    }
 }
 
 impl Push for IntVectorWriter {
     #[inline]
     fn push(&mut self, value: <Self as Element>::Item) {
-        self.writer.push_int(value, self.width());
+        unsafe { self.writer.push_int(value, self.width()); }
         self.len += 1;
     }
 }
@@ -649,11 +668,13 @@ mod tests {
         assert!(with_width.is_empty(), "Created a non-empty empty vector with a specified width");
         assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified width");
         assert_eq!(with_width.capacity(), 0, "Reserved unnecessary memory for an empty vector with a specified width");
+        assert_eq!(with_width.max_len(), usize::MAX / 13, "Invalid maximum length");
 
         let with_capacity = IntVector::with_capacity(137, 13).unwrap();
         assert!(with_capacity.is_empty(), "Created a non-empty vector by specifying capacity");
         assert_eq!(with_width.width(), 13, "Invalid width for an empty vector with a specified capacity");
         assert!(with_capacity.capacity() >= 137, "Vector capacity is lower than specified");
+        assert_eq!(with_capacity.max_len(), usize::MAX / 13, "Invalid maximum length");
     }
 
     #[test]
@@ -748,7 +769,7 @@ mod tests {
         let raw = RawVector::from(v.clone());
         assert_eq!(raw.len(), v.len() * v.width(), "Invalid length for the extracted RawVector");
         for i in 0..v.len() {
-            assert_eq!(raw.int(i * v.width(), v.width()), v.get(i), "Invalid value {} in the RawVector", i);
+            unsafe { assert_eq!(raw.int(i * v.width(), v.width()), v.get(i), "Invalid value {} in the RawVector", i); }
         }
     }
 

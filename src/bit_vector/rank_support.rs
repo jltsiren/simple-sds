@@ -212,7 +212,7 @@ mod tests {
         while data.len() < len {
             let value: u64 =  rng.gen();
             let bits = cmp::min(bits::WORD_BITS, len - data.len());
-            data.push_int(value, bits);
+            unsafe { data.push_int(value, bits); }
         }
         assert_eq!(data.len(), len, "Invalid length for random RawVector");
         data

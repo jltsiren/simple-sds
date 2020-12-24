@@ -166,7 +166,7 @@ pub enum FlushMode {
     /// Only flush the part of the buffer that can be flushed safely.
     Safe,
     /// Flush the entire buffer.
-    /// Subsequent writes to the buffer will have undefined behavior.
+    /// Subsequent writes to the buffer may leave it in an invalid state.
     Final,
 }
 

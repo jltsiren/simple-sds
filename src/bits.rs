@@ -191,8 +191,6 @@ pub unsafe fn select(n: u64, rank: usize) -> usize {
 
 /// Returns the number of bits that can be stored in `n` integers of type `u64`.
 ///
-/// Behavior is undefined if `n * 64 > usize::MAX`.
-///
 /// # Examples
 ///
 /// ```
@@ -200,14 +198,16 @@ pub unsafe fn select(n: u64, rank: usize) -> usize {
 ///
 /// assert_eq!(bits::words_to_bits(3), 192);
 /// ```
+///
+/// # Panics
+///
+/// May panic if `n * 64 > usize::MAX`.
 #[inline]
 pub fn words_to_bits(n: usize) -> usize {
     n * WORD_BITS
 }
 
 /// Returns the number of integers of type `u64` required to store `n` bits.
-///
-/// Behavior is undefined if `n + 63 > usize::MAX`.
 ///
 /// # Examples
 ///
@@ -217,14 +217,16 @@ pub fn words_to_bits(n: usize) -> usize {
 /// assert_eq!(bits::bits_to_words(64), 1);
 /// assert_eq!(bits::bits_to_words(65), 2);
 /// ```
+///
+/// # Panics
+///
+/// May panic if `n + 63 > usize::MAX`.
 #[inline]
 pub fn bits_to_words(n: usize) -> usize {
     (n + WORD_BITS - 1) / WORD_BITS
 }
 
 /// Rounds `n` up to the next positive multiple of 64.
-///
-/// Behavior is undefined if `n + 63 > usize::MAX`.
 ///
 /// # Examples
 ///
@@ -235,6 +237,10 @@ pub fn bits_to_words(n: usize) -> usize {
 /// assert_eq!(bits::round_up_to_word_size(64), 64);
 /// assert_eq!(bits::round_up_to_word_size(65), 128);
 /// ```
+///
+/// # Panics
+///
+/// May panic if `n + 63 > usize::MAX`.
 #[inline]
 pub fn round_up_to_word_size(n: usize) -> usize {
     match n {
@@ -277,8 +283,6 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 
 /// Combines an index in an array of `u64` and an offset within the integer into a bit offset.
 ///
-/// Behavior is undefined result would be `> usize::MAX`.
-///
 /// # Arguments
 ///
 /// * `index`: Array index.
@@ -291,6 +295,10 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 ///
 /// assert_eq!(bits::bit_offset(1, 59), 123);
 /// ```
+///
+/// # Panics
+///
+/// May panic if the result would be greater than `usize::MAX`.
 #[inline]
 pub fn bit_offset(index: usize, offset: usize) -> usize {
     (index << INDEX_SHIFT) + offset

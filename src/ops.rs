@@ -28,6 +28,10 @@
 ///     fn width(&self) -> usize {
 ///         8
 ///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
+///     }
 /// } 
 ///
 /// let v = Example::new();
@@ -49,6 +53,9 @@ pub trait Element {
 
     /// Returns the width of of an element in bits.
     fn width(&self) -> usize;
+
+    /// Returns the maximum length of the vector.
+    fn max_len(&self) -> usize;
 }
 
 /// A vector that can be resized.
@@ -75,6 +82,10 @@ pub trait Element {
 ///
 ///     fn width(&self) -> usize {
 ///         8
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///
@@ -111,12 +122,14 @@ pub trait Resize: Element {
     /// If `new_len > self.len()`, the new `new_len - self.len()` values will be initialized.
     /// If `new_len < self.len()`, the vector is truncated.
     ///
-    /// Behavior is undefined if the length would exceed the maximum length.
-    ///
     /// # Arguments
     ///
     /// * `new_len`: New length of the vector.
     /// * `value`: Initialization value.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the length would exceed the maximum length.
     fn resize(&mut self, new_len: usize, value: <Self as Element>::Item);
 
     /// Clears the vector without freeing the data.
@@ -128,7 +141,10 @@ pub trait Resize: Element {
     /// Reserves space for storing at least `self.len() + additional` elements in the vector.
     ///
     /// Does nothing if the capacity is already sufficient.
-    /// Behavior is undefined if the capacity would exceed the maximum length.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the capacity would exceed the maximum length.
     fn reserve(&mut self, additional: usize);
 }
 
@@ -153,6 +169,10 @@ pub trait Resize: Element {
 ///
 ///     fn width(&self) -> usize {
 ///         8
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///
@@ -198,6 +218,10 @@ pub trait Pack: Element {
 ///
 ///     fn width(&self) -> usize {
 ///         8
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///
@@ -282,6 +306,10 @@ pub trait Access: Element {
 ///     fn width(&self) -> usize {
 ///         8
 ///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
+///     }
 /// } 
 ///
 /// impl Push for Example {
@@ -300,11 +328,10 @@ pub trait Access: Element {
 pub trait Push: Element {
     /// Appends an element to the vector.
     ///
-    /// Behavior is undefined if the vector would exceed the maximum length.
-    ///
     /// # Panics
     ///
     /// May panic from I/O errors.
+    /// May panic if the vector would exceed the maximum length.
     fn push(&mut self, value: <Self as Element>::Item);
 }
 
@@ -334,6 +361,10 @@ pub trait Push: Element {
 ///
 ///     fn width(&self) -> usize {
 ///         8
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///
@@ -387,6 +418,10 @@ pub trait Pop: Element {
 ///
 ///     fn width(&self) -> usize {
 ///         64
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///
@@ -450,6 +485,10 @@ pub trait SubElement: Element {
 ///
 ///     fn width(&self) -> usize {
 ///         64
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
 ///     }
 /// } 
 ///

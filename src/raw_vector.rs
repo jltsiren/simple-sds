@@ -25,8 +25,8 @@ use std::io;
 ///         (self.0[index] & (1u64 << offset)) != 0
 ///     }
 ///
-///     fn int(&self, bit_offset: usize, width: usize) -> u64 {
-///         unsafe { bits::read_int(&self.0, bit_offset, width) }
+///     unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+///         bits::read_int(&self.0, bit_offset, width)
 ///     }
 ///
 ///     fn word(&self, index: usize) -> u64 {
@@ -47,24 +47,28 @@ use std::io;
 ///         self.0[index] |= (value as u64) << offset;
 ///     }
 ///
-///     fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-///         unsafe { bits::write_int(&mut self.0, bit_offset, value, width); }
+///     unsafe fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+///         bits::write_int(&mut self.0, bit_offset, value, width);
 ///     }
 /// }
 ///
 /// let mut example = Example(vec![0u64; 2]);
 /// assert!(example.is_mutable());
 ///
-/// example.set_int(4, 0x33, 8);
-/// example.set_int(63, 2, 2);
+/// unsafe {
+///    example.set_int(4, 0x33, 8);
+///    example.set_int(63, 2, 2);
+/// }
 /// example.set_bit(72, true);
 /// assert_eq!(example.0[0], 0x330);
 /// assert_eq!(example.0[1], 0x101);
 ///
 /// assert!(example.bit(72));
 /// assert!(!example.bit(68));
-/// assert_eq!(example.int(4, 8), 0x33);
-/// assert_eq!(example.int(63, 2), 2);
+/// unsafe {
+///     assert_eq!(example.int(4, 8), 0x33);
+///     assert_eq!(example.int(63, 2), 2);
+/// }
 /// assert_eq!(example.word(1), 0x101);
 /// ```
 pub trait AccessRaw {
@@ -89,7 +93,7 @@ pub trait AccessRaw {
     ///
     /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic from I/O errors.
-    fn int(&self, bit_offset: usize, width: usize) -> u64;
+    unsafe fn int(&self, bit_offset: usize, width: usize) -> u64;
 
     /// Reads a 64-bit word from the container.
     ///
@@ -140,7 +144,7 @@ pub trait AccessRaw {
     /// May panic if `bit_offset + width - 1` is not a valid offset in the bit array.
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
+    unsafe fn set_int(&mut self, bit_offset: usize, value: u64, width: usize);
 }
 
 //-----------------------------------------------------------------------------
@@ -167,15 +171,17 @@ pub trait AccessRaw {
 ///         self.0.push(value);
 ///     }
 ///
-///     fn push_int(&mut self, value: u64, width: usize) {
+///     unsafe fn push_int(&mut self, value: u64, width: usize) {
 ///         self.1.push(value & bits::low_set(width));
 ///     }
 /// }
 ///
 /// let mut example = Example::new();
 /// example.push_bit(false);
-/// example.push_int(123, 8);
-/// example.push_int(456, 9);
+/// unsafe {
+///     example.push_int(123, 8);
+///     example.push_int(456, 9);
+/// }
 /// example.push_bit(true);
 ///
 /// assert_eq!(example.0.len(), 2);
@@ -184,16 +190,15 @@ pub trait AccessRaw {
 pub trait PushRaw {
     /// Appends a bit to the container.
     ///
-    /// Behavior is undefined if there is an integer overflow.
-    ///
     /// # Panics
     ///
     /// May panic from I/O errors.
+    /// May panic if there is an integer overflow.
     fn push_bit(&mut self, value: bool);
 
     /// Appends an integer to the container.
     ///
-    /// Behavior is undefined if there is an integer overflow.
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Arguments
     ///
@@ -203,7 +208,8 @@ pub trait PushRaw {
     /// # Panics
     ///
     /// May panic from I/O errors.
-    fn push_int(&mut self, value: u64, width: usize);
+    /// May panic if there is an integer overflow.
+    unsafe fn push_int(&mut self, value: u64, width: usize);
 }
 
 /// Remove and return bits and variable-width integers from a container.
@@ -227,7 +233,7 @@ pub trait PushRaw {
 ///         self.0.pop()
 ///     }
 ///
-///     fn pop_int(&mut self, _: usize) -> Option<u64> {
+///     unsafe fn pop_int(&mut self, _: usize) -> Option<u64> {
 ///         self.1.pop()
 ///     }
 /// }
@@ -239,11 +245,13 @@ pub trait PushRaw {
 /// example.0.push(true);
 ///
 /// assert_eq!(example.pop_bit().unwrap(), true);
-/// assert_eq!(example.pop_int(9).unwrap(), 456);
-/// assert_eq!(example.pop_int(8).unwrap(), 123);
+/// unsafe {
+///     assert_eq!(example.pop_int(9).unwrap(), 456);
+///     assert_eq!(example.pop_int(8).unwrap(), 123);
+/// }
 /// assert_eq!(example.pop_bit().unwrap(), false);
 /// assert_eq!(example.pop_bit(), None);
-/// assert_eq!(example.pop_int(1), None);
+/// unsafe { assert_eq!(example.pop_int(1), None); }
 /// ```
 pub trait PopRaw {
     /// Removes and returns the last bit from the container.
@@ -254,7 +262,7 @@ pub trait PopRaw {
     /// Returns `None` if the container does not have more integers of that width.
     ///
     /// Behavior is undefined if `width > 64`.
-    fn pop_int(&mut self, width: usize) -> Option<u64>;
+    unsafe fn pop_int(&mut self, width: usize) -> Option<u64>;
 }
 
 //-----------------------------------------------------------------------------
@@ -379,7 +387,7 @@ impl RawVector {
     ///
     /// let mut original = RawVector::with_len(137, false);
     /// original.set_bit(1, true); original.set_bit(33, true);
-    /// original.set_int(95, 456, 9); original.set_bit(123, true);
+    /// unsafe { original.set_int(95, 456, 9); } original.set_bit(123, true);
     /// let complement = original.complement();
     /// for i in 0..137 {
     ///     assert_eq!(!(complement.bit(i)), original.bit(i));
@@ -447,7 +455,6 @@ impl RawVector {
     /// Reserves space for storing at least `self.len() + additional` bits in the vector.
     ///
     /// Does nothing if the capacity is already sufficient.
-    /// Behavior is undefined if `self.len() + additional > usize::MAX`.
     ///
     /// # Examples
     ///
@@ -458,6 +465,10 @@ impl RawVector {
     /// v.reserve(318);
     /// assert!(v.capacity() >= 137 + 318);
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if `self.len() + additional + 63 > usize::MAX`.
     pub fn reserve(&mut self, additional: usize) {
         let words_needed = bits::bits_to_words(self.len() + additional);
         if words_needed > self.data.capacity() {
@@ -489,8 +500,8 @@ impl AccessRaw for RawVector {
     }
 
     #[inline]
-    fn int(&self, bit_offset: usize, width: usize) -> u64 {
-        unsafe { bits::read_int(&self.data, bit_offset, width) }
+    unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        bits::read_int(&self.data, bit_offset, width)
     }
 
     #[inline]
@@ -516,8 +527,8 @@ impl AccessRaw for RawVector {
     }
 
     #[inline]
-    fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
-        unsafe { bits::write_int(&mut self.data, bit_offset, value, width); }
+    unsafe fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
 
@@ -531,11 +542,11 @@ impl PushRaw for RawVector {
         self.len += 1;
     }
 
-    fn push_int(&mut self, value: u64, width: usize) {
+    unsafe fn push_int(&mut self, value: u64, width: usize) {
         if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        unsafe { bits::write_int(&mut self.data, self.len, value, width); }
+        bits::write_int(&mut self.data, self.len, value, width);
         self.len += width;
     }
 }
@@ -553,7 +564,7 @@ impl PopRaw for RawVector {
         }
     }
 
-    fn pop_int(&mut self, width: usize) -> Option<u64> {
+    unsafe fn pop_int(&mut self, width: usize) -> Option<u64> {
         if self.len() >= width {
             let result = self.int(self.len - width, width);
             self.len -= width;
@@ -721,7 +732,7 @@ impl PushRaw for RawVectorWriter {
         }
     }
 
-    fn push_int(&mut self, value: u64, width: usize) {
+    unsafe fn push_int(&mut self, value: u64, width: usize) {
         self.buf.push_int(value, width); self.len += width;
         if self.buf.len() >= self.buf_len {
             self.flush(FlushMode::Safe).unwrap();
@@ -740,7 +751,7 @@ impl Writer for RawVectorWriter {
             let mut overflow: (u64, usize) = (0, 0);
             if let FlushMode::Safe = mode {
                 if self.buf.len() > self.buf_len {
-                    overflow = (self.buf.int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len);
+                    unsafe { overflow = (self.buf.int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len); }
                     self.buf.resize(self.buf_len, false);
                 }
             }
@@ -752,7 +763,7 @@ impl Writer for RawVectorWriter {
             // Push the overflow back to the buffer.
             if let FlushMode::Safe = mode {
                 if overflow.1 > 0 {
-                    self.buf.push_int(overflow.0, overflow.1);
+                    unsafe { self.buf.push_int(overflow.0, overflow.1); }
                 }
             }
         }
@@ -910,7 +921,7 @@ mod tests {
 
         let mut v = RawVector::new();
         for (value, width) in correct.iter() {
-            v.push_int(*value, *width);
+            unsafe { v.push_int(*value, *width); }
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
@@ -918,7 +929,7 @@ mod tests {
         let mut popped: Vec<(u64, usize)> = Vec::new();
         for i in 0..correct.len() {
             let width = correct[i].1;
-            if let Some(value) = v.pop_int(width) {
+            if let Some(value) = unsafe { v.pop_int(width) } {
                 popped.push((value, width));
             }
         }
@@ -933,15 +944,19 @@ mod tests {
         let mut w = RawVector::with_len(64 * (63 + 64), true);
         let mut bit_offset = 0;
         for i in 0..64 {
-            v.set_int(bit_offset, i, 63); w.set_int(bit_offset, i, 63); bit_offset += 63;
-            v.set_int(bit_offset, i * (i + 1), 64); w.set_int(bit_offset, i * (i + 1), 64); bit_offset += 64;
+            unsafe {
+                v.set_int(bit_offset, i, 63); w.set_int(bit_offset, i, 63); bit_offset += 63;
+                v.set_int(bit_offset, i * (i + 1), 64); w.set_int(bit_offset, i * (i + 1), 64); bit_offset += 64;
+            }
         }
         assert_eq!(v.len(), 64 * (63 + 64), "Invalid vector length");
 
         bit_offset = 0;
         for i in 0..64 {
-            assert_eq!(v.int(bit_offset, 63), i, "Invalid integer [{}].0", i); bit_offset += 63;
-            assert_eq!(v.int(bit_offset, 64), i * (i + 1), "Invalid integer [{}].1", i); bit_offset += 64;
+            unsafe {
+                assert_eq!(v.int(bit_offset, 63), i, "Invalid integer [{}].0", i); bit_offset += 63;
+                assert_eq!(v.int(bit_offset, 64), i * (i + 1), "Invalid integer [{}].1", i); bit_offset += 64;
+            }
         }
         assert_eq!(v, w, "Fully overwritten vector still depends on the initialization value");
     }
@@ -951,7 +966,7 @@ mod tests {
         let correct: Vec<u64> = vec![0x123456, 0x789ABC, 0xFEDCBA, 0x987654];
         let mut v = RawVector::with_len(correct.len() * 64, false);
         for (index, value) in correct.iter().enumerate() {
-            v.set_int(index * 64, *value, 64);
+            unsafe { v.set_int(index * 64, *value, 64); }
         }
         for (index, value) in correct.iter().enumerate() {
             assert_eq!(v.word(index), *value, "Invalid integer {}", index);
@@ -968,7 +983,7 @@ mod tests {
     fn serialize() {
         let mut original = RawVector::new();
         for i in 0..64 {
-            original.push_int(i * (i + 1) * (i + 2), 16);
+            unsafe { original.push_int(i * (i + 1) * (i + 2), 16); }
         }
         assert_eq!(original.size_in_bytes(), 144, "Invalid RawVector size in bytes");
 
@@ -1042,7 +1057,7 @@ mod tests {
 
         let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
         for value in correct.iter() {
-            v.push_int(*value, width);
+            unsafe { v.push_int(*value, width); }
         }
         assert_eq!(v.len(), correct.len() * width, "Invalid size for the writer");
         v.close().unwrap();
@@ -1051,7 +1066,7 @@ mod tests {
         let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i);
+            unsafe { assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i); }
         }
 
         fs::remove_file(&filename).unwrap();
@@ -1072,7 +1087,7 @@ mod tests {
 
         let mut v = RawVectorWriter::new(&filename).unwrap();
         for value in correct.iter() {
-            v.push_int(*value, width);
+            unsafe { v.push_int(*value, width); }
         }
         assert_eq!(v.len(), correct.len() * width, "Invalid size for the writer");
         v.close().unwrap();
@@ -1081,7 +1096,7 @@ mod tests {
         let w: RawVector = serialize::load_from(&filename).unwrap();
         assert_eq!(w.len(), correct.len() * width, "Invalid size for the loaded vector");
         for i in 0..correct.len() {
-            assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i);
+            unsafe { assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i); }
         }
 
         fs::remove_file(&filename).unwrap();
