@@ -244,14 +244,17 @@ fn large_rank() {
 
 fn try_select(bv: &BitVector) {
     assert!(bv.supports_select(), "Failed to enable select support");
-    assert_eq!(bv.select(bv.count_ones()).next(), None, "Got a result for select past the end");
+    assert_eq!(bv.select(bv.count_ones()), None, "Got a result for select past the end");
+    assert_eq!(bv.select_iter(bv.count_ones()).next(), None, "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
     for i in 0..bv.count_ones() {
-        let value = bv.select(i).next().unwrap();
-        assert_eq!(value.0, i, "Invalid rank for select({})", i);
-        assert!(value.1 >= next, "select({}) == {}, expected at least {}", i, value.1, next);
-        assert!(bv.get(value.1), "select({}) == {} is not set", i, value.1);
+        let value = bv.select_iter(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select_iter({})", i);
+        assert!(value.1 >= next, "select_iter({}) == {}, expected at least {}", i, value.1, next);
+        let index = bv.select(i).unwrap();
+        assert_eq!(index, value.1, "Different results for select({}) and select_iter({})", i, i);
+        assert!(bv.get(index), "Bit select({}) == {} is not set", i, index);
         next = value.1 + 1;
     }
 }
@@ -308,7 +311,8 @@ fn empty_select() {
     assert!(!empty.supports_select(), "Select support was enabled by default");
     empty.enable_select();
     assert!(empty.supports_select(), "Failed to enable select support");
-    assert_eq!(empty.select(empty.count_ones()).next(), None, "Got a result for select past the end");
+    assert_eq!(empty.select(empty.count_ones()), None, "Got a result for select past the end");
+    assert_eq!(empty.select_iter(empty.count_ones()).next(), None, "Got a result for select_iter past the end");
 }
 
 #[test]
@@ -364,14 +368,17 @@ fn large_select() {
 
 fn try_select_zero(bv: &BitVector) {
     assert!(bv.supports_select_zero(), "Failed to enable select zero support");
-    assert_eq!(bv.select_zero(Complement::count_ones(bv)).next(), None, "Got a result for select past the end");
+    assert_eq!(bv.select_zero(Complement::count_ones(bv)), None, "Got a result for select past the end");
+    assert_eq!(bv.select_zero_iter(Complement::count_ones(bv)).next(), None, "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
     for i in 0..Complement::count_ones(bv) {
-        let value = bv.select_zero(i).next().unwrap();
+        let value = bv.select_zero_iter(i).next().unwrap();
         assert_eq!(value.0, i, "Invalid rank for select_zero({})", i);
         assert!(value.1 >= next, "select_zero({}) == {}, expected at least {}", i, value.1, next);
-        assert!(!bv.get(value.1), "select_zero({}) == {} is set", i, value.1);
+        let index = bv.select_zero(i).unwrap();
+        assert_eq!(index, value.1, "Different results for select_zero({}) and select_zero_iter({})", i, i);
+        assert!(!bv.get(index), "Bit select_zero({}) == {} is set", i, index);
         next = value.1 + 1;
     }
 }
@@ -382,7 +389,8 @@ fn empty_select_zero() {
     assert!(!empty.supports_select_zero(), "Select zero support was enabled by default");
     empty.enable_select_zero();
     assert!(empty.supports_select_zero(), "Failed to enable select zero support");
-    assert_eq!(empty.select_zero(Complement::count_ones(&empty)).next(), None, "Got a result for select past the end");
+    assert_eq!(empty.select_zero(Complement::count_ones(&empty)), None, "Got a result for select past the end");
+    assert_eq!(empty.select_zero_iter(Complement::count_ones(&empty)).next(), None, "Got a result for select_iter past the end");
 }
 
 #[test]

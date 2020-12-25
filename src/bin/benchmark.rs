@@ -80,7 +80,7 @@ fn main() {
     let now = Instant::now();
     let mut total = 0;
     for i in 0..queries.len() {
-        let result = bv.select(queries[i]).next().unwrap().1;
+        let result = bv.select(queries[i]).unwrap();
         total += result;
     }
     let duration = now.elapsed();
@@ -95,7 +95,7 @@ fn main() {
     let mut prev: usize = 0;
     for i in 0..queries.len() {
         let query = (queries[i] ^ prev) % bv.count_ones();
-        let result = bv.select(query).next().unwrap().1;
+        let result = bv.select(query).unwrap();
         total += result;
         prev = result & chained_query_mask;
     }
