@@ -608,8 +608,16 @@ impl Drop for IntVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-macro_rules! iter_to_int_vector {
+macro_rules! from_extend_int_vector {
     ($t:ident, $w:expr) => {
+        impl From<Vec<$t>> for IntVector {
+            fn from(v: Vec<$t>) -> Self {
+                let mut result = IntVector::with_capacity(v.len(), $w).unwrap();
+                result.extend(v);
+                result
+            }
+        }
+
         impl FromIterator<$t> for IntVector {
             fn from_iter<I: IntoIterator<Item = $t>>(iter: I) -> Self {
                 let mut result = IntVector::new($w).unwrap();
@@ -639,11 +647,11 @@ macro_rules! iter_to_int_vector {
     }
 }
 
-iter_to_int_vector!(u8, 8);
-iter_to_int_vector!(u16, 16);
-iter_to_int_vector!(u32, 32);
-iter_to_int_vector!(u64, 64);
-iter_to_int_vector!(usize, 64);
+from_extend_int_vector!(u8, 8);
+from_extend_int_vector!(u16, 16);
+from_extend_int_vector!(u32, 32);
+from_extend_int_vector!(u64, 64);
+from_extend_int_vector!(usize, 64);
 
 //-----------------------------------------------------------------------------
 
@@ -770,6 +778,16 @@ mod tests {
         assert_eq!(raw.len(), v.len() * v.width(), "Invalid length for the extracted RawVector");
         for i in 0..v.len() {
             unsafe { assert_eq!(raw.int(i * v.width(), v.width()), v.get(i), "Invalid value {} in the RawVector", i); }
+        }
+    }
+
+    #[test]
+    fn from_vec() {
+        let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        let int_vec = IntVector::from(correct.clone());
+        assert_eq!(int_vec.len(), correct.len(), "Invalid length for the IntVector");
+        for (index, value) in int_vec.iter().enumerate() {
+            assert_eq!(value, correct[index], "Invalid value {} in the IntVector", index);
         }
     }
 

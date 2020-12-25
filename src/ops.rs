@@ -927,7 +927,7 @@ pub trait Select<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn one_iter(&'a self) -> Self::OneIter;
 
-    /// Returns the value of the specified rank in the integer array or `None` if no such value exists.
+    /// Returns the specified value in the integer array or `None` if no such value exists.
     ///
     /// In the bit array interpretation, the return value is an index `i` such that `self.get(i) == true` and `self.rank(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
@@ -987,7 +987,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn zero_iter(&'a self) -> Self::ZeroIter;
 
-    /// Returns the value of the specified rank in the complement of the integer array or `None` if no such value exists.
+    /// Returns the specified value in the complement of the integer array or `None` if no such value exists.
     ///
     /// In the bit array interpretation, the return value is an index `i` such that `self.get(i) == false` and `self.rank_zero(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
