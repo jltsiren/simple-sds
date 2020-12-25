@@ -113,7 +113,7 @@ fn random_vector(len: usize, density: f64) -> BitVector {
     let mut rng = rand::thread_rng();
     if density == 0.5 {
         while data.len() < len {
-            data.push_int(rng.gen(), 64);
+            unsafe { data.push_int(rng.gen(), 64); }
         }
     }
     else {

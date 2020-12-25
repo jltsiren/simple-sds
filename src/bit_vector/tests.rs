@@ -165,13 +165,13 @@ fn access() {
 }
 
 #[test]
-fn iterator_conversions() {
+fn from_iter() {
     let correct: Vec<bool> = vec![false, true, true, false, true, false, true, true, false, false, false];
     let bv: BitVector = correct.iter().cloned().collect();
     assert_eq!(bv.len(), correct.len(), "Invalid length for a bitvector built from an iterator");
-
-    let copy: Vec<bool> = bv.into_iter().collect();
-    assert_eq!(copy, correct, "Iterator conversions changed the values");
+    for i in 0..bv.len() {
+        assert_eq!(bv.get(i), correct[i], "Invalid value {} in the bitvector", i);
+    }
 }
 
 #[test]

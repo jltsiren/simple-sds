@@ -471,15 +471,15 @@ impl<'a> Select<'a> for BitVector {
         }
     }
 
-    fn select(&'a self, index: usize) -> Self::OneIter {
-         if index >= Identity::count_ones(self) {
+    fn select(&'a self, rank: usize) -> Self::OneIter {
+         if rank >= Identity::count_ones(self) {
              Self::OneIter::empty_iter(self)
         } else {
             let select_support = self.select.as_ref().unwrap();
-            let value = unsafe { select_support.select_unchecked(self, index) };
+            let value = unsafe { select_support.select_unchecked(self, rank) };
             Self::OneIter {
                 parent: self,
-                next: (index, value),
+                next: (rank, value),
                 limit: (Identity::count_ones(self), self.len()),
                 _marker: marker::PhantomData,
             }
@@ -512,15 +512,15 @@ impl<'a> SelectZero<'a> for BitVector {
         }
     }
 
-    fn select_zero(&'a self, index: usize) -> Self::ZeroIter {
-         if index >= Complement::count_ones(self) {
+    fn select_zero(&'a self, rank: usize) -> Self::ZeroIter {
+         if rank >= Complement::count_ones(self) {
              Self::ZeroIter::empty_iter(self)
         } else {
             let select_support = self.select_zero.as_ref().unwrap();
-            let value = unsafe { select_support.select_unchecked(self, index) };
+            let value = unsafe { select_support.select_unchecked(self, rank) };
             Self::ZeroIter {
                 parent: self,
-                next: (index, value),
+                next: (rank, value),
                 limit: (Complement::count_ones(self), self.len()),
                 _marker: marker::PhantomData,
             }
@@ -542,8 +542,8 @@ impl<'a> PredSucc<'a> for BitVector {
         self.enable_select();
     }
 
-    fn predecessor(&'a self, index: usize) -> Self::OneIter {
-        let rank = self.rank(index + 1);
+    fn predecessor(&'a self, value: usize) -> Self::OneIter {
+        let rank = self.rank(value + 1);
         if rank == 0 {
             Self::OneIter::empty_iter(self)
         } else {
@@ -551,8 +551,8 @@ impl<'a> PredSucc<'a> for BitVector {
         }
     }
 
-    fn successor(&'a self, index: usize) -> Self::OneIter {
-        let rank = self.rank(index);
+    fn successor(&'a self, value: usize) -> Self::OneIter {
+        let rank = self.rank(value);
         if rank >= self.count_ones() {
             Self::OneIter::empty_iter(self)
         } else {
@@ -645,64 +645,6 @@ impl FromIterator<bool> for BitVector {
             rank: None,
             select: None,
             select_zero: None,
-        }
-    }
-}
-
-//-----------------------------------------------------------------------------
-
-/// [`BitVector`] transformed into an iterator.
-///
-/// The type of `Item` is `bool`.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::bit_vector::BitVector;
-///
-/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
-/// let bv: BitVector = source.iter().cloned().collect();
-/// let target: Vec<bool> = bv.into_iter().collect();
-/// assert_eq!(target, source);
-/// ```
-#[derive(Clone, Debug)]
-pub struct IntoIter {
-    parent: BitVector,
-    index: usize,
-}
-
-impl Iterator for IntoIter {
-    type Item = bool;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.parent.len() {
-            None
-        } else {
-            let result = Some(self.parent.get(self.index));
-            self.index += 1;
-            result
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.parent.len() - self.index;
-        (remaining, Some(remaining))
-    }
-}
-
-impl ExactSizeIterator for IntoIter {}
-
-impl FusedIterator for IntoIter {}
-
-impl<'a> IntoIterator for BitVector {
-    type Item = bool;
-    type IntoIter = IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            parent: self,
-            index: 0,
         }
     }
 }

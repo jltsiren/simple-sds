@@ -126,7 +126,7 @@ impl RankSupport {
         // Transform the absolute word index into a relative word index within the block.
         // Then reorder the words 0..8 to 1..8, 0, because the second sample stores relative
         // ranks for words 1..8.
-        let relative = ((word & Self::WORD_MASK) + Self::WORDS_PER_BLOCK - 1) & Self::WORD_MASK;
+        let relative = (word + Self::WORDS_PER_BLOCK - 1) & Self::WORD_MASK;
 
         // Relative rank at the start of the word.
         let word_start = (relative_ranks >> (relative * Self::RELATIVE_RANK_BITS)) as usize & Self::RELATIVE_RANK_MASK;

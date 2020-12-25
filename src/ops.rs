@@ -558,7 +558,8 @@ pub trait AccessSub: SubElement {
 ///
 /// Let `A` be the integer array and `B` the bit array.
 /// `B[i] == true` is then equivalent to value `i` being present in array `A`.
-/// Indexes in both arrays are 0-based.
+/// Indexes in both arrays are 0-based, and the ones in the integer array are often called ranks.
+/// Because of the dual interpretations, bitvectors should not implement [`IntoIterator`].
 ///
 /// Some operations deal with the complement of the bitvector.
 /// In the bit array interpretation, all bits in the complement vector are flipped.
@@ -684,22 +685,22 @@ pub trait AccessSub: SubElement {
 ///         }
 ///     }
 ///
-///     fn select(&'a self, index: usize) -> Self::OneIter {
-///         let mut rank: usize = 0;
-///         let mut bv_index: usize = 0;
-///         while bv_index < self.len() {
-///             if self.get(bv_index) {
-///                 if rank == index {
+///     fn select(&'a self, rank: usize) -> Self::OneIter {
+///         let mut found: usize = 0;
+///         let mut index: usize = 0;
+///         while index < self.len() {
+///             if self.get(index) {
+///                 if found == rank {
 ///                     break;
 ///                 }
-///                 rank += 1;
+///                 found += 1;
 ///             }
-///             bv_index += 1;
+///             index += 1;
 ///         }
 ///         Self::OneIter {
 ///             parent: self,
 ///             rank: rank,
-///             index: bv_index,
+///             index: index,
 ///         }
 ///     }
 /// }
@@ -713,44 +714,44 @@ pub trait AccessSub: SubElement {
 ///
 ///     fn enable_pred_succ(&mut self) {}
 ///
-///     fn predecessor(&'a self, index: usize) -> Self::OneIter {
+///     fn predecessor(&'a self, value: usize) -> Self::OneIter {
 ///         let mut result = Self::OneIter {
 ///             parent: self,
 ///             rank: self.count_ones(),
 ///             index: self.len(),
 ///         };
 ///         let mut rank: usize = 0;
-///         let mut bv_index: usize = 0;
-///         while bv_index <= index && bv_index < self.len() {
-///             if self.get(bv_index) {
+///         let mut index: usize = 0;
+///         while index <= value && index < self.len() {
+///             if self.get(index) {
 ///                 result.rank = rank;
-///                 result.index = bv_index;
+///                 result.index = index;
 ///                 rank += 1;
 ///             }
-///             bv_index += 1;
+///             index += 1;
 ///         }
 ///         result
 ///     }
 ///
-///     fn successor(&'a self, index: usize) -> Self::OneIter {
+///     fn successor(&'a self, value: usize) -> Self::OneIter {
 ///         let mut result = Self::OneIter {
 ///             parent: self,
 ///             rank: self.count_ones(),
 ///             index: self.len(),
 ///         };
 ///         let mut rank: usize = 0;
-///         let mut bv_index: usize = 0;
-///         while bv_index < index && bv_index < self.len() {
-///             rank += self.get(bv_index) as usize;
-///             bv_index += 1;
+///         let mut index: usize = 0;
+///         while index < value && index < self.len() {
+///             rank += self.get(index) as usize;
+///             index += 1;
 ///         }
-///         while bv_index < self.len() {
-///             if self.get(bv_index) {
+///         while index < self.len() {
+///             if self.get(index) {
 ///                 result.rank = rank;
-///                 result.index = bv_index;
+///                 result.index = index;
 ///                 return result;
 ///             }
-///             bv_index += 1;
+///             index += 1;
 ///         }
 ///         result
 ///     }
@@ -912,11 +913,11 @@ pub trait Select<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn one_iter(&'a self) -> Self::OneIter;
 
-    /// Returns an iterator at the specified index in the integer array.
+    /// Returns an iterator at the specified rank in the integer array.
     ///
-    /// The iterator will return `None` if the index is out of bounds.
+    /// The iterator will return `None` if the rank is out of bounds.
     /// In the bit array interpretation, the iterator points to the set bit of the specified rank.
-    /// This means a bit array index `i` such that `self.get(i) == true` and `self.rank(i) == index`.
+    /// This means a bit array index `i` such that `self.get(i) == true` and `self.rank(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
     ///
     /// # Panics
@@ -924,7 +925,7 @@ pub trait Select<'a>: BitVec<'a> {
     /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
-    fn select(&'a self, index: usize) -> Self::OneIter;
+    fn select(&'a self, rank: usize) -> Self::OneIter;
 }
 
 //-----------------------------------------------------------------------------
@@ -961,10 +962,10 @@ pub trait SelectZero<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn zero_iter(&'a self) -> Self::ZeroIter;
 
-    /// Returns an iterator at the specified index in the complement of the integer array.
+    /// Returns an iterator at the specified rank in the complement of the integer array.
     ///
-    /// The iterator will return `None` if the index is out of bounds.
-    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.rank_zero(i) == index`.
+    /// The iterator will return `None` if the rank is out of bounds.
+    /// In the bit array interpretation, the iterator points to an index `i` such that `self.get(i) == false` and `self.rank_zero(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
     ///
     /// # Panics
@@ -972,7 +973,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
-    fn select_zero(&'a self, index: usize) -> Self::ZeroIter;
+    fn select_zero(&'a self, rank: usize) -> Self::ZeroIter;
 }
 
 //-----------------------------------------------------------------------------
