@@ -19,7 +19,7 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
   * Implemented on top of `RawVector`.
 * `SparseVector`: An Elias-Fano encoded bitvector.
   * Supports `rank()`, `rank_zero()`, `select()`, `predecessor()`, and `successor()` queries .
-  * Iterators over set bits, unset bits, and all bits.
+  * Iterators over set bits and all bits.
   * Space-efficient construction with `SparseBuilder`.
 
 ## Planned functionality

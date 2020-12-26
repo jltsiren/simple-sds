@@ -30,9 +30,8 @@ use std::convert::TryFrom;
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, Extend};
 use std::{cmp, io};
 
-// FIXME tests in a separate module
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 //-----------------------------------------------------------------------------
 
@@ -186,7 +185,7 @@ impl SparseVector {
 /// assert_eq!(builder.capacity(), 5);
 /// assert_eq!(builder.universe(), 300);
 /// assert_eq!(builder.next_index(), 0);
-/// assert!(!builder.full());
+/// assert!(!builder.is_full());
 ///
 /// builder.set(12);
 /// assert_eq!(builder.len(), 1);
@@ -200,7 +199,7 @@ impl SparseVector {
 /// let v: Vec<usize> = vec![24, 48, 96, 192];
 /// builder.extend(v);
 /// assert_eq!(builder.len(), 5);
-/// assert!(builder.full());
+/// assert!(builder.is_full());
 ///
 /// let sv = SparseVector::try_from(builder).unwrap();
 /// assert_eq!(sv.len(), 300);
@@ -275,7 +274,7 @@ impl SparseBuilder {
     }
 
     /// Returns `true` if all bits that can be set have been set.
-    pub fn full(&self) -> bool {
+    pub fn is_full(&self) -> bool {
         self.len() == self.capacity()
     }
 
@@ -302,7 +301,7 @@ impl SparseBuilder {
     ///
     /// Returns an error if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub fn try_set(&mut self, index: usize) -> Result<(), String> {
-        if self.full() {
+        if self.is_full() {
             return Err("The builder is full".to_string());
         }
         if index < self.next_index() {
@@ -804,7 +803,7 @@ impl TryFrom<SparseBuilder> for SparseVector {
 
     fn try_from(value: SparseBuilder) -> Result<Self, Self::Error> {
         let mut value = value;
-        if !value.full() {
+        if !value.is_full() {
             return Err("The builder is not full");
         }
         value.data.high = BitVector::from(value.high);
