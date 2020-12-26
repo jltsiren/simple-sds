@@ -36,7 +36,6 @@ use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// An immutable Elias-Fano encoded bitvector supporting, rank, select, and related queries.
 ///
 /// This structure should be used for sparse bitvectors, where frequency of set bits is low.
@@ -50,10 +49,57 @@ use std::{cmp, io};
 /// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`]
 /// * Serialization: [`Serialize`]
 ///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
+/// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+/// use std::convert::TryFrom;
+///
+/// let mut builder = SparseBuilder::new(137, 4).unwrap();
+/// builder.set(1); builder.set(33); builder.set(95); builder.set(123);
+/// let sv = SparseVector::try_from(builder).unwrap();
+///
+/// // BitVec
+/// assert_eq!(sv.len(), 137);
+/// assert!(!sv.is_empty());
+/// assert_eq!(sv.count_ones(), 4);
+/// assert!(sv.get(33));
+/// assert!(!sv.get(34));
+/// for (index, value) in sv.iter().enumerate() {
+///     assert_eq!(value, sv.get(index));
+/// }
+///
+/// // Rank
+/// assert!(sv.supports_rank());
+/// assert_eq!(sv.rank(33), 1);
+/// assert_eq!(sv.rank(34), 2);
+/// assert_eq!(sv.rank_zero(65), 63);
+///
+/// // Select
+/// assert!(sv.supports_select());
+/// assert_eq!(sv.select(1), Some(33));
+/// let mut iter = sv.select_iter(2);
+/// assert_eq!(iter.next(), Some((2, 95)));
+/// assert_eq!(iter.next(), Some((3, 123)));
+/// assert_eq!(iter.next(), None);
+/// let v: Vec<(usize, usize)> = sv.one_iter().collect();
+/// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
+///
+/// // PredSucc
+/// assert!(sv.supports_pred_succ());
+/// assert_eq!(sv.predecessor(0).next(), None);
+/// assert_eq!(sv.predecessor(1).next(), Some((0, 1)));
+/// assert_eq!(sv.predecessor(2).next(), Some((0, 1)));
+/// assert_eq!(sv.successor(122).next(), Some((3, 123)));
+/// assert_eq!(sv.successor(123).next(), Some((3, 123)));
+/// assert_eq!(sv.successor(124).next(), None);
+/// ```
+///
 /// # Notes
 ///
 /// * `SparseVector` never panics from I/O errors.
-/// * [`Select::one_iter`] for `SparseVector` does not need select support.
+/// * All `SparseVector` queries are always enabled without additional support structures.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SparseVector {
     len: usize,
@@ -69,7 +115,7 @@ struct Pos {
     low: usize,
 }
 
-// Bitvector index encoded as low and high parts.
+// Bitvector index encoded as high and low parts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Parts {
     high: usize,
@@ -98,12 +144,13 @@ impl SparseVector {
         }
     }
 
-    // Get a `Pos` that points one past the unset bit preceding the values with this high part.
+    // Get a `Pos` that points to the first value with this high part or to the following
+    // unset bit if no such values exist.
     fn lower_bound(&self, high_part: usize) -> Pos {
         if high_part == 0 {
             Pos { high: 0, low: 0, }
         } else {
-            let high_offset = self.high.select_zero(high_part - 1).unwrap();
+            let high_offset = self.high.select_zero(high_part - 1).unwrap() + 1;
             Pos { high: high_offset, low: high_offset - high_part, }
         }
     }
@@ -117,7 +164,48 @@ impl SparseVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, note that Extend may fail
+/// Space-efficient [`SparseVector`] construction.
+///
+/// A `SparseBuilder` allocates the data structures based on universe size (bitvector length) and the number of set bits.
+/// The set bits must then be indicated in order using [`SparseBuilder::set`] or the [`Extend`] trait.
+/// Once the builder is full, it can be converted into a [`SparseVector`] using the [`TryFrom`] trait.
+/// The conversion will not fail if the builder is full.
+///
+/// Setting a bit `i` fails if the builder is full or the index is too small (`i < self.next_index()`) or too large (`i > self.universe()`).
+/// [`Extend::extend`] will panic in such situations.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::BitVec;
+/// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+/// use std::convert::TryFrom;
+///
+/// let mut builder = SparseBuilder::new(300, 5).unwrap();
+/// assert_eq!(builder.len(), 0);
+/// assert_eq!(builder.capacity(), 5);
+/// assert_eq!(builder.universe(), 300);
+/// assert_eq!(builder.next_index(), 0);
+/// assert!(!builder.full());
+///
+/// builder.set(12);
+/// assert_eq!(builder.len(), 1);
+/// assert_eq!(builder.next_index(), 13);
+///
+/// // This will return an error because the index is too small.
+/// let _ = builder.try_set(10);
+/// assert_eq!(builder.len(), 1);
+/// assert_eq!(builder.next_index(), 13);
+///
+/// let v: Vec<usize> = vec![24, 48, 96, 192];
+/// builder.extend(v);
+/// assert_eq!(builder.len(), 5);
+/// assert!(builder.full());
+///
+/// let sv = SparseVector::try_from(builder).unwrap();
+/// assert_eq!(sv.len(), 300);
+/// assert_eq!(sv.count_ones(), 5);
+/// ```
 #[derive(Clone, Debug)]
 pub struct SparseBuilder {
     data: SparseVector,
@@ -181,9 +269,8 @@ impl SparseBuilder {
         self.data.len()
     }
 
-    // FIXME name
     /// Returns the smallest index in the bitvector that can still be set.
-    pub fn next(&self) -> usize {
+    pub fn next_index(&self) -> usize {
         self.next
     }
 
@@ -196,14 +283,14 @@ impl SparseBuilder {
     ///
     /// # Panics
     ///
-    /// Panics if the builder is full, if `index < self.next()`, or if `index >= self.universe()`.
+    /// Panics if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub fn set(&mut self, index: usize) {
         self.try_set(index).unwrap();
     }
 
     /// Unsafe version of [`SparseBuilder::set`] without sanity checks.
     ///
-    /// Behavior is undefined if the builder is full, if `index < self.next()`, or if `index >= self.universe()`.
+    /// Behavior is undefined if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub unsafe fn set_unchecked(&mut self, index: usize) {
         let parts = self.data.split(index);
         self.high.set_bit(parts.high + self.len, true);
@@ -213,13 +300,13 @@ impl SparseBuilder {
 
     /// Tries to set the specified bit in the bitvector.
     ///
-    /// Returns an error if the builder is full, if `index < self.next()`, or if `index >= self.universe()`.
+    /// Returns an error if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub fn try_set(&mut self, index: usize) -> Result<(), String> {
         if self.full() {
             return Err("The builder is full".to_string());
         }
-        if index < self.next() {
-            return Err(format!("Cannot set bit {}; the lowest possible index is {}", index, self.next()));
+        if index < self.next_index() {
+            return Err(format!("Cannot set bit {}; the lowest possible index is {}", index, self.next_index()));
         }
         if index >= self.universe() {
             return Err(format!("Cannot set bit {}; universe size is {}", index, self.universe()));
@@ -239,10 +326,30 @@ impl Extend<usize> for SparseBuilder {
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// A read-only iterator over [`SparseVector`].
 ///
 /// The type of `Item` is `bool`.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::BitVec;
+/// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+/// use std::convert::TryFrom;
+///
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let ones = source.iter().filter(|&b| *b).count();
+/// let mut builder = SparseBuilder::new(source.len(), ones).unwrap();
+/// for (index, _) in source.iter().enumerate().filter(|v| *v.1) {
+///     builder.set(index);
+/// }
+/// let sv = SparseVector::try_from(builder).unwrap();
+///
+/// assert_eq!(sv.iter().len(), source.len());
+/// for (index, value) in sv.iter().enumerate() {
+///     assert_eq!(source[index], value);
+/// }
+/// ```
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
     parent: OneIter<'a>,
@@ -414,7 +521,6 @@ impl<'a> Rank<'a> for SparseVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// An iterator over the set bits in [`SparseVector`].
 ///
 /// The type of `Item` is `(usize, usize)`.
@@ -425,6 +531,31 @@ impl<'a> Rank<'a> for SparseVector {
 ///
 /// Note that `index` is not always the index provided by [`Iterator::enumerate`].
 /// Queries may create iterators in the middle of the bitvector.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec, Select};
+/// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+/// use std::convert::TryFrom;
+///
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let ones = source.iter().filter(|&b| *b).count();
+/// let mut builder = SparseBuilder::new(source.len(), ones).unwrap();
+/// for (index, _) in source.iter().enumerate().filter(|v| *v.1) {
+///     builder.set(index);
+/// }
+/// let sv = SparseVector::try_from(builder).unwrap();
+///
+/// let mut iter = sv.one_iter();
+/// assert_eq!(iter.len(), ones);
+/// assert_eq!(iter.next(), Some((0, 0)));
+/// assert_eq!(iter.next(), Some((1, 2)));
+/// assert_eq!(iter.next(), Some((2, 3)));
+/// assert_eq!(iter.next(), Some((3, 5)));
+/// assert_eq!(iter.next(), Some((4, 6)));
+/// assert_eq!(iter.next(), None);
+/// ```
 #[derive(Clone, Debug)]
 pub struct OneIter<'a> {
     parent: &'a SparseVector,

@@ -17,6 +17,10 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
   * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries using optional support structures.
   * Iterators over set bits, unset bits, and all bits.
   * Implemented on top of `RawVector`.
+* `SparseVector`: An Elias-Fano encoded bitvector.
+  * Supports `rank()`, `rank_zero()`, `select()`, `predecessor()`, and `successor()` queries .
+  * Iterators over set bits, unset bits, and all bits.
+  * Space-efficient construction with `SparseBuilder`.
 
 ## Planned functionality
 
@@ -27,7 +31,6 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 
 ### Bitvectors
 
-* `SparseVector`: An Elias-Fano encoded immutable bitvector. Comparable to `sdsl::sd_vector`.
 * `select_zero()` for `SparseVector`?
 
 ## Notes
