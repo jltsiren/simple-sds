@@ -40,8 +40,10 @@ mod tests;
 /// This structure should be used for sparse bitvectors, where frequency of set bits is low.
 /// For dense bitvectors or when [`SelectZero`] is needed, [`BitVector`] is a better choice.
 /// Because most queries require support structures for one of the components, the bitvector itself is immutable.
-/// Conversions between `SparseVector` and [`BitVector`] are possible using the [`From`] trait.
 /// The maximum length of the vector is approximately `usize::MAX` bits.
+///
+/// Conversions between `SparseVector` and [`BitVector`] are possible using the [`From`] trait.
+/// 
 ///
 /// `SparseVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
@@ -122,6 +124,32 @@ struct Parts {
 }
 
 impl SparseVector {
+    /// Returns a copy of the source bitvector as `SparseVector`.
+    ///
+    /// The copy is created by iterating over the set bits using [`Select::one_iter()`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::ops::BitVec;
+    /// use simple_sds::sparse_vector::SparseVector;
+    /// use std::iter::FromIterator;
+    ///
+    /// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+    /// let bv = BitVector::from_iter(source);
+    /// let sv = SparseVector::copy_bit_vec(&bv);
+    /// assert_eq!(sv.len(), bv.len());
+    /// assert_eq!(sv.count_ones(), bv.count_ones());
+    /// ```
+    pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> SparseVector {
+        let mut builder = SparseBuilder::new(source.len(), source.count_ones()).unwrap();
+        for (_, index) in source.one_iter() {
+            unsafe { builder.set_unchecked(index); }
+        }
+        SparseVector::try_from(builder).unwrap()
+    }
+
     // Split a bitvector index into high and low parts.
     fn split(&self, index: usize) -> Parts {
         Parts {
@@ -780,11 +808,7 @@ impl Serialize for SparseVector {
 
 impl From<BitVector> for SparseVector {
     fn from(value: BitVector) -> Self {
-        let mut builder = SparseBuilder::new(value.len(), value.count_ones()).unwrap();
-        for (_, index) in value.one_iter() {
-            unsafe { builder.set_unchecked(index); }
-        }
-        SparseVector::try_from(builder).unwrap()
+        SparseVector::copy_bit_vec(&value)
     }
 }
 

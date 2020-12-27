@@ -93,7 +93,6 @@ mod tests;
 /// # Notes
 ///
 /// * `BitVector` never panics from I/O errors.
-/// * [`Select::one_iter`] and [`SelectZero::zero_iter`] for `BitVector` do not need select support.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BitVector {
     ones: usize,

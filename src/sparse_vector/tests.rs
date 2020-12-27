@@ -123,15 +123,24 @@ fn non_empty_vector() {
     raw.set_bit(3, true); raw.set_bit(5, true); raw.set_bit(11, true); raw.set_bit(17, true);
     let bv = BitVector::from(raw);
 
-    let sv = SparseVector::from(bv.clone());
+    let sv = SparseVector::copy_bit_vec(&bv);
     assert!(!sv.is_empty(), "The bitvector is empty");
     assert_eq!(sv.len(), 18, "Invalid length for the bitvector");
     assert_eq!(sv.count_ones(), 4, "Invalid number of ones in the bitvector");
     assert_eq!(sv.iter().len(), sv.len(), "Invalid size hint from the iterator");
     assert!(sv.iter().eq(bv.iter()), "Invalid values from the iterator");
+}
 
-    let copy = BitVector::from(sv);
-    assert_eq!(copy, bv, "SparseVector changed the contents of the BitVector");
+#[test]
+fn conversions() {
+    let original = random_bit_vector(59, 0.015);
+
+    let sv_copy = SparseVector::copy_bit_vec(&original);
+    let sv_from = SparseVector::from(original.clone());
+    assert_eq!(sv_copy, sv_from, "Different SparseVectors with different construction methods");
+
+    let copy = BitVector::from(sv_copy);
+    assert_eq!(copy, original, "SparseVector changed the contents of the BitVector");
 }
 
 #[test]
@@ -154,7 +163,7 @@ fn uniform_vector() {
 #[test]
 fn access() {
     let bv = random_bit_vector(67, 0.025);
-    let sv = SparseVector::from(bv.clone());
+    let sv = SparseVector::copy_bit_vec(&bv);
     assert_eq!(sv.len(), bv.len(), "Invalid bitvector length");
 
     for i in 0..sv.len() {

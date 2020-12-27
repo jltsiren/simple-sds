@@ -919,12 +919,12 @@ pub trait Select<'a>: BitVec<'a> {
     /// Returns an iterator over the integer array.
     ///
     /// In the bit array interpretation, the iterator will visit all set bits.
+    /// The iterator must not require enabling select support.
     ///
     /// # Panics
     ///
-    /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
+    /// The iterator may also panic for the same reason.
     fn one_iter(&'a self) -> Self::OneIter;
 
     /// Returns the specified value in the integer array or `None` if no such value exists.
@@ -979,12 +979,12 @@ pub trait SelectZero<'a>: BitVec<'a> {
     /// Returns an iterator over the integer array of the complement vector.
     ///
     /// In the bit array interpretation, the iterator will visit all unset bits.
+    /// The iterator must not require enabling select support for the complement.
     ///
     /// # Panics
     ///
-    /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
+    /// The iterator may also panic for the same reason.
     fn zero_iter(&'a self) -> Self::ZeroIter;
 
     /// Returns the specified value in the complement of the integer array or `None` if no such value exists.
