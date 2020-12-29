@@ -38,7 +38,7 @@ pub fn random_vector(len: usize, density: f64) -> BitVector {
     bv
 }
 
-pub fn generate_rank_queries(bit_len: usize, n: usize) -> Vec<usize> {
+pub fn generate_rank_queries(n: usize, bit_len: usize) -> Vec<usize> {
     let len = 1usize << bit_len;
     let mut result: Vec<usize> = Vec::with_capacity(len);
 
@@ -51,7 +51,7 @@ pub fn generate_rank_queries(bit_len: usize, n: usize) -> Vec<usize> {
     result
 }
 
-pub fn generate_select_queries(ones: usize, n: usize) -> Vec<usize> {
+pub fn generate_select_queries(n: usize, ones: usize) -> Vec<usize> {
     let mut result: Vec<usize> = Vec::with_capacity(ones);
 
     let mut rng = rand::thread_rng();

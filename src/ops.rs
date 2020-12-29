@@ -1,4 +1,22 @@
-//! Operations common to various bit-packed vectors.
+//! Operations common to various vectors.
+//!
+//! # Integer vectors
+//!
+//! * [`Element`]: Basic operations.
+//! * [`Resize`]: Resizable vectors.
+//! * [`Pack`]: Space-efficiency by e.g. bit packing.
+//! * [`Access`]: Random access.
+//! * [`Push`], [`Pop`]: Stack operations.
+//! * [`SubElement`]: The elements are tuples of fixed type.
+//! * [`AccessSub`]: Access to individual fields in the tuples.
+//!
+//! # Bitvectors
+//!
+//! * [`BitVec`]: Random access and iterators over all bits.
+//! * [`Rank`]: Rank queries.
+//! * [`Select`]: Select queries and iterators over set bits.
+//! * [`SelectZero`]: Select queries on the complement and iterators over unset bits.
+//! * [`PredSucc`]: Predecessor and successor queries.
 
 //-----------------------------------------------------------------------------
 
@@ -7,64 +25,10 @@
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::Element;
+/// use simple_sds::ops::{Element, Resize, Pack, Access};
 /// use simple_sds::bits;
 ///
-/// struct Example(Vec<u8>);
-///
-/// impl Example {
-///     fn new() -> Example {
-///         Example(Vec::new())
-///     }
-/// }
-///
-/// impl Element for Example {
-///     type Item = u8;
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         8
-///     }
-///
-///     fn max_len(&self) -> usize {
-///         usize::MAX
-///     }
-/// } 
-///
-/// let v = Example::new();
-/// assert!(v.is_empty());
-/// assert_eq!(v.len(), 0);
-/// assert_eq!(v.width(), bits::bit_len(u8::MAX as u64));
-/// ```
-pub trait Element {
-    /// The type of the elements in the vector.
-    type Item;
-
-    /// Returns the number of elements in the vector.
-    fn len(&self) -> usize;
-
-    /// Returns `true` if the vector is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns the width of of an element in bits.
-    fn width(&self) -> usize;
-
-    /// Returns the maximum length of the vector.
-    fn max_len(&self) -> usize;
-}
-
-/// A vector that can be resized.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::ops::{Element, Resize};
-///
+/// #[derive(Clone, Debug, PartialEq, Eq)]
 /// struct Example(Vec<u8>);
 ///
 /// impl Example {
@@ -107,15 +71,76 @@ pub trait Element {
 ///     }
 /// }
 ///
+/// // Packing does not make much sense with the running example.
+/// impl Pack for Example {
+///     fn pack(self) -> Self {
+///         self
+///     }
+/// }
+///
+/// impl Access for Example {
+///     fn get(&self, index: usize) -> Self::Item {
+///         self.0[index]
+///     }
+///
+///     fn is_mutable(&self) -> bool {
+///         true
+///     }
+///
+///     fn set(&mut self, index: usize, value: Self::Item) {
+///         self.0[index] = value
+///     }
+/// }
+///
+/// // Element
 /// let mut v = Example::new();
 /// assert!(v.is_empty());
+/// assert_eq!(v.len(), 0);
+/// assert_eq!(v.width(), bits::bit_len(u8::MAX as u64));
+///
+/// // Resize
 /// v.reserve(4);
 /// assert!(v.capacity() >= 4);
 /// v.resize(4, 0);
 /// assert_eq!(v.len(), 4);
 /// v.clear();
 /// assert!(v.is_empty());
+///
+/// // Pack
+/// let mut v = Example(Vec::from([1, 2, 3]));
+/// let w = v.clone().pack();
+/// assert_eq!(w.len(), v.len());
+///
+/// // Access
+/// assert!(v.is_mutable());
+/// for i in 0..v.len() {
+///     assert_eq!(v.get(i), (i + 1) as u8);
+///     v.set(i, i as u8);
+///     assert_eq!(v.get(i), i as u8);
+/// }
 /// ```
+pub trait Element {
+    /// The type of the elements in the vector.
+    type Item;
+
+    /// Returns the number of elements in the vector.
+    fn len(&self) -> usize;
+
+    /// Returns `true` if the vector is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the width of of an element in bits.
+    fn width(&self) -> usize;
+
+    /// Returns the maximum length of the vector.
+    fn max_len(&self) -> usize;
+}
+
+/// A vector that can be resized.
+///
+/// See [`Element`] for an example.
 pub trait Resize: Element {
     /// Resizes the vector to a specified length.
     ///
@@ -152,41 +177,7 @@ pub trait Resize: Element {
 ///
 /// This may, for example, reduce the width of an element.
 ///
-/// # Examples
-///
-/// ```
-/// use simple_sds::ops::{Element, Pack};
-///
-/// #[derive(Clone)]
-/// struct Example(Vec<u8>);
-///
-/// impl Element for Example {
-///     type Item = u8;
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         8
-///     }
-///
-///     fn max_len(&self) -> usize {
-///         usize::MAX
-///     }
-/// } 
-///
-/// // Packing does not make much sense with the running example.
-/// impl Pack for Example {
-///     fn pack(self) -> Self {
-///         self
-///     }
-/// }
-///
-/// let v = Example(Vec::from([1, 2, 3]));
-/// let w = v.clone().pack();
-/// assert_eq!(w.len(), v.len());
-/// ```
+/// See [`Element`] for an example.
 pub trait Pack: Element {
     /// Converts the vector into a more space-efficient vector of the same type.
     fn pack(self) -> Self;
@@ -196,57 +187,7 @@ pub trait Pack: Element {
 
 /// A vector that supports random access to its elements.
 ///
-/// # Examples
-///
-/// ```
-/// use simple_sds::ops::{Element, Access};
-///
-/// struct Example(Vec<u8>);
-///
-/// impl Example {
-///     fn new() -> Example {
-///         Example(Vec::new())
-///     }
-/// }
-///
-/// impl Element for Example {
-///     type Item = u8;
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         8
-///     }
-///
-///     fn max_len(&self) -> usize {
-///         usize::MAX
-///     }
-/// } 
-///
-/// impl Access for Example {
-///     fn get(&self, index: usize) -> Self::Item {
-///         self.0[index]
-///     }
-///
-///     fn is_mutable(&self) -> bool {
-///         true
-///     }
-///
-///     fn set(&mut self, index: usize, value: Self::Item) {
-///         self.0[index] = value
-///     }
-/// }
-///
-/// let mut v = Example(Vec::from([1, 2, 3]));
-/// assert!(v.is_mutable());
-/// for i in 0..v.len() {
-///     assert_eq!(v.get(i), (i + 1) as u8);
-///     v.set(i, i as u8);
-///     assert_eq!(v.get(i), i as u8);
-/// }
-/// ```
+/// See [`Element`] for an example.
 pub trait Access: Element {
     /// Gets an element from the vector.
     ///
@@ -286,7 +227,7 @@ pub trait Access: Element {
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Element, Push};
+/// use simple_sds::ops::{Element, Push, Pop};
 ///
 /// struct Example(Vec<u8>);
 ///
@@ -318,12 +259,26 @@ pub trait Access: Element {
 ///     }
 /// }
 ///
+/// impl Pop for Example {
+///     fn pop(&mut self) -> Option<Self::Item> {
+///         self.0.pop()
+///     }
+/// }
+///
+/// // Push
 /// let mut v = Example::new();
 /// assert!(v.is_empty());
 /// v.push(1);
 /// v.push(2);
 /// v.push(3);
 /// assert_eq!(v.len(), 3);
+///
+/// // Pop
+/// assert_eq!(v.pop(), Some(3));
+/// assert_eq!(v.pop(), Some(2));
+/// assert_eq!(v.pop(), Some(1));
+/// assert_eq!(v.pop(), None);
+/// assert!(v.is_empty());
 /// ```
 pub trait Push: Element {
     /// Appends an element to the vector.
@@ -339,48 +294,7 @@ pub trait Push: Element {
 ///
 /// [`Push`] is a separate trait, because a file writer may not implement `Pop`.
 ///
-/// # Examples
-///
-/// ```
-/// use simple_sds::ops::{Element, Pop};
-///
-/// struct Example(Vec<u8>);
-///
-/// impl Example {
-///     fn new() -> Example {
-///         Example(Vec::new())
-///     }
-/// }
-///
-/// impl Element for Example {
-///     type Item = u8;
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         8
-///     }
-///
-///     fn max_len(&self) -> usize {
-///         usize::MAX
-///     }
-/// } 
-///
-/// impl Pop for Example {
-///     fn pop(&mut self) -> Option<Self::Item> {
-///         self.0.pop()
-///     }
-/// }
-///
-/// let mut v = Example(Vec::from([1, 2, 3]));
-/// assert_eq!(v.len(), 3);
-/// assert_eq!(v.pop(), Some(3));
-/// assert_eq!(v.pop(), Some(2));
-/// assert_eq!(v.pop(), Some(1));
-/// assert!(v.is_empty());
-/// ```
+/// See [`Push`] for an example.
 pub trait Pop: Element {
     /// Removes and returns the last element from the vector.
     /// Returns `None` if there are no more elements in the vector.
@@ -393,73 +307,6 @@ pub trait Pop: Element {
 ///
 /// Term *index* refers to the location of an element within a vector, while *offset* refers to the location of a subelement within an element.
 /// Every subelement at the same offset has the same width in bits.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::ops::{Element, SubElement};
-/// use simple_sds::bits;
-/// use std::mem;
-///
-/// struct Example(Vec<[u8; 8]>);
-///
-/// impl Example {
-///     fn new() -> Example {
-///         Example(Vec::new())
-///     }
-/// }
-///
-/// impl Element for Example {
-///     type Item = [u8; 8];
-///
-///     fn len(&self) -> usize {
-///         self.0.len()
-///     }
-///
-///     fn width(&self) -> usize {
-///         64
-///     }
-///
-///     fn max_len(&self) -> usize {
-///         usize::MAX
-///     }
-/// } 
-///
-/// impl SubElement for Example {
-///     type SubItem = u8;
-///
-///     fn element_len(&self) -> usize {
-///         8
-///     }
-///
-///     fn sub_width(&self, _: usize) -> usize {
-///         8
-///     }
-/// }
-///
-/// let v = Example::new();
-/// assert!(v.is_empty());
-/// assert_eq!(v.element_len(), mem::size_of::<<Example as Element>::Item>());
-/// for i in 0..v.len() {
-///     assert_eq!(v.sub_width(i), bits::bit_len(u8::MAX as u64));
-/// }
-/// ```
-pub trait SubElement: Element {
-    /// The type of the subelements of an element.
-    type SubItem;
-
-    /// Returns the number of subelements in an element.
-    fn element_len(&self) -> usize;
-
-    /// Returns the width of the specified subelement in bits.
-    ///
-    /// # Panics
-    ///
-    /// May panic if `offset >= self.element_len()`.
-    fn sub_width(&self, offset: usize) -> usize;
-}
-
-/// A vector that supports random access to the subelements of its elements.
 ///
 /// # Examples
 ///
@@ -514,6 +361,15 @@ pub trait SubElement: Element {
 ///     }
 /// }
 ///
+/// // SubElement
+/// let v = Example::new();
+/// assert!(v.is_empty());
+/// assert_eq!(v.element_len(), mem::size_of::<<Example as Element>::Item>());
+/// for i in 0..v.len() {
+///     assert_eq!(v.sub_width(i), bits::bit_len(u8::MAX as u64));
+/// }
+///
+/// // AccessSub
 /// let mut v = Example(Vec::from([
 ///     [0, 1, 2, 3, 4, 5, 6, 7],
 ///     [7, 6, 5, 4, 3, 2, 1, 0],
@@ -522,6 +378,24 @@ pub trait SubElement: Element {
 /// v.set_sub(1, 3, 55u8);
 /// assert_eq!(v.sub(1, 3), 55u8);
 /// ```
+pub trait SubElement: Element {
+    /// The type of the subelements of an element.
+    type SubItem;
+
+    /// Returns the number of subelements in an element.
+    fn element_len(&self) -> usize;
+
+    /// Returns the width of the specified subelement in bits.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `offset >= self.element_len()`.
+    fn sub_width(&self, offset: usize) -> usize;
+}
+
+/// A vector that supports random access to the subelements of its elements.
+///
+/// See [`SubElement`] for an example.
 pub trait AccessSub: SubElement {
     /// Gets a subelement from the vector.
     ///

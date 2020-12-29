@@ -17,20 +17,18 @@ fn main() {
 
     println!("Generating a random 2^{}-bit BitVector with density {}", config.bit_len, config.density);
     let mut bv = utils::random_vector(1usize << config.bit_len, config.density);
-    println!("Ones: {}", bv.count_ones());
-    println!("Enabling rank support");
+    println!("Ones:     {} (density {:.6})", bv.count_ones(), (bv.count_ones() as f64) / (bv.len() as f64));
     bv.enable_rank();
-    println!("Enabling select support");
     bv.enable_select();
-    println!("Size: {}", utils::bitvector_size(&bv));
+    println!("Size:     {}", utils::bitvector_size(&bv));
     println!("");
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
-    let rank_queries = utils::generate_rank_queries(config.bit_len, config.queries);
+    let rank_queries = utils::generate_rank_queries(config.queries, config.bit_len);
     println!("");
 
     println!("Generating {} random select queries over the bitvector", config.queries);
-    let select_queries = utils::generate_select_queries(bv.count_ones(), config.queries);
+    let select_queries = utils::generate_select_queries(config.queries, bv.count_ones());
     println!("");
 
     independent_rank(&bv, &rank_queries, "BitVector");
@@ -40,7 +38,7 @@ fn main() {
 
     println!("Creating a SparseVector");
     let sv = SparseVector::copy_bit_vec(&bv);
-    println!("Size: {}", utils::bitvector_size(&sv));
+    println!("Size:     {}", utils::bitvector_size(&sv));
     println!("");
 
     independent_rank(&sv, &rank_queries, "SparseVector");
