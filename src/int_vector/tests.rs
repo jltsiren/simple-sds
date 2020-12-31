@@ -156,8 +156,8 @@ fn extend() {
 fn iterators_and_pack() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
-    let packed: IntVector = correct.iter().cloned().collect();
-    let packed = packed.pack();
+    let mut packed: IntVector = correct.iter().cloned().collect();
+    packed.pack();
     assert_eq!(packed.width(), 7, "Incorrect width after pack()");
     for (index, value) in packed.iter().enumerate() {
         assert_eq!(value, correct[index], "Invalid value in the packed vector");

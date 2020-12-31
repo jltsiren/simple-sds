@@ -156,9 +156,9 @@ impl<T: Transformation> SelectSupport<T> {
             unsafe { result.add_superblock(&buf, log4); }
         }
 
-        result.samples = result.samples.pack();
-        result.long = result.long.pack();
-        result.short = result.short.pack();
+        result.samples.pack();
+        result.long.pack();
+        result.short.pack();
         result
     }
 

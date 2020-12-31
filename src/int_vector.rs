@@ -216,19 +216,20 @@ impl Resize for IntVector {
 }
 
 impl Pack for IntVector {
-    fn pack(self) -> Self {
+    fn pack(&mut self) {
         if self.is_empty() {
-            return self;
+            return;
         }
         let new_width = bits::bit_len(self.iter().max().unwrap());
         if new_width == self.width() {
-            return self;
+            return;
         }
-        let mut result = IntVector::with_capacity(self.len(), new_width).unwrap();
+        let mut new_data = RawVector::with_capacity(self.len() * new_width);
         for value in self.iter() {
-            result.push(value);
+            unsafe { new_data.push_int(value, new_width); }
         }
-        result
+        self.width = new_width;
+        self.data = new_data;
     }
 }
 

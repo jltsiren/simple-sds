@@ -73,9 +73,7 @@
 ///
 /// // Packing does not make much sense with the running example.
 /// impl Pack for Example {
-///     fn pack(self) -> Self {
-///         self
-///     }
+///     fn pack(&mut self) {}
 /// }
 ///
 /// impl Access for Example {
@@ -108,8 +106,8 @@
 ///
 /// // Pack
 /// let mut v = Example(Vec::from([1, 2, 3]));
-/// let w = v.clone().pack();
-/// assert_eq!(w.len(), v.len());
+/// v.pack();
+/// assert_eq!(v.len(), 3);
 ///
 /// // Access
 /// assert!(v.is_mutable());
@@ -173,14 +171,14 @@ pub trait Resize: Element {
     fn reserve(&mut self, additional: usize);
 }
 
-/// Conversion into a more space-efficient representation of the same data in a vector of the same type.
+/// Store the vector more space-efficiently.
 ///
 /// This may, for example, reduce the width of an element.
 ///
 /// See [`Element`] for an example.
 pub trait Pack: Element {
-    /// Converts the vector into a more space-efficient vector of the same type.
-    fn pack(self) -> Self;
+    /// Try to store the elements of the vector more space-efficiently.
+    fn pack(&mut self);
 }
 
 //-----------------------------------------------------------------------------
