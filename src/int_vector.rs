@@ -43,7 +43,7 @@ pub struct IntVector {
 impl IntVector {
     /// Creates an empty vector with specified width.
     /// 
-    /// Returns `None` if the width is invalid.
+    /// Returns `Err` if the width is invalid.
     ///
     /// # Examples
     ///
@@ -55,20 +55,22 @@ impl IntVector {
     /// assert!(v.is_empty());
     /// assert_eq!(v.width(), 13);
     /// ```
-    pub fn new(width: usize) -> Option<IntVector> {
+    pub fn new(width: usize) -> Result<IntVector, &'static str> {
         if width == 0 || width > bits::WORD_BITS {
-            return None;
+            Err("Integer width must be 1 to 64 bits")
         }
-        Some(IntVector {
-            len: 0,
-            width: width,
-            data: RawVector::new(),
-        })
+        else {
+            Ok(IntVector {
+                len: 0,
+                width: width,
+                data: RawVector::new(),
+            })
+        }
     }
 
     /// Creates an initialized vector of specified length and width.
     /// 
-    /// Returns `None` if the width is invalid.
+    /// Returns `Err` if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -93,15 +95,15 @@ impl IntVector {
     /// # Panics
     ///
     /// May panic if the vector would exceed the maximum length.
-    pub fn with_len(len: usize, width: usize, value: u64) -> Option<IntVector> {
+    pub fn with_len(len: usize, width: usize, value: u64) -> Result<IntVector, &'static str> {
         if width == 0 || width > bits::WORD_BITS {
-            return None;
+            return Err("Integer width must be 1 to 64 bits");
         }
         let mut data = RawVector::with_capacity(len * width);
         for _ in 0..len {
             unsafe { data.push_int(value, width); }
         }
-        Some(IntVector {
+        Ok(IntVector {
             len: len,
             width: width,
             data: data,
@@ -110,7 +112,7 @@ impl IntVector {
 
     /// Creates an empty vector with enough capacity for at least the specified number of elements of specified width.
     ///
-    /// Returns `None` if the width is invalid.
+    /// Returns `Err` if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -132,11 +134,11 @@ impl IntVector {
     /// # Panics
     ///
     /// May panic if the capacity would exceed the maximum length.
-    pub fn with_capacity(capacity: usize, width: usize) -> Option<IntVector> {
+    pub fn with_capacity(capacity: usize, width: usize) -> Result<IntVector, &'static str> {
         if width == 0 || width > bits::WORD_BITS {
-            None
+            Err("Integer width must be 1 to 64 bits")
         } else {
-            Some(IntVector {
+            Ok(IntVector {
                 len: 0,
                 width: width,
                 data: RawVector::with_capacity(capacity * width),
@@ -485,7 +487,7 @@ impl IntVectorWriter {
     /// Any I/O errors will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P, width: usize) -> io::Result<IntVectorWriter> {
         if width == 0 || width > bits::WORD_BITS {
-            return Err(Error::new(ErrorKind::Other, format!("invalid element width: {}", width)));
+            return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
         }
         let writer = RawVectorWriter::new(filename)?;
         let mut result = IntVectorWriter {
@@ -536,7 +538,7 @@ impl IntVectorWriter {
     /// May panic if buffer length would exceed the maximum length.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, width: usize, buf_len: usize) -> io::Result<IntVectorWriter> {
         if width == 0 || width > bits::WORD_BITS {
-            return Err(Error::new(ErrorKind::Other, format!("invalid element width: {}", width)));
+            return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
         }
         let writer = RawVectorWriter::with_buf_len(filename, buf_len * width)?;
         let mut result = IntVectorWriter {

@@ -79,7 +79,7 @@ mod tests;
 ///
 /// // Select
 /// assert!(sv.supports_select());
-/// assert_eq!(sv.select(1), Some(33));
+/// assert_eq!(sv.select(1), Ok(33));
 /// let mut iter = sv.select_iter(2);
 /// assert_eq!(iter.next(), Some((2, 95)));
 /// assert_eq!(iter.next(), Some((3, 123)));
@@ -247,15 +247,15 @@ pub struct SparseBuilder {
 impl SparseBuilder {
     /// Returns an empty SparseBuilder.
     ///
-    /// Returns `None` if `ones > universe`.
+    /// Returns `Err` if `ones > universe`.
     ///
     /// # Arguments
     ///
     /// * `universe`: Universe size or length of the bitvector.
     /// * `ones`: Number of bits that will be set in the bitvector.
-    pub fn new(universe: usize, ones: usize) -> Option<SparseBuilder> {
+    pub fn new(universe: usize, ones: usize) -> Result<SparseBuilder, &'static str> {
         if ones > universe {
-            return None;
+            return Err("Number of set bits is greater than universe size");
         }
 
         let log_n = bits::bit_len(universe as u64);
@@ -273,7 +273,7 @@ impl SparseBuilder {
         };
 
         let high = RawVector::with_len(ones + (1usize << log_m), false);
-        Some(SparseBuilder {
+        Ok(SparseBuilder {
             data: data,
             high: high,
             len: 0,
@@ -327,16 +327,16 @@ impl SparseBuilder {
 
     /// Tries to set the specified bit in the bitvector.
     ///
-    /// Returns an error if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
-    pub fn try_set(&mut self, index: usize) -> Result<(), String> {
+    /// Returns `Err` if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
+    pub fn try_set(&mut self, index: usize) -> Result<(), &'static str> {
         if self.is_full() {
-            return Err("The builder is full".to_string());
+            return Err("The builder is full");
         }
         if index < self.next_index() {
-            return Err(format!("Cannot set bit {}; the lowest possible index is {}", index, self.next_index()));
+            return Err("Index must be past the previous set bit");
         }
         if index >= self.universe() {
-            return Err(format!("Cannot set bit {}; universe size is {}", index, self.universe()));
+            return Err("Index is larger than universe size");
         }
         unsafe { self.set_unchecked(index); }
         Ok(())
@@ -663,11 +663,11 @@ impl<'a> Select<'a> for SparseVector {
         }
     }
 
-    fn select(&'a self, rank: usize) -> Option<usize> {
+    fn select(&'a self, rank: usize) -> Result<usize, &'static str> {
          if rank >= self.count_ones() {
-             None
+             Err("Invalid rank")
         } else {
-            Some(self.combine(self.pos(rank)).1)
+            Ok(self.combine(self.pos(rank)).1)
         }
     }
 

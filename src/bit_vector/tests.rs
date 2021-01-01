@@ -244,7 +244,10 @@ fn large_rank() {
 
 fn try_select(bv: &BitVector) {
     assert!(bv.supports_select(), "Failed to enable select support");
-    assert_eq!(bv.select(bv.count_ones()), None, "Got a result for select past the end");
+    match bv.select(bv.count_ones()) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(bv.select_iter(bv.count_ones()).next(), None, "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
@@ -311,7 +314,10 @@ fn empty_select() {
     assert!(!empty.supports_select(), "Select support was enabled by default");
     empty.enable_select();
     assert!(empty.supports_select(), "Failed to enable select support");
-    assert_eq!(empty.select(empty.count_ones()), None, "Got a result for select past the end");
+    match empty.select(empty.count_ones()) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(empty.select_iter(empty.count_ones()).next(), None, "Got a result for select_iter past the end");
 }
 
@@ -368,7 +374,10 @@ fn large_select() {
 
 fn try_select_zero(bv: &BitVector) {
     assert!(bv.supports_select_zero(), "Failed to enable select zero support");
-    assert_eq!(bv.select_zero(Complement::count_ones(bv)), None, "Got a result for select past the end");
+    match bv.select_zero(Complement::count_ones(bv)) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(bv.select_zero_iter(Complement::count_ones(bv)).next(), None, "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
@@ -389,7 +398,10 @@ fn empty_select_zero() {
     assert!(!empty.supports_select_zero(), "Select zero support was enabled by default");
     empty.enable_select_zero();
     assert!(empty.supports_select_zero(), "Failed to enable select zero support");
-    assert_eq!(empty.select_zero(Complement::count_ones(&empty)), None, "Got a result for select past the end");
+    match empty.select_zero(Complement::count_ones(&empty)) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(empty.select_zero_iter(Complement::count_ones(&empty)).next(), None, "Got a result for select_iter past the end");
 }
 

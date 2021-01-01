@@ -235,7 +235,10 @@ fn large_rank() {
 
 fn try_select(sv: &SparseVector) {
     assert!(sv.supports_select(), "Failed to enable select support");
-    assert_eq!(sv.select(sv.count_ones()), None, "Got a result for select past the end");
+    match sv.select(sv.count_ones()) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(sv.select_iter(sv.count_ones()).next(), None, "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
@@ -299,7 +302,10 @@ fn try_one_iter(sv: &SparseVector) {
 #[test]
 fn empty_select() {
     let empty = zero_vector(0);
-    assert_eq!(empty.select(empty.count_ones()), None, "Got a result for select past the end");
+    match empty.select(empty.count_ones()) {
+        Err(_) => (),
+        Ok(_) => panic!("Got a result for select past the end"),
+    }
     assert_eq!(empty.select_iter(empty.count_ones()).next(), None, "Got a result for select_iter past the end");
 }
 

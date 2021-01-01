@@ -88,32 +88,32 @@ pub fn readable_size(bytes: usize) -> (f64, &'static str) {
 }
 
 #[cfg(target_os = "linux")]
-pub fn peak_memory_usage() -> Option<usize> {
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
         let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
         match retval {
-            0 => Some(rusage.ru_maxrss as usize * 1024),
-            _ => None,
+            0 => Ok(rusage.ru_maxrss as usize * 1024),
+            _ => Err("libc::getrusage call failed"),
         }
     }
 }
 
 #[cfg(target_os = "macos")]
-pub fn peak_memory_usage() -> Option<usize> {
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
         let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
         match retval {
-            0 => Some(rusage.ru_maxrss as usize),
-            _ => None,
+            0 => Ok(rusage.ru_maxrss as usize),
+            _ => Err("libc::getrusage call failed"),
         }
     }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn peak_memory_usage() -> Option<usize> {
-    None
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
+    Err("No peak_memory_usage implementation for this OS")
 }
 
 //-----------------------------------------------------------------------------
@@ -137,12 +137,12 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
 
 pub fn report_memory_usage() {
     match peak_memory_usage() {
-        Some(bytes) => {
+        Ok(bytes) => {
             let (size, unit) = readable_size(bytes);
             println!("Peak memory usage: {:.3} {}", size, unit);
         },
-        None => {
-            println!("Unable to determine peak memory usage");
+        Err(f) => {
+            println!("{}", f);
         },
     }
     println!("");

@@ -64,7 +64,7 @@ mod tests;
 /// // Select
 /// bv.enable_select();
 /// assert!(bv.supports_select());
-/// assert_eq!(bv.select(1), Some(33));
+/// assert_eq!(bv.select(1), Ok(33));
 /// let mut iter = bv.select_iter(2);
 /// assert_eq!(iter.next(), Some((2, 95)));
 /// assert_eq!(iter.next(), Some((3, 123)));
@@ -75,7 +75,7 @@ mod tests;
 /// // SelectZero
 /// bv.enable_select_zero();
 /// assert!(bv.supports_select_zero());
-/// assert_eq!(bv.select_zero(2), Some(3));
+/// assert_eq!(bv.select_zero(2), Ok(3));
 /// let v: Vec<(usize, usize)> = bv.zero_iter().take(4).collect();
 /// assert_eq!(v, vec![(0, 0), (1, 2), (2, 3), (3, 4)]);
 ///
@@ -471,13 +471,13 @@ impl<'a> Select<'a> for BitVector {
         }
     }
 
-    fn select(&'a self, rank: usize) -> Option<usize> {
+    fn select(&'a self, rank: usize) -> Result<usize, &'static str> {
          if rank >= Identity::count_ones(self) {
-             None
+             Err("Invalid rank")
         } else {
             let select_support = self.select.as_ref().unwrap();
             let value = unsafe { select_support.select_unchecked(self, rank) };
-            Some(value)
+            Ok(value)
         }
     }
 
@@ -522,13 +522,13 @@ impl<'a> SelectZero<'a> for BitVector {
         }
     }
 
-    fn select_zero(&'a self, rank: usize) -> Option<usize> {
+    fn select_zero(&'a self, rank: usize) -> Result<usize, &'static str> {
          if rank >= Complement::count_ones(self) {
-             None
+             Err("Invalid rank")
         } else {
             let select_support = self.select_zero.as_ref().unwrap();
             let value = unsafe { select_support.select_unchecked(self, rank) };
-            Some(value)
+            Ok(value)
         }
     }
 
