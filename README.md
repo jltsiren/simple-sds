@@ -32,6 +32,8 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 ### Bitvectors
 
 * `select_zero()` for `SparseVector`?
+* Versions of `predecessor()` and `successor()` that return values instead of iterators?
+* Versions of `select()`, `predecessor()`, and `successor()` that return an iterator with the result as the upper bound (or limit)?
 
 ## Notes
 

@@ -342,8 +342,9 @@ impl Transformation for Complement {
 ///
 /// The bitvector is assumed to be at least somewhat dense.
 /// If the frequency of ones is less than 1/64, iteration may be inefficient.
+/// The implementation of [`Iterator::nth`] is optimized to skip set bits without determining their positions.
 ///
-/// This type must be parametrized with a [`Transformation`].
+/// This type must be parameterized with a [`Transformation`].
 ///
 /// # Examples
 ///
@@ -351,21 +352,19 @@ impl Transformation for Complement {
 /// use simple_sds::bit_vector::BitVector;
 /// use simple_sds::ops::{BitVec, Select, SelectZero};
 ///
-/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false, true];
 /// let bv: BitVector = source.into_iter().collect();
 ///
 /// let mut iter = bv.one_iter();
 /// assert_eq!(iter.len(), bv.count_ones());
 /// assert_eq!(iter.next(), Some((0, 0)));
-/// assert_eq!(iter.next(), Some((1, 2)));
-/// assert_eq!(iter.next(), Some((2, 3)));
-/// assert_eq!(iter.next(), Some((3, 5)));
+/// assert_eq!(iter.nth(0), Some((1, 2)));
+/// assert_eq!(iter.nth(1), Some((3, 5)));
 /// assert_eq!(iter.next(), Some((4, 6)));
-/// assert_eq!(iter.next(), None);
+/// assert_eq!(iter.nth(1), None);
 ///
 /// let mut iter = bv.zero_iter();
-/// assert_eq!(iter.next(), Some((0, 1)));
-/// assert_eq!(iter.next(), Some((1, 4)));
+/// assert_eq!(iter.nth(1), Some((1, 4)));
 /// assert_eq!(iter.next(), Some((2, 7)));
 /// assert_eq!(iter.next(), None);
 /// ```
@@ -412,6 +411,27 @@ impl<'a, T: Transformation + ?Sized> Iterator for OneIter<'a, T> {
             self.next = (result.0 + 1, result.1 + 1);
             Some(result)
         }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if self.next.0 + n >= self.limit.0 {
+            self.next = self.limit;
+            return None;
+        }
+        let (mut index, offset) = bits::split_offset(self.next.1);
+        let mut word = unsafe { T::word_unchecked(self.parent, index) & !bits::low_set_unchecked(offset) };
+        let mut relative_offset = n;
+        let mut ones = word.count_ones() as usize;
+        while ones <= relative_offset {
+            index += 1;
+            word = unsafe { T::word_unchecked(self.parent, index) };
+            relative_offset -= ones;
+            ones = word.count_ones() as usize;
+        }
+        let offset = unsafe { bits::select(word, relative_offset) };
+        let result = (self.next.0 + n, bits::bit_offset(index, offset));
+        self.next = (result.0 + 1, result.1 + 1);
+        Some(result)
     }
 
     #[inline]

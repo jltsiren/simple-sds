@@ -306,6 +306,22 @@ fn try_one_iter<T: Transformation>(bv: &BitVector) {
         limit = (limit.0 - 1, value);
     }
     assert_eq!(next.0, limit.0, "Iterator did not visit all values");
+
+    // Skip forward by 1, 2, 4, 8, ... values.
+    let bit_len = bits::bit_len(bv.count_ones() as u64);
+    for k in 0..bit_len {
+        let jump: usize = (1 << k) - 1;
+        let mut iter = T::one_iter(bv);
+        let mut skip_iter = T::one_iter(bv);
+        while iter.len() > 0 {
+            for _ in 0..jump {
+                let _ = iter.next();
+            }
+            let iter_val = iter.next();
+            let skip_val = skip_iter.nth(jump);
+            assert_eq!(skip_val, iter_val, "Invalid value from OneIter::nth");
+        }
+    }
 }
 
 #[test]
