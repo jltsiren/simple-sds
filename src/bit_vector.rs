@@ -420,15 +420,15 @@ impl<'a, T: Transformation + ?Sized> Iterator for OneIter<'a, T> {
         }
         let (mut index, offset) = bits::split_offset(self.next.1);
         let mut word = unsafe { T::word_unchecked(self.parent, index) & !bits::low_set_unchecked(offset) };
-        let mut relative_offset = n;
+        let mut relative_rank = n;
         let mut ones = word.count_ones() as usize;
-        while ones <= relative_offset {
+        while ones <= relative_rank {
             index += 1;
             word = unsafe { T::word_unchecked(self.parent, index) };
-            relative_offset -= ones;
+            relative_rank -= ones;
             ones = word.count_ones() as usize;
         }
-        let offset = unsafe { bits::select(word, relative_offset) };
+        let offset = unsafe { bits::select(word, relative_rank) };
         let result = (self.next.0 + n, bits::bit_offset(index, offset));
         self.next = (result.0 + 1, result.1 + 1);
         Some(result)

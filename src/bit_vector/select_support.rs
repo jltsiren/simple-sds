@@ -81,30 +81,6 @@ impl<T: Transformation> SelectSupport<T> {
         (self.short.len() + Self::BLOCKS_IN_SUPERBLOCK - 1) / Self::BLOCKS_IN_SUPERBLOCK
     }
 
-    // Append a superblock. The buffer should contain all elements in the superblock
-    // and either the first element in the next superblock or a past-the-end sentinel
-    // for the last superblock.
-    unsafe fn add_superblock(&mut self, buf: &[u64], long_superblock_min: usize) {
-        let len: usize = (*buf.get_unchecked(buf.len() - 1) - *buf.get_unchecked(0)) as usize;
-        let superblock_ptr: u64;
-        if len >= long_superblock_min {
-            superblock_ptr = (2 * self.long.len()) as u64;
-            for value in buf.iter().take(buf.len() - 1) {
-                self.long.push(*value - *buf.get_unchecked(0));
-            }
-        }
-        else {
-            superblock_ptr = (2 * self.short.len() + 1) as u64;
-            for (index, value) in buf.iter().enumerate().take(buf.len() - 1) {
-                if (index & Self::BLOCK_MASK) == 0 {
-                    self.short.push(value - *buf.get_unchecked(0));
-                }
-            }
-        }
-        self.samples.push(*buf.get_unchecked(0));
-        self.samples.push(superblock_ptr);
-    }
-
     /// Builds a select support structure for the parent bitvector.
     ///
     /// # Examples
@@ -134,26 +110,41 @@ impl<T: Transformation> SelectSupport<T> {
         };
         result.samples.reserve(superblocks * 2);
 
-        // The buffer will hold one superblock and a sentinel value from the next superblock.
-        // Explicit iteration is faster than using OneIter.
-        let mut buf: Vec<u64> = Vec::with_capacity(Self::SUPERBLOCK_SIZE + 1);
-        let words = bits::bits_to_words(parent.len());
-        for index in 0..words {
-            let mut word = unsafe { T::word_unchecked(parent, index) };
-            while word != 0 {
-                let offset = word.trailing_zeros() as usize;
-                buf.push(bits::bit_offset(index, offset) as u64);
-                word &= unsafe { !bits::low_set_unchecked(offset + 1) };
-                if buf.len() > Self::SUPERBLOCK_SIZE {
-                    unsafe { result.add_superblock(&buf, log4); }
-                    buf[0] = buf[Self::SUPERBLOCK_SIZE];
-                    buf.resize(1, 0);
+        // `sample_iter` will iterate over superblock samples.
+        let mut sample_iter = T::one_iter(&parent);
+        let mut sample = sample_iter.next();
+
+        // `iter` will iterate over the values we store in `self.long` and `self.short`.
+        let mut iter = T::one_iter(&parent);
+        let mut value = iter.next();
+
+        while sample != None {
+            let start = sample.unwrap();
+            let next_sample = sample_iter.nth(Self::SUPERBLOCK_SIZE - 1);
+            let limit = match next_sample {
+                Some(v) => v,
+                None => (T::count_ones(parent), parent.len()),
+            };
+            result.samples.push(start.1 as u64);
+            // Long superblock.
+            if limit.1 - start.1 >= log4 {
+                result.samples.push((2 * result.long.len()) as u64);
+                let values = limit.0 - start.0;
+                for _ in 0..values {
+                    result.long.push((value.unwrap().1 - start.1) as u64);
+                    value = iter.next();
                 }
             }
-        }
-        if buf.len() > 0 {
-            buf.push(parent.len() as u64);
-            unsafe { result.add_superblock(&buf, log4); }
+            // Short superblock.
+            else {
+                result.samples.push((2 * result.short.len() + 1) as u64);
+                let blocks = ((limit.0 - start.0) + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+                for _ in 0..blocks {
+                    result.short.push((value.unwrap().1 - start.1) as u64);
+                    value = iter.nth(Self::BLOCK_SIZE - 1);
+                }
+            }
+            sample = next_sample;
         }
 
         result.samples.pack();
