@@ -1,6 +1,8 @@
 # Simple succinct data structures
 
-This is a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures. The plan is to implement the subset of [SDSL](https://github.com/simongog/sdsl-lite) I am currently using and to extend it a bit.
+This started as a toy project with two goals: to learn Rust and to experiment with the API of basic succinct data structures. 
+The structures are comparable to those in [SDSL](https://github.com/simongog/sdsl-lite) in performance and scalability.
+As the focus is on (relative) simplicity, ugly low-level optimizations are generally avoided.
 
 ## Implemented functionality
 
@@ -33,7 +35,7 @@ This is a toy project with two goals: to learn Rust and to experiment with the A
 
 * `select_zero()` for `SparseVector`?
 * Versions of `predecessor()` and `successor()` that return values instead of iterators?
-* Versions of `select()`, `predecessor()`, and `successor()` that return an iterator with the result as the upper bound (or limit)?
+* Slice-like functionality based on iterators?
 
 ## Notes
 
