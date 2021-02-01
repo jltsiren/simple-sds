@@ -730,12 +730,12 @@ impl<'a> PredSucc<'a> for SparseVector {
     }
 
     fn successor(&'a self, value: usize) -> Self::OneIter {
-        if self.is_empty() {
+        if value >= self.len() {
             return Self::OneIter::empty_iter(self);
         }
 
         // Find the first value with the same high part, if it exists.
-        let parts = self.split(cmp::min(value, self.len() - 1));
+        let parts = self.split(value);
         let mut pos = self.lower_bound(parts.high);
 
         // Iterate forward over the values with the same high part until we find

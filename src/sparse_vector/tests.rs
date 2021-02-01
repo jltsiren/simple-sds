@@ -376,6 +376,11 @@ fn try_pred_succ(sv: &SparseVector) {
             }
         }
     }
+
+    if sv.len() > 0 {
+        assert_eq!(sv.predecessor(sv.len()).next(), sv.predecessor(sv.len() - 1).next(), "Invalid predecessor at vector size");
+    }
+    assert_eq!(sv.successor(sv.len()).next(), None, "Invalid successor at vector size");
 }
 
 #[test]
