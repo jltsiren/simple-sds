@@ -41,5 +41,6 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 
 * The included `.cargo/config.toml` sets the target CPU to `native`.
 * This crate is designed for the x86_64 architecture with the BMI2 instruction set (Intel Haswell / AMD Excavator or later).
+* The crate only compiles on a Unix-like OS because it uses `mmap()`.
 * Things may not work if the system is not little-endian or if `usize` is not 64-bit.
 * Some operations may be slow without the POPCNT, LZCNT, TZCNT, and PDEP instructions.

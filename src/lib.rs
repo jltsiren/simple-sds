@@ -7,6 +7,7 @@
 //! # Notes
 //!
 //! * This crate is designed for the x86_64 architecture with the BMI2 instruction set (Intel Haswell / AMD Excavator or later).
+//! * The crate only works on a Unix-like OS because it uses `mmap()`.
 //! * Things may not work if the system is not little-endian or if `usize` is not 64-bit.
 //! * Some operations may be slow without the POPCNT, LZCNT, TZCNT, and PDEP instructions.
 

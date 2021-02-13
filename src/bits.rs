@@ -494,6 +494,7 @@ mod tests {
         assert_eq!(mem::size_of::<usize>(), 8, "Things may not work if usize is not 64 bits");
         assert!(cfg!(target_endian = "little"), "Things may not work on a big-endian system");
         assert!(cfg!(target_arch = "x86_64"), "Things may not work on architectures other than x86_64");
+        assert!(cfg!(unix), "Memory mapping requires Unix-like OS");
 
         assert!(cfg!(target_feature = "popcnt"), "Performance may be worse without the POPCNT instruction");
         assert!(cfg!(target_feature = "lzcnt"), "Performance may be worse without the LZCNT instruction");

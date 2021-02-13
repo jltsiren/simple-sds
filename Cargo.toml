@@ -9,11 +9,11 @@ readme = "README.md"
 repository = "https://github.com/jltsiren/simple-sds"
 
 [features]
-bench = ["getopts", "libc", "rand"]
+bench = ["getopts", "rand"]
 
 [dependencies]
 getopts = { version = "0.2", optional = true }
-libc = { version = "0.2", optional = true }
+libc = "0.2"
 rand = { version = "0.7", optional = true }
 
 [dev-dependencies]

@@ -22,14 +22,6 @@
 //!   The header stores the number of elements in the body as `usize`.
 //!   The body stores `T` for `Some(T)` and is empty for `None`.
 //!
-//! # Writer structures
-//!
-//! Trait [`Writer`] provides an interface for writing a nested data structure directly to a file.
-//! Like with serialization, the innermost writer is responsible for handling the buffer and the file.
-//! The outermost structure is responsible for writing the header.
-//! Most methods in the outer writer should simply call the corresponding method of the inner writer.
-//! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
-//!
 //! # Nested structures
 //!
 //! Assume that we have a nested structure `A` that contains `B`, which is in turn contains `C`.
@@ -60,12 +52,28 @@
 //!   * Body of `C`.
 //!
 //! In this case, each structure is responsible for its own header.
+//!
+//! # Writer structures
+//!
+//! Trait [`Writer`] provides an interface for writing a nested data structure directly to a file.
+//! Like with serialization, the innermost writer is responsible for handling the buffer and the file.
+//! The outermost structure is responsible for writing the header.
+//! Most methods in the outer writer should simply call the corresponding method of the inner writer.
+//! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
+//!
+//! # Memory mapped structures
+//!
+//! [`MemoryMapper`] implements a highly unsafe interface of memory mapping files as arrays of 64-bit elements.
+//! The file can be opened for reading and writing ([`MappingMode::Mutable`]) or as read-only ([`MappingMode::ReadOnly`]).
+//! While the contents of the file can be changed, the file cannot be resized.
+// TODO MapperTrait, existing mappers for prebuilt types
 
 use std::fs::{File, OpenOptions};
-use std::io::{Seek, SeekFrom};
+use std::io::{Error, ErrorKind, Seek, SeekFrom};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{env, io, mem, process, slice};
+use std::{env, io, mem, process, ptr, slice};
 
 //-----------------------------------------------------------------------------
 
@@ -324,6 +332,153 @@ pub trait Writer {
             self.close_file();
         }
         Ok(())
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/// Modes of memory mapping a file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MappingMode {
+    /// The file is read-only.
+    ReadOnly,
+    /// Both read and write operations are supported.
+    Mutable,
+}
+
+// FIXME tests
+// FIXME Mapper trait: new(mapper, offset); filename(); mode(); offset(); len(); implementations for the same types as Serialize
+/// A memory mapped file as an array of `u64`.
+///
+/// The interface is highly unsafe.
+/// The file remains open until the `MemoryMapper` is dropped.
+/// User-facing structures should borrow or extend this and create a safe interface.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::{MemoryMapper, MappingMode, Serialize};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let v: Vec<u64> = vec![123, 456];
+/// let filename = serialize::temp_file_name("memory-mapper");
+/// serialize::serialize_to(&v, &filename);
+///
+/// let mapper = MemoryMapper::new(&filename, MappingMode::ReadOnly).unwrap();
+/// assert_eq!(mapper.mode(), MappingMode::ReadOnly);
+/// assert_eq!(mapper.len(), 3);
+/// unsafe {
+///     let ptr = mapper.as_ptr();
+///     assert_eq!(*ptr, 2);
+///     assert_eq!(*ptr.add(1), 123);
+///     assert_eq!(*ptr.add(2), 456);
+/// }
+///
+/// drop(mapper);
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(Debug)]
+pub struct MemoryMapper {
+    file: File,
+    filename: PathBuf,
+    mode: MappingMode,
+    ptr: *mut u64,
+    len: usize,
+}
+
+// TODO: implement advise()?
+// TODO: with_len()?
+impl MemoryMapper {
+    /// Returns a memory mapper for the specified file in the given mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `filename`: Name of the file.
+    /// * `mode`: Memory mapping mode.
+    ///
+    /// # Errors
+    ///
+    /// The call may fail for a number of reasons, including:
+    ///
+    /// * File `filename` does not exist.
+    /// * The file cannot be opened for writing with mode `MappingMode::Mutable`.
+    /// * The size of the file is not a multiple of 8 bytes.
+    /// * Memory mapping the file fails.
+    pub fn new<P: AsRef<Path>>(filename: P, mode: MappingMode) -> io::Result<MemoryMapper> {
+        let write = match mode {
+            MappingMode::ReadOnly => false,
+            MappingMode::Mutable => true,
+        };
+        let mut options = OpenOptions::new();
+        let file = options.read(true).write(write).open(&filename)?;
+
+        let metadata = file.metadata()?;
+        let len = metadata.len() as usize;
+        if len % mem::size_of::<u64>() != 0 {
+            return Err(Error::new(ErrorKind::Other, "File size must be a multiple of 8 bytes"));
+        }
+
+        let prot = match mode {
+            MappingMode::ReadOnly => libc::PROT_READ,
+            MappingMode::Mutable => libc::PROT_READ | libc::PROT_WRITE,
+        };
+        let ptr = unsafe { libc::mmap(ptr::null_mut(), len, prot, libc::MAP_SHARED, file.as_raw_fd(), 0) };
+        if ptr.is_null() {
+            return Err(Error::new(ErrorKind::Other, "Memory mapping failed"));
+        }
+
+        let mut buf = PathBuf::new();
+        buf.push(&filename);
+        Ok(MemoryMapper {
+            file: file,
+            filename: buf,
+            mode: mode,
+            ptr: ptr.cast::<u64>(),
+            len: len / mem::size_of::<u64>(),
+        })
+    }
+
+    /// Returns the name of the file used by the mapper.
+    pub fn filename(&self) -> &Path {
+        self.filename.as_path()
+    }
+
+    /// Returns the memory mapping mode for the file.
+    #[inline]
+    pub fn mode(&self) -> MappingMode {
+        self.mode
+    }
+
+    /// Returns a pointer to the start of the memory mapped file.
+    ///
+    /// Dereferencing the pointer at offsets `>= self.len()` is undefined behavior.
+    #[inline]
+    pub unsafe fn as_ptr(&self) -> *const u64 {
+        self.ptr
+    }
+
+    /// Returns a mutable pointer to the start of the memory mapped file.
+    ///
+    /// Dereferencing the pointer at offsets `>= self.len()` is undefined behavior.
+    /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
+    #[inline]
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut u64 {
+        self.ptr
+    }
+
+    /// Returns the length of the memory mapped file.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl Drop for MemoryMapper {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = libc::munmap(self.ptr.cast::<libc::c_void>(), self.len);
+        }
     }
 }
 

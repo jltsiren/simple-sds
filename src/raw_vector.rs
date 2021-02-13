@@ -275,6 +275,7 @@ pub trait PopRaw {
 /// There are no iterators over the vector, because it may contain items of varying widths.
 ///
 /// # Notes
+///
 /// * The unused part of the last integer is always set to `0`.
 /// * The underlying vector may allocate but not use more integers than are strictly necessary.
 /// * `RawVector` never panics from I/O errors.
@@ -792,5 +793,19 @@ impl Drop for RawVectorWriter {
         let _ = self.close();
     }
 }
+
+//-----------------------------------------------------------------------------
+
+// FIXME RawVectorMapper
+
+// FIXME impl RawVectorMapper: len, is_empty, new (filename, mode), with_offset(filename, mode, offset)
+
+//-----------------------------------------------------------------------------
+
+// FIXME impl AccessRaw for RawVectorMapper
+
+// FIXME need a Mapper trait similar to Writer in serialize
+
+// FIXME impl Drop for RawVectorMapper
 
 //-----------------------------------------------------------------------------
