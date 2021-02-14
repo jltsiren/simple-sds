@@ -63,10 +63,13 @@
 //!
 //! # Memory mapped structures
 //!
-//! [`MemoryMapper`] implements a highly unsafe interface of memory mapping files as arrays of 64-bit elements.
+//! [`MemoryMap`] implements a highly unsafe interface of memory mapping files as arrays of 64-bit elements.
 //! The file can be opened for reading and writing ([`MappingMode::Mutable`]) or as read-only ([`MappingMode::ReadOnly`]).
 //! While the contents of the file can be changed, the file cannot be resized.
-// TODO MapperTrait, existing mappers for prebuilt types
+//!
+//! A file may contain multiple nested or concatenated structures.
+//! Trait [`MemoryMapped`] represents a memory-mapped structure corresponding to an interval in the file.
+// FIXME existing mappers for prebuilt types
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Seek, SeekFrom};
@@ -346,40 +349,38 @@ pub enum MappingMode {
     Mutable,
 }
 
-// FIXME tests
-// FIXME Mapper trait: new(mapper, offset); filename(); mode(); offset(); len(); implementations for the same types as Serialize
 /// A memory mapped file as an array of `u64`.
 ///
-/// The interface is highly unsafe.
-/// The file remains open until the `MemoryMapper` is dropped.
-/// User-facing structures should borrow or extend this and create a safe interface.
+/// This interface is highly unsafe.
+/// The file remains open until the `MemoryMap` is dropped.
+/// Memory-mapped structures should implement the [`MemoryMapped`] trait.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::serialize::{MemoryMapper, MappingMode, Serialize};
+/// use simple_sds::serialize::{MemoryMap, MappingMode, Serialize};
 /// use simple_sds::serialize;
 /// use std::fs;
 ///
 /// let v: Vec<u64> = vec![123, 456];
-/// let filename = serialize::temp_file_name("memory-mapper");
+/// let filename = serialize::temp_file_name("memory-map");
 /// serialize::serialize_to(&v, &filename);
 ///
-/// let mapper = MemoryMapper::new(&filename, MappingMode::ReadOnly).unwrap();
-/// assert_eq!(mapper.mode(), MappingMode::ReadOnly);
-/// assert_eq!(mapper.len(), 3);
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// assert_eq!(map.mode(), MappingMode::ReadOnly);
+/// assert_eq!(map.len(), 3);
 /// unsafe {
-///     let ptr = mapper.as_ptr();
-///     assert_eq!(*ptr, 2);
-///     assert_eq!(*ptr.add(1), 123);
-///     assert_eq!(*ptr.add(2), 456);
+///     let slice = map.as_slice();
+///     assert_eq!(slice[0], 2);
+///     assert_eq!(slice[1], 123);
+///     assert_eq!(slice[2], 456);
 /// }
 ///
-/// drop(mapper);
+/// drop(map);
 /// fs::remove_file(&filename).unwrap();
 /// ```
 #[derive(Debug)]
-pub struct MemoryMapper {
+pub struct MemoryMap {
     file: File,
     filename: PathBuf,
     mode: MappingMode,
@@ -387,10 +388,9 @@ pub struct MemoryMapper {
     len: usize,
 }
 
-// TODO: implement advise()?
-// TODO: with_len()?
-impl MemoryMapper {
-    /// Returns a memory mapper for the specified file in the given mode.
+// TODO: implement madvise()?
+impl MemoryMap {
+    /// Returns a memory map for the specified file in the given mode.
     ///
     /// # Arguments
     ///
@@ -405,7 +405,7 @@ impl MemoryMapper {
     /// * The file cannot be opened for writing with mode `MappingMode::Mutable`.
     /// * The size of the file is not a multiple of 8 bytes.
     /// * Memory mapping the file fails.
-    pub fn new<P: AsRef<Path>>(filename: P, mode: MappingMode) -> io::Result<MemoryMapper> {
+    pub fn new<P: AsRef<Path>>(filename: P, mode: MappingMode) -> io::Result<MemoryMap> {
         let write = match mode {
             MappingMode::ReadOnly => false,
             MappingMode::Mutable => true,
@@ -430,7 +430,7 @@ impl MemoryMapper {
 
         let mut buf = PathBuf::new();
         buf.push(&filename);
-        Ok(MemoryMapper {
+        Ok(MemoryMap {
             file: file,
             filename: buf,
             mode: mode,
@@ -439,7 +439,7 @@ impl MemoryMapper {
         })
     }
 
-    /// Returns the name of the file used by the mapper.
+    /// Returns the name of the memory mapped file.
     pub fn filename(&self) -> &Path {
         self.filename.as_path()
     }
@@ -450,21 +450,19 @@ impl MemoryMapper {
         self.mode
     }
 
-    /// Returns a pointer to the start of the memory mapped file.
-    ///
-    /// Dereferencing the pointer at offsets `>= self.len()` is undefined behavior.
+    /// Returns an immutable slice corresponding to the file.
     #[inline]
-    pub unsafe fn as_ptr(&self) -> *const u64 {
-        self.ptr
+    pub fn as_slice(&self) -> &[u64] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 
-    /// Returns a mutable pointer to the start of the memory mapped file.
+    /// Returns a mutable slice corresponding to the file.
     ///
-    /// Dereferencing the pointer at offsets `>= self.len()` is undefined behavior.
+    /// This is unsafe, because the mutable slice is borrowed from an immutable `self`.
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
     #[inline]
-    pub unsafe fn as_mut_ptr(&mut self) -> *mut u64 {
-        self.ptr
+    pub unsafe fn as_mut_slice(&self) -> &mut [u64] {
+        slice::from_raw_parts_mut(self.ptr, self.len)
     }
 
     /// Returns the length of the memory mapped file.
@@ -472,14 +470,103 @@ impl MemoryMapper {
     pub fn len(&self) -> usize {
         self.len
     }
+
+    /// Returns `true` if the file is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
 }
 
-impl Drop for MemoryMapper {
+impl Drop for MemoryMap {
     fn drop(&mut self) {
         unsafe {
             let _ = libc::munmap(self.ptr.cast::<libc::c_void>(), self.len);
         }
     }
+}
+
+//-----------------------------------------------------------------------------
+
+/// A memory mapped structure corresponding to an interval in a file.
+///
+/// # Example
+///
+/// ```
+/// use simple_sds::serialize::{MappingMode, MemoryMap, MemoryMapped, Serialize};
+/// use simple_sds::serialize;
+/// use std::io::{Error, ErrorKind};
+/// use std::{fs, io, slice};
+///
+/// // This can read a serialized `Vec<u64>`.
+/// #[derive(Debug)]
+/// struct Example<'a> {
+///     data: &'a [u64],
+///     offset: usize,
+/// }
+///
+/// impl<'a> Example<'a> {
+///     pub fn as_slice(&self) -> &[u64] {
+///         self.data
+///     }
+/// }
+///
+/// impl<'a> MemoryMapped<'a> for Example<'a> {
+///     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+///         if offset >= map.len() {
+///             return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+///         }
+///         let slice = map.as_slice();
+///         let len = slice[offset] as usize;
+///         if offset + 1 + len > map.len() {
+///             return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
+///         }
+///         Ok(Example {
+///             data: &slice[offset + 1 .. offset + 1 + len],
+///             offset: offset,
+///         })
+///     }
+///
+///     fn map_offset(&self) -> usize {
+///         self.offset
+///     }
+///
+///     fn map_len(&self) -> usize {
+///         self.data.len() + 1
+///     }
+/// }
+///
+/// let v: Vec<u64> = vec![123, 456, 789];
+/// let filename = serialize::temp_file_name("memory-mapped");
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapped = Example::new(&map, 0).unwrap();
+/// assert_eq!(mapped.map_offset(), 0);
+/// assert_eq!(mapped.map_len(), v.len() + 1);
+/// assert_eq!(mapped.as_slice(), v.as_slice());
+/// drop(mapped); drop(map);
+///
+/// fs::remove_file(&filename).unwrap();
+/// ```
+pub trait MemoryMapped<'a>: Sized {
+    /// Returns a memory-mapped structure corresponding to an interval in the file.
+    ///
+    /// # Arguments
+    ///
+    /// * `map`: Memory-mapped file.
+    /// * `offset`: Starting offset in the file.
+    ///
+    /// # Errors
+    ///
+    /// Implementing types should use [`ErrorKind::InvalidData`] and [`ErrorKind::UnexpectedEof`] where appropriate.
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self>;
+
+    /// Returns the starting offset in the file.
+    fn map_offset(&self) -> usize;
+
+    /// Returns the length of the interval corresponding to the structure.
+    fn map_len(&self) -> usize;
 }
 
 //-----------------------------------------------------------------------------
@@ -510,6 +597,8 @@ pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
     let mut file = options.read(true).open(filename)?;
     <T as Serialize>::load(&mut file)
 }
+
+//-----------------------------------------------------------------------------
 
 // Counter used for temporary file names.
 static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -565,6 +654,7 @@ serialize_element!(usize);
 
 //-----------------------------------------------------------------------------
 
+// FIXME map
 macro_rules! serialize_element_vec {
     ($t:ident) => {
         impl Serialize for Vec<$t> {
@@ -640,6 +730,7 @@ serialize_element_vec!(usize);
 
 //-----------------------------------------------------------------------------
 
+// FIXME map
 impl<V: Serialize> Serialize for Option<V> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         let mut size: usize = 0;
@@ -678,6 +769,7 @@ impl<V: Serialize> Serialize for Option<V> {
 
 //-----------------------------------------------------------------------------
 
+// FIXME also test maps
 #[cfg(test)]
 mod tests {
     use super::*;
