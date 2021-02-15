@@ -82,6 +82,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{env, io, marker, mem, process, ptr, slice};
 
+#[cfg(test)]
+mod tests;
+
 //-----------------------------------------------------------------------------
 
 /// Serialize a data structure.
@@ -906,64 +909,6 @@ pub fn temp_file_name(name_part: &str) -> PathBuf {
     let mut buf = env::temp_dir();
     buf.push(format!("{}_{}_{}", name_part, process::id(), count));
     buf
-}
-
-//-----------------------------------------------------------------------------
-
-// FIXME also test maps
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn serialize_usize() {
-        let filename = temp_file_name("usize");
-
-        let original: usize = 0x1234_5678_9ABC_DEF0;
-        assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for usize");
-        serialize_to(&original, &filename).unwrap();
-
-        let copy: usize = load_from(&filename).unwrap();
-        assert_eq!(copy, original, "Serialization changed the value of usize");
-
-        fs::remove_file(&filename).unwrap();
-    }
-
-    #[test]
-    fn serialize_option() {
-        let filename = temp_file_name("option");
-
-        {
-            let original: Option<usize> = None;
-            assert_eq!(original.size_in_bytes(), 8, "Invalid serialized size for empty Option<usize>");
-            serialize_to(&original, &filename).unwrap();
-            let copy: Option<usize> = load_from(&filename).unwrap();
-            assert_eq!(copy, original, "Serialization changed the value of empty Option<usize>");
-        }
-
-        {
-            let original: Option<usize> = Some(123456);
-            assert_eq!(original.size_in_bytes(), 16, "Invalid serialized size for non-empty Option<usize>");
-            serialize_to(&original, &filename).unwrap();
-            let copy: Option<usize> = load_from(&filename).unwrap();
-            assert_eq!(copy, original, "Serialization changed the value of non-empty Option<usize>");
-        }
-    }
-
-    #[test]
-    fn serialize_vec_u64() {
-        let filename = temp_file_name("vec_u64");
-
-        let original: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        assert_eq!(original.size_in_bytes(), 8 + 8 * original.len(), "Invalid serialized size for Vec<u64>");
-        serialize_to(&original, &filename).unwrap();
-
-        let copy: Vec<u64> = load_from(&filename).unwrap();
-        assert_eq!(copy, original, "Serialization changed the value of Vec<u64>");
-
-        fs::remove_file(&filename).unwrap();
-    }
 }
 
 //-----------------------------------------------------------------------------
