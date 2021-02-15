@@ -13,13 +13,13 @@
 //!
 //! There are currently three fundamental serialization types:
 //!
-//! * Element. Any 64-bit primitive type in native byte order.
+//! * [`Serializable`]: A fixed-size type that can be serialized as one or more `u64` elements.
 //!   The header is empty and the body contains the value.
-//! * [`Vec`] of elements or pairs of elements.
+//! * [`Vec`] of a type that implements [`Serializable`].
 //!   The header stores the number of items in the vector as `usize`.
 //!   The body stores the items.
-//! * `Option<T>`.
-//!   The header stores the number of elements in the body as `usize`.
+//! * `Option<T>` for a type `T` that implements [`Serialize`].
+//!   The header stores the number of `u64` elements in the body as `usize`.
 //!   The body stores `T` for `Some(T)` and is empty for `None`.
 //!
 //! # Nested structures
@@ -61,9 +61,9 @@
 //! Most methods in the outer writer should simply call the corresponding method of the inner writer.
 //! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
 //!
-//! # Memory mapped structures
+//! # Memory-mapped structures
 //!
-//! [`MemoryMap`] implements a highly unsafe interface of memory mapping files as arrays of 64-bit elements.
+//! [`MemoryMap`] implements a highly unsafe interface of memory mapping files as arrays of `u64` elements.
 //! The file can be opened for reading and writing ([`MappingMode::Mutable`]) or as read-only ([`MappingMode::ReadOnly`]).
 //! While the contents of the file can be changed, the file cannot be resized.
 //!
@@ -73,6 +73,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Seek, SeekFrom};
+use std::ops::Index;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -167,6 +168,116 @@ pub trait Serialize: Sized {
     ///
     /// This should be closely related to the size of the in-memory struct.
     fn size_in_bytes(&self) -> usize;
+}
+
+//-----------------------------------------------------------------------------
+
+/// A fixed-size type that can be serialized as one or more `u64` elements.
+pub trait Serializable: Sized + Default {
+    /// Returns the number of elements needed for serializing the type.
+    fn elements() -> usize {
+        mem::size_of::<Self>() / mem::size_of::<u64>()
+    }
+}
+
+impl Serializable for u64 {}
+impl Serializable for usize {}
+impl Serializable for (u64, u64) {}
+
+impl<V: Serializable> Serialize for V {
+    fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        unsafe {
+            let buf: &[u8] = slice::from_raw_parts(self as *const Self as *const u8, mem::size_of::<Self>());
+            writer.write_all(buf)?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let mut value = Self::default();
+        unsafe {
+            let buf: &mut [u8] = slice::from_raw_parts_mut(&mut value as *mut Self as *mut u8, mem::size_of::<Self>());
+            reader.read_exact(buf)?;
+        }
+        Ok(value)
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        mem::size_of::<Self>()
+    }
+}
+
+impl<V: Serializable> Serialize for Vec<V> {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        let size = self.len();
+        size.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        unsafe {
+            let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<V>());
+            writer.write_all(&buf)?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let size = usize::load(reader)?;
+        let mut value: Vec<V> = Vec::with_capacity(size);
+
+        unsafe {
+            let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<V>());
+            reader.read_exact(buf)?;
+            value.set_len(size);
+        }
+
+        Ok(value)
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        mem::size_of::<usize>() + self.len() * mem::size_of::<V>()
+    }
+}
+
+impl<V: Serialize> Serialize for Option<V> {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        let mut size: usize = 0;
+        if let Some(value) = self {
+            size = value.size_in_bytes() / mem::size_of::<u64>();
+        }
+        size.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        if let Some(value) = self {
+            value.serialize(writer)?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let size = usize::load(reader)?;
+        if size == 0 {
+            Ok(None)
+        } else {
+            let value = V::load(reader)?;
+            Ok(Some(value))
+        }
+    }
+
+    fn size_in_bytes(&self) -> usize {
+        let mut result = mem::size_of::<usize>();
+        if let Some(value) = self {
+            result += value.size_in_bytes();
+        }
+        result
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -349,7 +460,7 @@ pub enum MappingMode {
     Mutable,
 }
 
-/// A memory mapped file as an array of `u64`.
+/// A memory-mapped file as an array of `u64`.
 ///
 /// This interface is highly unsafe.
 /// The file remains open until the `MemoryMap` is dropped.
@@ -370,7 +481,7 @@ pub enum MappingMode {
 /// assert_eq!(map.mode(), MappingMode::ReadOnly);
 /// assert_eq!(map.len(), 3);
 /// unsafe {
-///     let slice = map.as_slice();
+///     let slice: &[u64] = map.as_ref();
 ///     assert_eq!(slice[0], 2);
 ///     assert_eq!(slice[1], 123);
 ///     assert_eq!(slice[2], 456);
@@ -450,22 +561,15 @@ impl MemoryMap {
         self.mode
     }
 
-    /// Returns an immutable slice corresponding to the file.
-    #[inline]
-    pub fn as_slice(&self) -> &[u64] {
-        unsafe { slice::from_raw_parts(self.ptr, self.len) }
-    }
-
     /// Returns a mutable slice corresponding to the file.
     ///
     /// This is unsafe, because the mutable slice is borrowed from an immutable `self`.
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
-    #[inline]
     pub unsafe fn as_mut_slice(&self) -> &mut [u64] {
         slice::from_raw_parts_mut(self.ptr, self.len)
     }
 
-    /// Returns the length of the memory mapped file.
+    /// Returns the length of the memory-mapped file.
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -475,6 +579,12 @@ impl MemoryMap {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+}
+
+impl AsRef<[u64]> for MemoryMap {
+    fn as_ref(&self) -> &[u64] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 }
 
@@ -488,7 +598,7 @@ impl Drop for MemoryMap {
 
 //-----------------------------------------------------------------------------
 
-/// A memory mapped structure corresponding to an interval in a file.
+/// A memory-mapped structure corresponding to an interval in a file.
 ///
 /// # Example
 ///
@@ -516,7 +626,7 @@ impl Drop for MemoryMap {
 ///         if offset >= map.len() {
 ///             return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
 ///         }
-///         let slice = map.as_slice();
+///         let slice: &[u64] = map.as_ref();
 ///         let len = slice[offset] as usize;
 ///         if offset + 1 + len > map.len() {
 ///             return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
@@ -600,6 +710,91 @@ pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
 
 //-----------------------------------------------------------------------------
 
+/// An immutable memory-mapped slice of a type that implements [`Serializable`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::{MappedSlice, MappingMode, MemoryMap, MemoryMapped, Serialize};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let v: Vec<(u64, u64)> = vec![(123, 456), (789, 101112)];
+/// let filename = serialize::temp_file_name("mapped-slice");
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapped = MappedSlice::<(u64, u64)>::new(&map, 0).unwrap();
+/// assert_eq!(mapped.len(), v.len());
+/// assert_eq!(mapped[0], (123, 456));
+/// assert_eq!(mapped[1], (789, 101112));
+/// assert_eq!(mapped.as_ref(), v.as_slice());
+/// drop(mapped); drop(map);
+///
+/// fs::remove_file(&filename).unwrap();
+/// ```
+pub struct MappedSlice<'a, T: Serializable> {
+    data: &'a [T],
+    offset: usize,
+}
+
+impl<'a, T: Serializable> MappedSlice<'a, T> {
+    /// Returns the length of the slice.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns `true` if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl<'a, T: Serializable> AsRef<[T]> for MappedSlice<'a, T> {
+    fn as_ref(&self) -> &[T] {
+        self.data
+    }
+}
+
+impl<'a, T: Serializable> Index<usize> for MappedSlice<'a, T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        if offset + 1 + len * T::elements() > map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
+        }
+        let source: &[u64] = &slice[offset + 1 .. offset + 1 + len * T::elements()];
+        let data: &[T] = unsafe { slice::from_raw_parts(source.as_ptr() as *const T, len) };
+        Ok(MappedSlice {
+            data: data,
+            offset: offset,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn map_len(&self) -> usize {
+        self.data.len() * T::elements() + 1
+    }
+}
+
+// FIXME implement mapped option
+
+//-----------------------------------------------------------------------------
+
 // Counter used for temporary file names.
 static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -618,153 +813,6 @@ pub fn temp_file_name(name_part: &str) -> PathBuf {
     let mut buf = env::temp_dir();
     buf.push(format!("{}_{}_{}", name_part, process::id(), count));
     buf
-}
-
-//-----------------------------------------------------------------------------
-
-macro_rules! serialize_element {
-    ($t:ident) => {
-        impl Serialize for $t {
-            fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
-                Ok(())
-            }
-
-            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                let bytes = self.to_ne_bytes();
-                writer.write_all(&bytes)?;
-                Ok(())
-            }
-
-            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-                let mut bytes = [0u8; mem::size_of::<Self>()];
-                reader.read_exact(&mut bytes)?;
-                let value = Self::from_ne_bytes(bytes);
-                Ok(value)
-            }
-
-            fn size_in_bytes(&self) -> usize {
-                mem::size_of::<Self>()
-            }
-        }
-    }
-}
-
-serialize_element!(u64);
-serialize_element!(usize);
-
-//-----------------------------------------------------------------------------
-
-// FIXME map
-macro_rules! serialize_element_vec {
-    ($t:ident) => {
-        impl Serialize for Vec<$t> {
-            fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                let size = self.len();
-                size.serialize(writer)?;
-                Ok(())
-            }
-
-            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                unsafe {
-                    let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<$t>());
-                    writer.write_all(&buf)?;
-                }
-                Ok(())
-            }
-
-            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-                let size = usize::load(reader)?;
-                let mut value: Vec<$t> = Vec::with_capacity(size);
-
-                unsafe {
-                    let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<$t>());
-                    reader.read_exact(buf)?;
-                    value.set_len(size);
-                }
-
-                Ok(value)
-            }
-
-            fn size_in_bytes(&self) -> usize {
-                mem::size_of::<usize>() + self.len() * mem::size_of::<$t>()
-            }
-        }
-
-        impl Serialize for Vec<($t, $t)> {
-            fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                let size = self.len();
-                size.serialize(writer)?;
-                Ok(())
-            }
-
-            fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-                unsafe {
-                    let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, 2 * self.len() * mem::size_of::<$t>());
-                    writer.write_all(&buf)?;
-                }
-                Ok(())
-            }
-
-            fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-                let size = usize::load(reader)?;
-                let mut value: Vec<($t, $t)> = Vec::with_capacity(size);
-
-                unsafe {
-                    let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, 2 * size * mem::size_of::<$t>());
-                    reader.read_exact(buf)?;
-                    value.set_len(size);
-                }
-
-                Ok(value)
-            }
-
-            fn size_in_bytes(&self) -> usize {
-                mem::size_of::<usize>() + 2 * self.len() * mem::size_of::<$t>()
-            }
-        }
-    }
-}
-
-serialize_element_vec!(u64);
-serialize_element_vec!(usize);
-
-//-----------------------------------------------------------------------------
-
-// FIXME map
-impl<V: Serialize> Serialize for Option<V> {
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-        let mut size: usize = 0;
-        if let Some(value) = self {
-            size = value.size_in_bytes() / mem::size_of::<u64>();
-        }
-        size.serialize(writer)?;
-        Ok(())
-    }
-
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
-        if let Some(value) = self {
-            value.serialize(writer)?;
-        }
-        Ok(())
-    }
-
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
-        let size = usize::load(reader)?;
-        if size == 0 {
-            Ok(None)
-        } else {
-            let value = V::load(reader)?;
-            Ok(Some(value))
-        }
-    }
-
-    fn size_in_bytes(&self) -> usize {
-        let mut result = mem::size_of::<usize>();
-        if let Some(value) = self {
-            result += value.size_in_bytes();
-        }
-        result
-    }
 }
 
 //-----------------------------------------------------------------------------
