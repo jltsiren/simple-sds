@@ -11,16 +11,16 @@
 //! Method [`Serialize::serialize`] provides an easy way of calling both.
 //! A serialized structure is always loaded with a single [`Serialize::load`] call.
 //!
-//! There are currently three fundamental serialization types:
+//! There are currently three basic serialization types:
 //!
-//! * [`Serializable`]: A fixed-size type that can be serialized as one or more `u64` elements.
+//! * [`Serializable`]: A fixed-size type that can be serialized as one or more [`u64`] elements.
 //!   The header is empty and the body contains the value.
 //! * [`Vec`] of a type that implements [`Serializable`].
-//!   The header stores the number of items in the vector as `usize`.
+//!   The header stores the number of items in the vector as [`usize`].
 //!   The body stores the items.
-//! * `Option<T>` for a type `T` that implements [`Serialize`].
-//!   The header stores the number of `u64` elements in the body as `usize`.
-//!   The body stores `T` for `Some(T)` and is empty for `None`.
+//! * [`Option`]`<T>` for a type `T` that implements [`Serialize`].
+//!   The header stores the number of [`u64`] elements in the body as [`usize`].
+//!   The body stores `T` for [`Some`]`(T)` and is empty for [`None`].
 //!
 //! # Nested structures
 //!
@@ -63,13 +63,16 @@
 //!
 //! # Memory-mapped structures
 //!
-//! [`MemoryMap`] implements a highly unsafe interface of memory mapping files as arrays of `u64` elements.
+//! [`MemoryMap`] implements a highly unsafe interface of memory mapping files as arrays of [`u64`] elements.
 //! The file can be opened for reading and writing ([`MappingMode::Mutable`]) or as read-only ([`MappingMode::ReadOnly`]).
 //! While the contents of the file can be changed, the file cannot be resized.
 //!
 //! A file may contain multiple nested or concatenated structures.
-//! Trait [`MemoryMapped`] represents a memory-mapped structure corresponding to an interval in the file.
-// FIXME existing mappers for prebuilt types
+//! Trait [`MemoryMapped`] represents a memory-mapped structure that borrows an interval of the memory map.
+//! There are two implementations of [`MemoryMapped`] for basic serialization types:
+//!
+//! * [`MappedSlice`] matches the serialization format of [`Vec`].
+//! * [`MappedOption`] matches the serialization format of [`Option`].
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Seek, SeekFrom};
@@ -77,7 +80,7 @@ use std::ops::Index;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{env, io, mem, process, ptr, slice};
+use std::{env, io, marker, mem, process, ptr, slice};
 
 //-----------------------------------------------------------------------------
 
@@ -172,7 +175,7 @@ pub trait Serialize: Sized {
 
 //-----------------------------------------------------------------------------
 
-/// A fixed-size type that can be serialized as one or more `u64` elements.
+/// A fixed-size type that can be serialized as one or more [`u64`] elements.
 pub trait Serializable: Sized + Default {
     /// Returns the number of elements needed for serializing the type.
     fn elements() -> usize {
@@ -377,7 +380,7 @@ pub enum FlushMode {
 /// fs::remove_file(&filename).unwrap();
 /// ```
 pub trait Writer {
-    /// Returns the file used by the writer, or `None` if the file is closed.
+    /// Returns the file used by the writer, or [`None`] if the file is closed.
     fn file(&mut self) -> Option<&mut File>;
 
     /// Writes the contents of the buffer to the file.
@@ -460,7 +463,7 @@ pub enum MappingMode {
     Mutable,
 }
 
-/// A memory-mapped file as an array of `u64`.
+/// A memory-mapped file as an array of [`u64`].
 ///
 /// This interface is highly unsafe.
 /// The file remains open until the `MemoryMap` is dropped.
@@ -598,7 +601,7 @@ impl Drop for MemoryMap {
 
 //-----------------------------------------------------------------------------
 
-/// A memory-mapped structure corresponding to an interval in a file.
+/// A memory-mapped structure that borrows an interval of a memory map.
 ///
 /// # Example
 ///
@@ -681,36 +684,9 @@ pub trait MemoryMapped<'a>: Sized {
 
 //-----------------------------------------------------------------------------
 
-/// Serializes the item to the specified file, creating or overwriting the file if necessary.
-///
-/// See [`Serialize`] for an example.
-///
-/// # Errors
-///
-/// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
-pub fn serialize_to<T: Serialize, P: AsRef<Path>>(item: &T, filename: P) -> io::Result<()> {
-    let mut options = OpenOptions::new();
-    let mut file = options.create(true).write(true).truncate(true).open(filename)?;
-    item.serialize(&mut file)?;
-    Ok(())
-}
-
-/// Loads the item from the specified file.
-///
-/// See [`Serialize`] for an example.
-///
-/// # Errors
-///
-/// Any errors from [`OpenOptions::open`] and [`Serialize::load`] will be passed through.
-pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
-    let mut options = OpenOptions::new();
-    let mut file = options.read(true).open(filename)?;
-    <T as Serialize>::load(&mut file)
-}
-
-//-----------------------------------------------------------------------------
-
 /// An immutable memory-mapped slice of a type that implements [`Serializable`].
+///
+/// The slice is compatible with the serialization format of [`Vec`] of the same type.
 ///
 /// # Examples
 ///
@@ -733,6 +709,7 @@ pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
+#[derive(PartialEq, Eq, Debug)]
 pub struct MappedSlice<'a, T: Serializable> {
     data: &'a [T],
     offset: usize,
@@ -791,9 +768,125 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
     }
 }
 
-// FIXME implement mapped option
+//-----------------------------------------------------------------------------
+
+/// An optional immutable memory-mapped structure.
+///
+/// This is compatible with the serialization format of [`Option`] of the same type.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::{MappedOption, MappedSlice, MappingMode, MemoryMap, MemoryMapped, Serialize};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let some: Option<Vec<u64>> = Some(vec![123, 456, 789]);
+/// let filename = serialize::temp_file_name("mapped-option");
+/// serialize::serialize_to(&some, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapped = MappedOption::<MappedSlice<u64>>::new(&map, 0).unwrap();
+/// assert_eq!(mapped.unwrap().as_ref(), some.unwrap().as_slice());
+/// drop(mapped); drop(map);
+///
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct MappedOption<'a, T: MemoryMapped<'a>> {
+    data: Option<T>,
+    offset: usize,
+    data_len: usize,
+    _marker: marker::PhantomData<&'a ()>,
+}
+
+impl<'a, T: MemoryMapped<'a>> MappedOption<'a, T> {
+    /// Returns `true` if the option is a [`Some`] value.
+    pub fn is_some(&self) -> bool {
+        self.data.is_some()
+    }
+
+    /// Returns `true` if the option is a [`None`] value.
+    pub fn is_none(&self) -> bool {
+        self.data.is_none()
+    }
+
+    /// Returns an immutable reference to the possibly contained value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the option is a [`None`] value.
+    pub fn unwrap(&self) -> &T {
+        match &self.data {
+            Some(value) => return &value,
+            None => panic!("No value to unwrap"),
+        };
+    }
+
+    /// Returns [`Option`]`<&T>` referencing the possibly contained value.
+    pub fn as_ref(&self) -> Option<&T> {
+        match &self.data {
+            Some(value) => Some(&value),
+            None => None,
+        }
+    }
+}
+
+impl<'a, T: MemoryMapped<'a>> MemoryMapped<'a> for MappedOption<'a, T> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let mut result = MappedOption {
+            data: None,
+            offset: offset,
+            data_len: map.as_ref()[offset] as usize,
+            _marker: marker::PhantomData,
+        };
+        if result.data_len > 0 {
+            let value = T::new(map, offset + 1)?;
+            result.data = Some(value)
+        }
+        Ok(result)
+    }
+
+    fn map_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn map_len(&self) -> usize {
+        self.data_len + 1
+    }
+}
 
 //-----------------------------------------------------------------------------
+
+/// Serializes the item to the specified file, creating or overwriting the file if necessary.
+///
+/// See [`Serialize`] for an example.
+///
+/// # Errors
+///
+/// Any errors from [`OpenOptions::open`] and [`Serialize::serialize`] will be passed through.
+pub fn serialize_to<T: Serialize, P: AsRef<Path>>(item: &T, filename: P) -> io::Result<()> {
+    let mut options = OpenOptions::new();
+    let mut file = options.create(true).write(true).truncate(true).open(filename)?;
+    item.serialize(&mut file)?;
+    Ok(())
+}
+
+/// Loads the item from the specified file.
+///
+/// See [`Serialize`] for an example.
+///
+/// # Errors
+///
+/// Any errors from [`OpenOptions::open`] and [`Serialize::load`] will be passed through.
+pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
+    let mut options = OpenOptions::new();
+    let mut file = options.read(true).open(filename)?;
+    <T as Serialize>::load(&mut file)
+}
 
 // Counter used for temporary file names.
 static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
