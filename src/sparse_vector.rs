@@ -40,11 +40,10 @@ mod tests;
 /// This structure should be used for sparse bitvectors, where frequency of set bits is low.
 /// For dense bitvectors or when [`SelectZero`] is needed, [`BitVector`] is a better choice.
 /// Because most queries require support structures for one of the components, the bitvector itself is immutable.
-/// The maximum length of the vector is approximately `usize::MAX` bits.
+/// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
 /// Conversions between `SparseVector` and [`BitVector`] are possible using the [`From`] trait.
 /// 
-///
 /// `SparseVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
 /// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`]
@@ -126,7 +125,7 @@ struct Parts {
 impl SparseVector {
     /// Returns a copy of the source bitvector as `SparseVector`.
     ///
-    /// The copy is created by iterating over the set bits using [`Select::one_iter()`].
+    /// The copy is created by iterating over the set bits using [`Select::one_iter`].
     ///
     /// # Examples
     ///
@@ -247,7 +246,7 @@ pub struct SparseBuilder {
 impl SparseBuilder {
     /// Returns an empty SparseBuilder.
     ///
-    /// Returns `Err` if `ones > universe`.
+    /// Returns [`Err`] if `ones > universe`.
     ///
     /// # Arguments
     ///
@@ -327,7 +326,7 @@ impl SparseBuilder {
 
     /// Tries to set the specified bit in the bitvector.
     ///
-    /// Returns `Err` if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
+    /// Returns [`Err`] if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub fn try_set(&mut self, index: usize) -> Result<(), &'static str> {
         if self.is_full() {
             return Err("The builder is full");
@@ -355,7 +354,7 @@ impl Extend<usize> for SparseBuilder {
 
 /// A read-only iterator over [`SparseVector`].
 ///
-/// The type of `Item` is `bool`.
+/// The type of `Item` is [`bool`].
 ///
 /// # Examples
 ///
@@ -550,7 +549,7 @@ impl<'a> Rank<'a> for SparseVector {
 
 /// An iterator over the set bits in [`SparseVector`].
 ///
-/// The type of `Item` is `(usize, usize)`.
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
 /// This can be interpreted as:
 ///
 /// * `(index, value)` or `(i, select(i))` in the integer array; or

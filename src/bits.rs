@@ -6,13 +6,13 @@ use std::ops::{Index, IndexMut};
 
 //-----------------------------------------------------------------------------
 
-/// Number of bits in `u64`.
+/// Number of bits in [`u64`].
 pub const WORD_BITS: usize = 64;
 
 // Bit shift for transforming a bit offset into an array index.
 const INDEX_SHIFT: usize = 6;
 
-// Bit mask for transforming a bit offset into an offset in `u64`.
+// Bit mask for transforming a bit offset into an offset in [`u64`].
 const OFFSET_MASK: usize = 0b111111;
 
 //-----------------------------------------------------------------------------
@@ -189,7 +189,7 @@ pub unsafe fn select(n: u64, rank: usize) -> usize {
 
 //-----------------------------------------------------------------------------
 
-/// Returns the number of bits that can be stored in `n` integers of type `u64`.
+/// Returns the number of bits that can be stored in `n` integers of type [`u64`].
 ///
 /// # Examples
 ///
@@ -207,7 +207,7 @@ pub fn words_to_bits(n: usize) -> usize {
     n * WORD_BITS
 }
 
-/// Returns the number of integers of type `u64` required to store `n` bits.
+/// Returns the number of integers of type [`u64`] required to store `n` bits.
 ///
 /// # Examples
 ///
@@ -249,7 +249,7 @@ pub fn round_up_to_word_size(n: usize) -> usize {
     }
 }
 
-/// Returns a `u64` value consisting entirely of bit `value`.
+/// Returns a [`u64`] value consisting entirely of bit `value`.
 ///
 /// # Examples
 ///
@@ -267,7 +267,7 @@ pub fn filler_value(value: bool) -> u64 {
     }
 }
 
-/// Splits a bit offset into an index in an array of `u64` and an offset within the integer.
+/// Splits a bit offset into an index in an array of [`u64`] and an offset within the integer.
 ///
 /// # Examples
 ///
@@ -281,7 +281,7 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
     (bit_offset >> INDEX_SHIFT, bit_offset & OFFSET_MASK)
 }
 
-/// Combines an index in an array of `u64` and an offset within the integer into a bit offset.
+/// Combines an index in an array of [`u64`] and an offset within the integer into a bit offset.
 ///
 /// # Arguments
 ///
@@ -298,7 +298,7 @@ pub fn split_offset(bit_offset: usize) -> (usize, usize) {
 ///
 /// # Panics
 ///
-/// May panic if the result would be greater than `usize::MAX`.
+/// May panic if the result would be greater than [`usize::MAX`].
 #[inline]
 pub fn bit_offset(index: usize, offset: usize) -> usize {
     (index << INDEX_SHIFT) + offset
@@ -306,7 +306,7 @@ pub fn bit_offset(index: usize, offset: usize) -> usize {
 
 //-----------------------------------------------------------------------------
 
-/// Writes an integer into a bit array implemented as an array of `u64` values.
+/// Writes an integer into a bit array implemented as an array of [`u64`] values.
 ///
 /// Behavior is undefined if `width > 64`.
 ///
@@ -347,7 +347,7 @@ pub unsafe fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_off
     }
 }
 
-/// Reads an integer from a bit array implemented as an array of `u64` values.
+/// Reads an integer from a bit array implemented as an array of [`u64`] values.
 ///
 /// Behavior is undefined if `width > 64`.
 ///

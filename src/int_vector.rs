@@ -19,11 +19,11 @@ mod tests;
 /// A contiguous growable bit-packed array of fixed-width integers.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
-/// Each element consists of the lowest 1 to 64 bits of a `u64` value, as specified by parameter `width`.
+/// Each element consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by parameter `width`.
 /// The maximum length of the vector is `usize::MAX / width` elements.
 ///
 /// A default constructed `IntVector` has `width == 64`.
-/// `IntVector` can be built from an iterator over `u8`, `u16`, `u32`, `u64`, or `usize` values.
+/// `IntVector` can be built from an iterator over [`u8`], [`u16`], [`u32`], [`u64`], or [`usize`] values.
 ///
 /// `IntVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`Element`], [`Resize`], [`Pack`]
@@ -43,7 +43,7 @@ pub struct IntVector {
 impl IntVector {
     /// Creates an empty vector with specified width.
     /// 
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Examples
     ///
@@ -70,7 +70,7 @@ impl IntVector {
 
     /// Creates an initialized vector of specified length and width.
     /// 
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -112,7 +112,7 @@ impl IntVector {
 
     /// Creates an empty vector with enough capacity for at least the specified number of elements of specified width.
     ///
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -328,7 +328,7 @@ impl From<IntVector> for RawVector {
 
 /// A read-only iterator over [`IntVector`].
 ///
-/// The type of `Item` is `u64`.
+/// The type of `Item` is [`u64`].
 ///
 /// # Examples
 ///
@@ -389,7 +389,7 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 /// [`IntVector`] transformed into an iterator.
 ///
-/// The type of `Item` is `u64`.
+/// The type of `Item` is [`u64`].
 ///
 /// # Examples
 ///

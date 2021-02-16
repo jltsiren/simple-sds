@@ -258,11 +258,11 @@ pub trait PushRaw {
 /// ```
 pub trait PopRaw {
     /// Removes and returns the last bit from the container.
-    /// Returns `None` the container does not have more bits.
+    /// Returns [`None`] the container does not have more bits.
     fn pop_bit(&mut self) -> Option<bool>;
 
     /// Removes and returns the last `width` bits from the container as an integer.
-    /// Returns `None` if the container does not have more integers of that width.
+    /// Returns [`None`] if the container does not have more integers of that width.
     ///
     /// Behavior is undefined if `width > 64`.
     unsafe fn pop_int(&mut self, width: usize) -> Option<u64>;
@@ -270,7 +270,7 @@ pub trait PopRaw {
 
 //-----------------------------------------------------------------------------
 
-/// A contiguous growable array of bits and up to 64-bit integers based on [`Vec`] of `u64` values.
+/// A contiguous growable array of bits and up to 64-bit integers based on [`Vec`] of [`u64`] values.
 ///
 /// There are no iterators over the vector, because it may contain items of varying widths.
 ///

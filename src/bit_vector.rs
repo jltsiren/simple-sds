@@ -23,7 +23,7 @@ mod tests;
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
 /// Because most queries require separate support structures, the bit array itself is immutable.
 /// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
-/// The maximum length of the vector is approximately `usize::MAX` bits.
+/// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
@@ -106,7 +106,7 @@ pub struct BitVector {
 
 /// A read-only iterator over [`BitVector`].
 ///
-/// The type of `Item` is `bool`.
+/// The type of `Item` is [`bool`].
 ///
 /// # Examples
 ///
@@ -331,7 +331,7 @@ impl Transformation for Complement {
 
 /// An iterator over the set bits in an implicitly transformed [`BitVector`].
 ///
-/// The type of `Item` is `(usize, usize)`.
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
 /// This can be interpreted as:
 ///
 /// * `(index, value)` or `(i, select(i))` in the integer array; or
