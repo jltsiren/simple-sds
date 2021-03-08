@@ -182,8 +182,8 @@ impl Serialize for RankSupport {
         })
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.samples.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.samples.size_in_elements()
     }
 }
 

@@ -633,12 +633,12 @@ impl Serialize for BitVector {
         Ok(result)
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.ones.size_in_bytes() +
-        self.data.size_in_bytes() +
-        self.rank.size_in_bytes() +
-        self.select.size_in_bytes() +
-        self.select_zero.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.ones.size_in_elements() +
+        self.data.size_in_elements() +
+        self.rank.size_in_elements() +
+        self.select.size_in_elements() +
+        self.select_zero.size_in_elements()
     }
 }
 

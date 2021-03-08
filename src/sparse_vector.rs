@@ -795,11 +795,11 @@ impl Serialize for SparseVector {
         Ok(result)
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.len.size_in_bytes() +
-        self.width.size_in_bytes() +
-        self.high.size_in_bytes() +
-        self.low.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.len.size_in_elements() +
+        self.width.size_in_elements() +
+        self.high.size_in_elements() +
+        self.low.size_in_elements()
     }
 }
 

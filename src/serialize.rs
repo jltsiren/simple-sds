@@ -89,7 +89,7 @@ mod tests;
 
 /// Serialize a data structure.
 ///
-/// `self.size_in_bytes()` should always be nonzero.
+/// `self.size_in_elements()` should always be nonzero.
 ///
 /// # Examples
 ///
@@ -119,8 +119,8 @@ mod tests;
 ///         Ok(value)
 ///     }
 ///
-///     fn size_in_bytes(&self) -> usize {
-///         mem::size_of::<Self>()
+///     fn size_in_elements(&self) -> usize {
+///         1
 ///     }
 /// }
 ///
@@ -170,10 +170,17 @@ pub trait Serialize: Sized {
     /// Any errors from the reader may be passed through.
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self>;
 
+    /// Returns the size of the serialized struct in [`u64`] elements.
+    ///
+    /// This should be closely related to the size of the in-memory struct.
+    fn size_in_elements(&self) -> usize;
+
     /// Returns the size of the serialized struct in bytes.
     ///
     /// This should be closely related to the size of the in-memory struct.
-    fn size_in_bytes(&self) -> usize;
+    fn size_in_bytes(&self) -> usize {
+        self.size_in_elements() * mem::size_of::<u64>()
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -212,8 +219,8 @@ impl<V: Serializable> Serialize for V {
         Ok(value)
     }
 
-    fn size_in_bytes(&self) -> usize {
-        mem::size_of::<Self>()
+    fn size_in_elements(&self) -> usize {
+        Self::elements()
     }
 }
 
@@ -245,8 +252,8 @@ impl<V: Serializable> Serialize for Vec<V> {
         Ok(value)
     }
 
-    fn size_in_bytes(&self) -> usize {
-        mem::size_of::<usize>() + self.len() * mem::size_of::<V>()
+    fn size_in_elements(&self) -> usize {
+        1 + self.len() * V::elements()
     }
 }
 
@@ -254,7 +261,7 @@ impl<V: Serialize> Serialize for Option<V> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         let mut size: usize = 0;
         if let Some(value) = self {
-            size = value.size_in_bytes() / mem::size_of::<u64>();
+            size = value.size_in_elements();
         }
         size.serialize(writer)?;
         Ok(())
@@ -277,10 +284,10 @@ impl<V: Serialize> Serialize for Option<V> {
         }
     }
 
-    fn size_in_bytes(&self) -> usize {
-        let mut result = mem::size_of::<usize>();
+    fn size_in_elements(&self) -> usize {
+        let mut result: usize = 1;
         if let Some(value) = self {
-            result += value.size_in_bytes();
+            result += value.size_in_elements();
         }
         result
     }

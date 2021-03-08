@@ -277,8 +277,8 @@ impl<T: Transformation> Serialize for SelectSupport<T> {
         })
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.samples.size_in_bytes() + self.long.size_in_bytes() + self.short.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.samples.size_in_elements() + self.long.size_in_elements() + self.short.size_in_elements()
     }
 }
 

@@ -294,8 +294,8 @@ impl Serialize for IntVector {
         })
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.len.size_in_bytes() + self.width.size_in_bytes() + self.data.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.len.size_in_elements() + self.width.size_in_elements() + self.data.size_in_elements()
     }
 }
 
