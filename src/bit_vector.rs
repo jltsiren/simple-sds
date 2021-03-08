@@ -33,6 +33,11 @@ mod tests;
 /// See [`rank_support`] and [`select_support`] for algorithmic details on rank/select queries.
 /// Predecessor and successor queries depend on both support structures.
 ///
+/// The support structures are serialized as [`Option`] and hence may be missing.
+/// When `BitVector` is used as a part of another structure, the user should enable the required support structures after loading.
+/// This makes interoperation with other libraries easier, as the other library only has to serialize the bitvector itself.
+/// Enabling support structures is fast if they were present in the serialized data.
+///
 /// # Examples
 ///
 /// ```

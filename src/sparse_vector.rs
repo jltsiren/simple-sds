@@ -784,7 +784,11 @@ impl Serialize for SparseVector {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
         let width = usize::load(reader)?;
-        let high = BitVector::load(reader)?;
+        let mut high = BitVector::load(reader)?;
+        // Enable support structures, because the data may be from a library that does not know
+        // how to build them.
+        high.enable_select();
+        high.enable_select_zero();
         let low = IntVector::load(reader)?;
         let result = SparseVector {
             len: len,
