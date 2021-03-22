@@ -576,9 +576,8 @@ impl MemoryMap {
 
     /// Returns a mutable slice corresponding to the file.
     ///
-    /// This is unsafe, because the mutable slice is borrowed from an immutable `self`.
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
-    pub unsafe fn as_mut_slice(&self) -> &mut [u64] {
+    pub unsafe fn as_mut_slice(&mut self) -> &mut [u64] {
         slice::from_raw_parts_mut(self.ptr, self.len)
     }
 
@@ -673,7 +672,7 @@ impl Drop for MemoryMap {
 /// fs::remove_file(&filename).unwrap();
 /// ```
 pub trait MemoryMapped<'a>: Sized {
-    /// Returns a memory-mapped structure corresponding to an interval in the file.
+    /// Returns an immutable memory-mapped structure corresponding to an interval in the file.
     ///
     /// # Arguments
     ///

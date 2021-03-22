@@ -30,6 +30,7 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 
 * `TupleVector`: A bit-packed vector of tuples of unsigned integers, with a fixed width for each field in the tuple. Implemented on top of `RawVector`.
 * Memory-mapped versions of all vectors.
+* Mutable memory-mapped vectors.
 
 ### Bitvectors
 

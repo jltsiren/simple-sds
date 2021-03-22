@@ -1,9 +1,10 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{Serialize, Writer, FlushMode};
+use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::io;
 
@@ -796,16 +797,72 @@ impl Drop for RawVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-// FIXME RawVectorMapper
+// FIXME document, example, test
+#[derive(PartialEq, Eq, Debug)]
+pub struct RawVectorMapper<'a> {
+    len: usize,
+    data: MappedSlice<'a, u64>,
+}
 
-// FIXME impl RawVectorMapper: len, is_empty, new (filename, mode), with_offset(filename, mode, offset)
+impl<'a> AccessRaw for RawVectorMapper<'a> {
+    #[inline]
+    fn bit(&self, bit_offset: usize) -> bool {
+        let (index, offset) = bits::split_offset(bit_offset);
+        ((self.data[index] >> offset) & 1) == 1
+    }
 
-//-----------------------------------------------------------------------------
+    #[inline]
+    unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        bits::read_int(&self.data, bit_offset, width)
+    }
 
-// FIXME impl AccessRaw for RawVectorMapper
+    #[inline]
+    fn word(&self, index: usize) -> u64 {
+        self.data[index]
+    }
 
-// FIXME need a Mapper trait similar to Writer in serialize
+    #[inline]
+    unsafe fn word_unchecked(&self, index: usize) -> u64 {
+        *self.data.as_ref().get_unchecked(index)
+    }
 
-// FIXME impl Drop for RawVectorMapper
+    #[inline]
+    fn is_mutable(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn set_bit(&mut self, _: usize, _: bool) {
+        panic!("Not implemented");
+    }
+
+    #[inline]
+    unsafe fn set_int(&mut self, _: usize, _: u64, _: usize) {
+        panic!("Not implemented");
+    }
+}
+
+impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        let data = MappedSlice::new(map, offset + 1)?;
+        Ok(RawVectorMapper {
+            len: len,
+            data: data,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.data.map_offset() - 1
+    }
+
+    fn map_len(&self) -> usize {
+        self.data.map_len() + 1
+    }
+}
 
 //-----------------------------------------------------------------------------
