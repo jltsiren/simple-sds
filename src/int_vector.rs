@@ -445,6 +445,7 @@ impl IntoIterator for IntVector {
 
 //-----------------------------------------------------------------------------
 
+// FIXME example
 /// A buffered file writer compatible with the serialization format of [`IntVector`].
 ///
 /// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
@@ -472,12 +473,12 @@ impl IntVectorWriter {
     /// use simple_sds::int_vector::IntVectorWriter;
     /// use simple_sds::ops::Element;
     /// use simple_sds::serialize;
-    /// use std::{fs, mem};
+    /// use std::fs;
     ///
     /// let filename = serialize::temp_file_name("int-vector-writer-new");
     /// let mut v = IntVectorWriter::new(&filename, 13).unwrap();
     /// assert!(v.is_empty());
-    /// mem::drop(v);
+    /// drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
     ///
@@ -519,12 +520,12 @@ impl IntVectorWriter {
     /// use simple_sds::int_vector::IntVectorWriter;
     /// use simple_sds::ops::Element;
     /// use simple_sds::serialize;
-    /// use std::{fs, mem};
+    /// use std::fs;
     ///
     /// let filename = serialize::temp_file_name("int-vector-writer-with-buf-len");
     /// let mut v = IntVectorWriter::with_buf_len(&filename, 13, 1024).unwrap();
     /// assert!(v.is_empty());
-    /// mem::drop(v);
+    /// drop(v);
     /// fs::remove_file(&filename).unwrap();
     /// ```
     ///

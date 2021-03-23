@@ -1,10 +1,32 @@
 use super::*;
 
+use crate::serialize::MappingMode;
 use crate::serialize;
 
 use std::fs;
 
 use rand::Rng;
+
+//-----------------------------------------------------------------------------
+
+fn random_vector(n: usize, width: usize) -> Vec<u64> {
+    let mut result: Vec<u64> = Vec::new();
+    let mut rng = rand::thread_rng();
+    for _ in 0..n {
+        let value: u64 = rng.gen();
+        result.push(value & bits::low_set(width));
+    }
+    result
+}
+
+fn random_raw_vector(n: usize, width: usize) -> RawVector {
+    let values = random_vector(n, width);
+    let mut result = RawVector::with_capacity(values.len() * width);
+    for value in values.iter() {
+        unsafe { result.push_int(*value, width); }
+    }
+    result
+}
 
 //-----------------------------------------------------------------------------
 
@@ -257,14 +279,8 @@ fn push_bits_to_writer() {
 #[test]
 fn push_ints_to_writer() {
     let filename = serialize::temp_file_name("push-ints-to-raw-vector-writer");
-
-    let mut correct: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
-    let width = 31;
-    for _ in 0..71 {
-        let value: u64 = rng.gen();
-        correct.push(value & bits::low_set(width));
-    }
+    let width: usize = 31;
+    let correct = random_vector(71, width);
 
     let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
     for value in correct.iter() {
@@ -287,14 +303,8 @@ fn push_ints_to_writer() {
 #[ignore]
 fn large_writer() {
     let filename = serialize::temp_file_name("large-raw-vector-writer");
-
-    let mut correct: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
-    let width = 31;
-    for _ in 0..620001 {
-        let value: u64 = rng.gen();
-        correct.push(value & bits::low_set(width));
-    }
+    let width: usize = 31;
+    let correct = random_vector(620001, width);
 
     let mut v = RawVectorWriter::new(&filename).unwrap();
     for value in correct.iter() {
@@ -310,6 +320,91 @@ fn large_writer() {
         unsafe { assert_eq!(w.int(i * width, width), correct[i], "Invalid integer {}", i); }
     }
 
+    fs::remove_file(&filename).unwrap();
+}
+
+//-----------------------------------------------------------------------------
+
+fn check_mapper(mapper: &RawVectorMapper, truth: &RawVector, width: usize) {
+    assert!(!mapper.is_mutable(), "Read-only mapper is mutable");
+    assert_eq!(mapper.len(), truth.len(), "Invalid mapper length");
+    assert_eq!(mapper.is_empty(), truth.is_empty(), "Invalid mapper emptiness");
+    assert_eq!(mapper.count_ones(), truth.count_ones(), "Invalid mapper length");
+
+    for i in 0..mapper.len() {
+        assert_eq!(mapper.bit(i), truth.bit(i), "Invalid bit {}", i);
+    }
+    for i in (0..mapper.len()).step_by(width) {
+        unsafe { assert_eq!(mapper.int(i, width), truth.int(i, width), "Invalid int at {}", i); }
+    }
+    for i in 0..bits::bits_to_words(mapper.len()) {
+        assert_eq!(mapper.word(i), truth.word(i), "Invalid word {}", i);
+        unsafe { assert_eq!(mapper.word_unchecked(i), truth.word_unchecked(i), "Invalid word {} (unchecked)", i); }
+    }
+}
+
+#[test]
+fn empty_mapper() {
+    let filename = serialize::temp_file_name("empty-raw-vector-mapper");
+    let truth = RawVector::new();
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = RawVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth, 31);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn non_empty_mapper() {
+    let filename = serialize::temp_file_name("non-empty-raw-vector-mapper");
+    let width: usize = 31;
+    let truth = random_raw_vector(247, width);
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = RawVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth, width);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn mapper_offset() {
+    let filename = serialize::temp_file_name("raw-vector-mapper-offset");
+    let width: usize = 31;
+    let truth = random_raw_vector(247, width);
+
+    let mut options = OpenOptions::new();
+    let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
+    width.serialize(&mut file).unwrap(); // One element of padding.
+    truth.serialize(&mut file).unwrap();
+    drop(file);
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = RawVectorMapper::new(&map, 1).unwrap();
+    check_mapper(&mapper, &truth, width);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+#[ignore]
+fn large_mapper() {
+    let filename = serialize::temp_file_name("large-raw-vector-mapper");
+    let width: usize = 31;
+    let truth = random_raw_vector(731175, width);
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = RawVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth, width);
+
+    drop(mapper); drop(map);
     fs::remove_file(&filename).unwrap();
 }
 

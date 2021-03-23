@@ -623,6 +623,35 @@ impl AsRef<Vec<u64>> for RawVector {
 ///
 /// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
 /// Call [`RawVectorWriter::close`] explicitly to handle the errors.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw};
+/// use simple_sds::serialize::Writer;
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("raw-vector-writer");
+/// let width = 29;
+/// let mut writer = RawVectorWriter::new(&filename).unwrap();
+/// unsafe {
+///     writer.push_int(123, width);
+///     writer.push_int(456, width);
+///     writer.push_int(789, width);
+/// }
+/// writer.close();
+///
+/// let v: RawVector = serialize::load_from(&filename).unwrap();
+/// assert_eq!(v.len(), 3 * width);
+/// unsafe {
+///     assert_eq!(v.int(0, width), 123);
+///     assert_eq!(v.int(width, width), 456);
+///     assert_eq!(v.int(2 * width, width), 789);
+/// }
+///
+/// fs::remove_file(&filename);
+/// ```
 #[derive(Debug)]
 pub struct RawVectorWriter {
     len: usize,
@@ -650,24 +679,6 @@ impl RawVectorWriter {
     /// Creates an empty vector stored in the specified file with the default buffer size.
     ///
     /// If the file already exists, it will be overwritten.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-new");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any I/O errors will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
@@ -692,24 +703,6 @@ impl RawVectorWriter {
     ///
     /// * `filename`: Name of the file.
     /// * `buf_len`: Buffer size in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-with-buf-len");
-    /// let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any I/O errors will be passed through.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
         let buf_len = bits::round_up_to_word_size(buf_len);
         let mut options = OpenOptions::new();
@@ -797,11 +790,67 @@ impl Drop for RawVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, test
+/// An immutable memory-mapped [`RawVector`].
+///
+/// This is compatible with the serialization format of [`RawVector`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::{RawVector, RawVectorMapper, AccessRaw, PushRaw};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("raw-vector-mapper");
+/// let width = 29;
+/// let mut original = RawVector::new();
+/// unsafe {
+///     original.push_int(123, width);
+///     original.push_int(456, width);
+///     original.push_int(789, width);
+/// }
+/// serialize::serialize_to(&original, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = RawVectorMapper::new(&map, 0).unwrap();
+/// assert_eq!(mapper.len(), 3 * width);
+/// unsafe {
+///     assert_eq!(mapper.int(0, width), 123);
+///     assert_eq!(mapper.int(width, width), 456);
+///     assert_eq!(mapper.int(2 * width, width), 789);
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename);
+/// ```
 #[derive(PartialEq, Eq, Debug)]
 pub struct RawVectorMapper<'a> {
     len: usize,
     data: MappedSlice<'a, u64>,
+}
+
+impl<'a> RawVectorMapper<'a> {
+    /// Returns the length of the vector in bits.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns `true` if the vector is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Counts the number of ones in the bit array.
+    pub fn count_ones(&self) -> usize {
+        let mut result: usize = 0;
+        for value in self.data.as_ref().iter() {
+            result += (*value).count_ones() as usize;
+        }
+        result
+    }
 }
 
 impl<'a> AccessRaw for RawVectorMapper<'a> {
