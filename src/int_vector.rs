@@ -1,8 +1,8 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
-use crate::serialize::{Serialize, Writer, FlushMode};
+use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
+use crate::serialize::{MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::File;
@@ -238,6 +238,7 @@ impl Pack for IntVector {
 impl Access for IntVector {
     #[inline]
     fn get(&self, index: usize) -> <Self as Element>::Item {
+        assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
     }
 
@@ -248,6 +249,7 @@ impl Access for IntVector {
 
     #[inline]
     fn set(&mut self, index: usize, value: <Self as Element>::Item) {
+        assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.set_int(index * self.width(), value, self.width()); }
     }
 }
@@ -612,6 +614,147 @@ impl Drop for IntVectorWriter {
         let _ = self.close();
     }
 }
+
+//-----------------------------------------------------------------------------
+
+// FIXME document, example, tests
+#[derive(PartialEq, Eq, Debug)]
+pub struct IntVectorMapper<'a> {
+    len: usize,
+    width: usize,
+    data: RawVectorMapper<'a>,
+}
+
+impl<'a> IntVectorMapper<'a> {
+    // FIXME example
+    /// Returns an iterator visiting all elements of the vector in order.
+    pub fn iter(&self) -> MappedIter<'_> {
+        MappedIter {
+            parent: self,
+            next: 0,
+            limit: self.len(),
+        }
+    }
+}
+
+impl<'a> Element for IntVectorMapper<'a> {
+    type Item = u64;
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    #[inline]
+    fn max_len(&self) -> usize {
+        usize::MAX / self.width()
+    }
+}
+
+impl<'a> Access for IntVectorMapper<'a> {
+    #[inline]
+    fn get(&self, index: usize) -> <Self as Element>::Item {
+        assert!(index < self.len(), "Index is out of bounds");
+        unsafe { self.data.int(index * self.width(), self.width()) }
+    }
+
+    #[inline]
+    fn is_mutable(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn set(&mut self, _: usize, _: <Self as Element>::Item) {
+        panic!("set() has not been implemented for IntVectorMapper");
+    }
+}
+
+impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset + 1 >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        let width = slice[offset + 1] as usize;
+        let data = RawVectorMapper::new(map, offset + 2)?;
+        Ok(IntVectorMapper {
+            len: len,
+            width: width,
+            data: data,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.data.map_offset() - 2
+    }
+
+    fn map_len(&self) -> usize {
+        self.data.map_len() + 2
+    }
+}
+
+impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
+    #[inline]
+    fn as_ref(&self) -> &RawVectorMapper<'a> {
+        &(self.data)
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+// FIXME example, tests
+/// A read-only iterator over [`IntVectorMapper`].
+///
+/// The type of `Item` is [`u64`].
+#[derive(Clone, Debug)]
+pub struct MappedIter<'a> {
+    parent: &'a IntVectorMapper<'a>,
+    // The first index we have not used.
+    next: usize,
+    // The first index we should not use.
+    limit: usize,
+}
+
+impl<'a> Iterator for MappedIter<'a> {
+    type Item = <IntVectorMapper<'a> as Element>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            let result = Some(self.parent.get(self.next));
+            self.next += 1;
+            result
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.limit - self.next;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> DoubleEndedIterator for MappedIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            self.limit -= 1;
+            Some(self.parent.get(self.limit))
+        }
+    }
+}
+
+impl<'a> ExactSizeIterator for MappedIter<'a> {}
+
+impl<'a> FusedIterator for MappedIter<'a> {}
 
 //-----------------------------------------------------------------------------
 

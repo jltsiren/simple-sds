@@ -914,4 +914,11 @@ impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
     }
 }
 
+impl<'a> AsRef<MappedSlice<'a, u64>> for RawVectorMapper<'a> {
+    #[inline]
+    fn as_ref(&self) -> &MappedSlice<'a, u64> {
+        &(self.data)
+    }
+}
+
 //-----------------------------------------------------------------------------
