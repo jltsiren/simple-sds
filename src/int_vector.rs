@@ -447,11 +447,32 @@ impl IntoIterator for IntVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// A buffered file writer compatible with the serialization format of [`IntVector`].
 ///
 /// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
 /// Call [`IntVectorWriter::close`] explicitly to handle the errors.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorWriter};
+/// use simple_sds::ops::{Element, Access, Push};
+/// use simple_sds::serialize::Writer;
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-writer");
+/// let mut writer = IntVectorWriter::new(&filename, 13).unwrap();
+/// assert!(writer.is_empty());
+/// writer.push(123); writer.push(456); writer.push(789);
+/// assert_eq!(writer.len(), 3);
+/// writer.close().unwrap();
+///
+/// let v: IntVector = serialize::load_from(&filename).unwrap();
+/// assert_eq!(v.len(), 3);
+/// assert_eq!(v.get(0), 123); assert_eq!(v.get(1), 456); assert_eq!(v.get(2), 789);
+/// fs::remove_file(&filename).unwrap();
+/// ```
 #[derive(Debug)]
 pub struct IntVectorWriter {
     len: usize,
@@ -468,21 +489,6 @@ impl IntVectorWriter {
     ///
     /// * `filename`: Name of the file.
     /// * `width`: Width of each element in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::IntVectorWriter;
-    /// use simple_sds::ops::Element;
-    /// use simple_sds::serialize;
-    /// use std::fs;
-    ///
-    /// let filename = serialize::temp_file_name("int-vector-writer-new");
-    /// let mut v = IntVectorWriter::new(&filename, 13).unwrap();
-    /// assert!(v.is_empty());
-    /// drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
     ///
     /// # Errors
     ///
@@ -515,21 +521,6 @@ impl IntVectorWriter {
     /// * `filename`: Name of the file.
     /// * `width`: Width of each element in bits.
     /// * `buf_len`: Buffer size in elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::IntVectorWriter;
-    /// use simple_sds::ops::Element;
-    /// use simple_sds::serialize;
-    /// use std::fs;
-    ///
-    /// let filename = serialize::temp_file_name("int-vector-writer-with-buf-len");
-    /// let mut v = IntVectorWriter::with_buf_len(&filename, 13, 1024).unwrap();
-    /// assert!(v.is_empty());
-    /// drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
     ///
     /// # Errors
     ///
@@ -617,7 +608,35 @@ impl Drop for IntVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, tests
+// FIXME tests
+/// An immutable memory-mapped [`IntVector`].
+///
+/// This is compatible with the serialization format of [`IntVector`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+/// use simple_sds::ops::{Element, Access};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-mapper");
+/// let mut v = IntVector::with_len(3, 13, 0).unwrap();
+/// v.set(0, 123); v.set(1, 456); v.set(2, 789);
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+/// assert_eq!(mapper.len(), v.len());
+/// for i in 0..mapper.len() {
+///     assert_eq!(mapper.get(i), v.get(i));
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename).unwrap();
+/// ```
 #[derive(PartialEq, Eq, Debug)]
 pub struct IntVectorMapper<'a> {
     len: usize,
@@ -626,8 +645,27 @@ pub struct IntVectorMapper<'a> {
 }
 
 impl<'a> IntVectorMapper<'a> {
-    // FIXME example
     /// Returns an iterator visiting all elements of the vector in order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+    /// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+    /// use simple_sds::serialize;
+    /// use std::fs;
+    ///
+    /// let filename = serialize::temp_file_name("int-vector-mapper-iter");
+    /// let v = IntVector::from(vec![123u32, 456u32, 789u32, 10u32]);
+    /// serialize::serialize_to(&v, &filename);
+    ///
+    /// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    /// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+    /// assert!(mapper.iter().eq(v.iter()));
+    ///
+    /// drop(mapper); drop(map);
+    /// fs::remove_file(&filename).unwrap();
+    /// ```
     pub fn iter(&self) -> MappedIter<'_> {
         MappedIter {
             parent: self,
@@ -670,7 +708,7 @@ impl<'a> Access for IntVectorMapper<'a> {
 
     #[inline]
     fn set(&mut self, _: usize, _: <Self as Element>::Item) {
-        panic!("set() has not been implemented for IntVectorMapper");
+        panic!("Not implemented");
     }
 }
 
@@ -708,10 +746,33 @@ impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME example, tests
+// FIXME tests
 /// A read-only iterator over [`IntVectorMapper`].
 ///
 /// The type of `Item` is [`u64`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-mapped-iter");
+/// let source: Vec<u16> = vec![12, 34, 56, 78, 90, 11, 12, 13];
+/// let v: IntVector = source.iter().cloned().collect();
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+/// for (index, value) in mapper.iter().enumerate() {
+///     assert_eq!(value, source[index] as u64);
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename).unwrap();
+/// ```
 #[derive(Clone, Debug)]
 pub struct MappedIter<'a> {
     parent: &'a IntVectorMapper<'a>,
