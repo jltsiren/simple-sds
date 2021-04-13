@@ -608,7 +608,6 @@ impl Drop for IntVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// An immutable memory-mapped [`IntVector`].
 ///
 /// This is compatible with the serialization format of [`IntVector`].
@@ -746,7 +745,6 @@ impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// A read-only iterator over [`IntVectorMapper`].
 ///
 /// The type of `Item` is [`u64`].
