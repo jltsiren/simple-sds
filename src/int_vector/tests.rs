@@ -1,12 +1,53 @@
 use super::*;
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::serialize::{Serialize, Writer};
+use crate::serialize::{Serialize, MappingMode, Writer};
 use crate::serialize;
 
+use std::fs::OpenOptions;
 use std::fs;
 
 use rand::Rng;
+
+//-----------------------------------------------------------------------------
+
+fn random_vector(n: usize, width: usize) -> Vec<u64> {
+    let mut result: Vec<u64> = Vec::new();
+    let mut rng = rand::thread_rng();
+    for _ in 0..n {
+        let value: u64 = rng.gen();
+        result.push(value & bits::low_set(width));
+    }
+    result
+}
+
+fn random_int_vector(n: usize, width: usize) -> IntVector {
+    let values = random_vector(n, width);
+    let mut result = IntVector::new(width).unwrap();
+    result.extend(values);
+    result
+}
+
+fn check_vector(v: &IntVector, truth: &Vec<u64>, width: usize) {
+    assert_eq!(v.len(), truth.len(), "Invalid vector length");
+    assert_eq!(v.is_empty(), truth.is_empty(), "Invalid vector emptiness");
+    assert_eq!(v.width(), width, "Invalid vector width");
+
+    for i in 0..v.len() {
+        assert_eq!(v.get(i), truth[i], "Invalid value {}", i);
+    }
+    assert!(v.iter().eq(truth.iter().cloned()), "Invalid iterator (forward)");
+
+    let mut index = v.len();
+    let mut iter = v.iter();
+    while let Some(value) = iter.next_back() {
+        index -= 1;
+        assert_eq!(value, truth[index], "Invalid value {} when iterating backwards", index);
+    }
+
+    let copy: Vec<u64> = v.clone().into_iter().collect();
+    assert_eq!(copy, *truth, "Invalid vector from into_iter()");
+}
 
 //-----------------------------------------------------------------------------
 
@@ -131,10 +172,7 @@ fn set_get() {
 fn from_vec() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
     let int_vec = IntVector::from(correct.clone());
-    assert_eq!(int_vec.len(), correct.len(), "Invalid length for the IntVector");
-    for (index, value) in int_vec.iter().enumerate() {
-        assert_eq!(value, correct[index], "Invalid value {} in the IntVector", index);
-    }
+    check_vector(&int_vec, &correct, 64);
 }
 
 #[test]
@@ -146,27 +184,16 @@ fn extend() {
 
     let mut int_vec = IntVector::new(8).unwrap();
     int_vec.extend(first); int_vec.extend(second);
-    assert_eq!(int_vec.len(), correct.len(), "Invalid length for the extended IntVector");
-
-    let collected: Vec<u64> = int_vec.into_iter().collect();
-    assert_eq!(collected, correct, "Invalid values collected from the IntVector");
+    check_vector(&int_vec, &correct, 8);
 }
 
 #[test]
-fn iterators_and_pack() {
+fn pack() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
     let mut packed: IntVector = correct.iter().cloned().collect();
     packed.pack();
-    assert_eq!(packed.width(), 7, "Incorrect width after pack()");
-    for (index, value) in packed.iter().enumerate() {
-        assert_eq!(value, correct[index], "Invalid value in the packed vector");
-    }
-
-    assert_eq!(packed.iter().len(), packed.len(), "Invalid length from the iterator");
-
-    let from_iter: Vec<u64> = packed.into_iter().collect();
-    assert_eq!(from_iter, correct, "Invalid vector built from into_iter()");
+    check_vector(&packed, &correct, 7);
 }
 
 #[test]
@@ -238,13 +265,8 @@ fn empty_writer() {
 fn push_to_writer() {
     let filename = serialize::temp_file_name("push-to-int-vector-writer");
 
-    let mut correct: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
     let width = 31;
-    for _ in 0..71 {
-        let value: u64 = rng.gen();
-        correct.push(value & bits::low_set(width));
-    }
+    let correct = random_vector(71, width);
 
     let mut v = IntVectorWriter::with_buf_len(&filename, width, 32).unwrap();
     for value in correct.iter() {
@@ -289,13 +311,8 @@ fn extend_writer() {
 fn large_writer() {
     let filename = serialize::temp_file_name("large-int-vector-writer");
 
-    let mut correct: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
     let width = 31;
-    for _ in 0..620001 {
-        let value: u64 = rng.gen();
-        correct.push(value & bits::low_set(width));
-    }
+    let correct: Vec<u64> = random_vector(620001, width);
 
     let mut v = IntVectorWriter::new(&filename, width).unwrap();
     for value in correct.iter() {
@@ -311,6 +328,90 @@ fn large_writer() {
         assert_eq!(w.get(i), correct[i], "Invalid integer {}", i);
     }
 
+    fs::remove_file(&filename).unwrap();
+}
+
+//-----------------------------------------------------------------------------
+
+fn check_mapper(mapper: &IntVectorMapper, truth: &IntVector) {
+    assert!(!mapper.is_mutable(), "Read-only mapper is mutable");
+    assert_eq!(mapper.len(), truth.len(), "Invalid mapper length");
+    assert_eq!(mapper.is_empty(), truth.is_empty(), "Invalid mapper emptiness");
+    assert_eq!(mapper.width(), truth.width(), "Invalid mapper width");
+
+    for i in 0..mapper.len() {
+        assert_eq!(mapper.get(i), truth.get(i), "Invalid value {}", i);
+    }
+    assert!(mapper.iter().eq(truth.iter()), "Invalid iterator (forward)");
+
+    let mut index = mapper.len();
+    let mut iter = mapper.iter();
+    while let Some(value) = iter.next_back() {
+        index -= 1;
+        assert_eq!(value, truth.get(index), "Invalid value {} when iterating backwards", index);
+    }
+}
+
+#[test]
+fn empty_mapper() {
+    let filename = serialize::temp_file_name("empty-int-vector-mapper");
+    let truth = IntVector::new(17).unwrap();
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = IntVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn non_empty_mapper() {
+    let filename = serialize::temp_file_name("non-empty-int-vector-mapper");
+    let truth = random_int_vector(318, 29);
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = IntVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn mapper_offset() {
+    let filename = serialize::temp_file_name("int-vector-mapper-offset");
+    let width: usize = 33;
+    let truth = random_int_vector(251, width);
+
+    let mut options = OpenOptions::new();
+    let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
+    width.serialize(&mut file).unwrap(); // One element of padding.
+    truth.serialize(&mut file).unwrap();
+    drop(file);
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = IntVectorMapper::new(&map, 1).unwrap();
+    check_mapper(&mapper, &truth);
+
+    drop(mapper); drop(map);
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+#[ignore]
+fn large_mapper() {
+    let filename = serialize::temp_file_name("large-int-vector-mapper");
+    let truth = random_int_vector(813752, 37);
+    serialize::serialize_to(&truth, &filename).unwrap();
+
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    let mapper = IntVectorMapper::new(&map, 0).unwrap();
+    check_mapper(&mapper, &truth);
+
+    drop(mapper); drop(map);
     fs::remove_file(&filename).unwrap();
 }
 

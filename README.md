@@ -9,9 +9,11 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 ### Integer vectors
 
 * `RawVector`: A bit array that supports reading, writing, and appending 1-64 bits at a time. Implemented on top of `Vec<u64>`.
-* `RawVectorWriter`: An append-only version of `RawVector` that writes the structure directly to a file.
+  * `RawVectorWriter`: An append-only version of `RawVector` that writes the structure directly to a file.
+  * `RawVectorMapper`: An immutable memory-mapped `RawVector`.
 * `IntVector`: A bit-packed vector of fixed-width integers implemented on top of `RawVector`. Like `sdsl::int_vector` but also supports stack functionality.
-* `IntVectorWriter`: An append-only version of `IntVector` that writes the structure directly to a file. Like a subset of `sdsl::int_vector_buffer`.
+  * `IntVectorWriter`: An append-only version of `IntVector` that writes the structure directly to a file. Like a subset of `sdsl::int_vector_buffer`.
+  * `IntVectorMapper`: An immutable memory-mapped `IntVector`.
 
 ### Bitvectors
 
@@ -29,10 +31,11 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 ### Integer vectors
 
 * `TupleVector`: A bit-packed vector of tuples of unsigned integers, with a fixed width for each field in the tuple. Implemented on top of `RawVector`.
-* Memory-mapped versions of all vectors.
+* Mutable memory-mapped vectors.
 
 ### Bitvectors
 
+* Multiset support for `SparseVector`.
 * `select_zero()` for `SparseVector`?
 * Versions of `predecessor()` and `successor()` that return values instead of iterators?
 * Slice-like functionality based on iterators?
@@ -41,5 +44,6 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 
 * The included `.cargo/config.toml` sets the target CPU to `native`.
 * This crate is designed for the x86_64 architecture with the BMI2 instruction set (Intel Haswell / AMD Excavator or later).
+* The crate only compiles on a Unix-like OS because it uses `mmap()`.
 * Things may not work if the system is not little-endian or if `usize` is not 64-bit.
 * Some operations may be slow without the POPCNT, LZCNT, TZCNT, and PDEP instructions.

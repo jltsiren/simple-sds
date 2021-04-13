@@ -1,9 +1,10 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{Serialize, Writer, FlushMode};
+use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::io;
 
@@ -258,11 +259,11 @@ pub trait PushRaw {
 /// ```
 pub trait PopRaw {
     /// Removes and returns the last bit from the container.
-    /// Returns `None` the container does not have more bits.
+    /// Returns [`None`] the container does not have more bits.
     fn pop_bit(&mut self) -> Option<bool>;
 
     /// Removes and returns the last `width` bits from the container as an integer.
-    /// Returns `None` if the container does not have more integers of that width.
+    /// Returns [`None`] if the container does not have more integers of that width.
     ///
     /// Behavior is undefined if `width > 64`.
     unsafe fn pop_int(&mut self, width: usize) -> Option<u64>;
@@ -270,11 +271,12 @@ pub trait PopRaw {
 
 //-----------------------------------------------------------------------------
 
-/// A contiguous growable array of bits and up to 64-bit integers based on [`Vec`] of `u64` values.
+/// A contiguous growable array of bits and up to 64-bit integers based on [`Vec`] of [`u64`] values.
 ///
 /// There are no iterators over the vector, because it may contain items of varying widths.
 ///
 /// # Notes
+///
 /// * The unused part of the last integer is always set to `0`.
 /// * The underlying vector may allocate but not use more integers than are strictly necessary.
 /// * `RawVector` never panics from I/O errors.
@@ -601,8 +603,8 @@ impl Serialize for RawVector {
         })
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.len.size_in_bytes() + self.data.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.len.size_in_elements() + self.data.size_in_elements()
     }
 }
 
@@ -621,6 +623,35 @@ impl AsRef<Vec<u64>> for RawVector {
 ///
 /// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
 /// Call [`RawVectorWriter::close`] explicitly to handle the errors.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw};
+/// use simple_sds::serialize::Writer;
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("raw-vector-writer");
+/// let width = 29;
+/// let mut writer = RawVectorWriter::new(&filename).unwrap();
+/// unsafe {
+///     writer.push_int(123, width);
+///     writer.push_int(456, width);
+///     writer.push_int(789, width);
+/// }
+/// writer.close();
+///
+/// let v: RawVector = serialize::load_from(&filename).unwrap();
+/// assert_eq!(v.len(), 3 * width);
+/// unsafe {
+///     assert_eq!(v.int(0, width), 123);
+///     assert_eq!(v.int(width, width), 456);
+///     assert_eq!(v.int(2 * width, width), 789);
+/// }
+///
+/// fs::remove_file(&filename);
+/// ```
 #[derive(Debug)]
 pub struct RawVectorWriter {
     len: usize,
@@ -648,24 +679,6 @@ impl RawVectorWriter {
     /// Creates an empty vector stored in the specified file with the default buffer size.
     ///
     /// If the file already exists, it will be overwritten.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-new");
-    /// let mut v = RawVectorWriter::new(&filename).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any I/O errors will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
@@ -690,24 +703,6 @@ impl RawVectorWriter {
     ///
     /// * `filename`: Name of the file.
     /// * `buf_len`: Buffer size in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::raw_vector::RawVectorWriter;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("raw-vector-writer-with-buf-len");
-    /// let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Any I/O errors will be passed through.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
         let buf_len = bits::round_up_to_word_size(buf_len);
         let mut options = OpenOptions::new();
@@ -790,6 +785,139 @@ impl Writer for RawVectorWriter {
 impl Drop for RawVectorWriter {
     fn drop(&mut self) {
         let _ = self.close();
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/// An immutable memory-mapped [`RawVector`].
+///
+/// This is compatible with the serialization format of [`RawVector`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::raw_vector::{RawVector, RawVectorMapper, AccessRaw, PushRaw};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("raw-vector-mapper");
+/// let width = 29;
+/// let mut original = RawVector::new();
+/// unsafe {
+///     original.push_int(123, width);
+///     original.push_int(456, width);
+///     original.push_int(789, width);
+/// }
+/// serialize::serialize_to(&original, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = RawVectorMapper::new(&map, 0).unwrap();
+/// assert_eq!(mapper.len(), 3 * width);
+/// unsafe {
+///     assert_eq!(mapper.int(0, width), 123);
+///     assert_eq!(mapper.int(width, width), 456);
+///     assert_eq!(mapper.int(2 * width, width), 789);
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename);
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct RawVectorMapper<'a> {
+    len: usize,
+    data: MappedSlice<'a, u64>,
+}
+
+impl<'a> RawVectorMapper<'a> {
+    /// Returns the length of the vector in bits.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns `true` if the vector is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Counts the number of ones in the bit array.
+    pub fn count_ones(&self) -> usize {
+        let mut result: usize = 0;
+        for value in self.data.as_ref().iter() {
+            result += (*value).count_ones() as usize;
+        }
+        result
+    }
+}
+
+impl<'a> AccessRaw for RawVectorMapper<'a> {
+    #[inline]
+    fn bit(&self, bit_offset: usize) -> bool {
+        let (index, offset) = bits::split_offset(bit_offset);
+        ((self.data[index] >> offset) & 1) == 1
+    }
+
+    #[inline]
+    unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        bits::read_int(&self.data, bit_offset, width)
+    }
+
+    #[inline]
+    fn word(&self, index: usize) -> u64 {
+        self.data[index]
+    }
+
+    #[inline]
+    unsafe fn word_unchecked(&self, index: usize) -> u64 {
+        *self.data.as_ref().get_unchecked(index)
+    }
+
+    #[inline]
+    fn is_mutable(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn set_bit(&mut self, _: usize, _: bool) {
+        panic!("Not implemented");
+    }
+
+    #[inline]
+    unsafe fn set_int(&mut self, _: usize, _: u64, _: usize) {
+        panic!("Not implemented");
+    }
+}
+
+impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        let data = MappedSlice::new(map, offset + 1)?;
+        Ok(RawVectorMapper {
+            len: len,
+            data: data,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.data.map_offset() - 1
+    }
+
+    fn map_len(&self) -> usize {
+        self.data.map_len() + 1
+    }
+}
+
+impl<'a> AsRef<MappedSlice<'a, u64>> for RawVectorMapper<'a> {
+    #[inline]
+    fn as_ref(&self) -> &MappedSlice<'a, u64> {
+        &(self.data)
     }
 }
 

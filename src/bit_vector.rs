@@ -23,7 +23,7 @@ mod tests;
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
 /// Because most queries require separate support structures, the bit array itself is immutable.
 /// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
-/// The maximum length of the vector is approximately `usize::MAX` bits.
+/// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
@@ -32,6 +32,11 @@ mod tests;
 ///
 /// See [`rank_support`] and [`select_support`] for algorithmic details on rank/select queries.
 /// Predecessor and successor queries depend on both support structures.
+///
+/// The support structures are serialized as [`Option`] and hence may be missing.
+/// When `BitVector` is used as a part of another structure, the user should enable the required support structures after loading.
+/// This makes interoperation with other libraries easier, as the other library only has to serialize the bitvector itself.
+/// Enabling support structures is fast if they were present in the serialized data.
 ///
 /// # Examples
 ///
@@ -106,7 +111,7 @@ pub struct BitVector {
 
 /// A read-only iterator over [`BitVector`].
 ///
-/// The type of `Item` is `bool`.
+/// The type of `Item` is [`bool`].
 ///
 /// # Examples
 ///
@@ -331,7 +336,7 @@ impl Transformation for Complement {
 
 /// An iterator over the set bits in an implicitly transformed [`BitVector`].
 ///
-/// The type of `Item` is `(usize, usize)`.
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
 /// This can be interpreted as:
 ///
 /// * `(index, value)` or `(i, select(i))` in the integer array; or
@@ -633,12 +638,12 @@ impl Serialize for BitVector {
         Ok(result)
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.ones.size_in_bytes() +
-        self.data.size_in_bytes() +
-        self.rank.size_in_bytes() +
-        self.select.size_in_bytes() +
-        self.select_zero.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.ones.size_in_elements() +
+        self.data.size_in_elements() +
+        self.rank.size_in_elements() +
+        self.select.size_in_elements() +
+        self.select_zero.size_in_elements()
     }
 }
 

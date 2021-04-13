@@ -1,8 +1,8 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
-use crate::serialize::{Serialize, Writer, FlushMode};
+use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
+use crate::serialize::{MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
 use crate::bits;
 
 use std::fs::File;
@@ -19,11 +19,11 @@ mod tests;
 /// A contiguous growable bit-packed array of fixed-width integers.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
-/// Each element consists of the lowest 1 to 64 bits of a `u64` value, as specified by parameter `width`.
+/// Each element consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by parameter `width`.
 /// The maximum length of the vector is `usize::MAX / width` elements.
 ///
 /// A default constructed `IntVector` has `width == 64`.
-/// `IntVector` can be built from an iterator over `u8`, `u16`, `u32`, `u64`, or `usize` values.
+/// `IntVector` can be built from an iterator over [`u8`], [`u16`], [`u32`], [`u64`], or [`usize`] values.
 ///
 /// `IntVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`Element`], [`Resize`], [`Pack`]
@@ -43,7 +43,7 @@ pub struct IntVector {
 impl IntVector {
     /// Creates an empty vector with specified width.
     /// 
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Examples
     ///
@@ -70,7 +70,7 @@ impl IntVector {
 
     /// Creates an initialized vector of specified length and width.
     /// 
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -112,7 +112,7 @@ impl IntVector {
 
     /// Creates an empty vector with enough capacity for at least the specified number of elements of specified width.
     ///
-    /// Returns `Err` if the width is invalid.
+    /// Returns [`Err`] if the width is invalid.
     ///
     /// # Arguments
     ///
@@ -238,6 +238,7 @@ impl Pack for IntVector {
 impl Access for IntVector {
     #[inline]
     fn get(&self, index: usize) -> <Self as Element>::Item {
+        assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
     }
 
@@ -248,6 +249,7 @@ impl Access for IntVector {
 
     #[inline]
     fn set(&mut self, index: usize, value: <Self as Element>::Item) {
+        assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.set_int(index * self.width(), value, self.width()); }
     }
 }
@@ -294,8 +296,8 @@ impl Serialize for IntVector {
         })
     }
 
-    fn size_in_bytes(&self) -> usize {
-        self.len.size_in_bytes() + self.width.size_in_bytes() + self.data.size_in_bytes()
+    fn size_in_elements(&self) -> usize {
+        self.len.size_in_elements() + self.width.size_in_elements() + self.data.size_in_elements()
     }
 }
 
@@ -328,7 +330,7 @@ impl From<IntVector> for RawVector {
 
 /// A read-only iterator over [`IntVector`].
 ///
-/// The type of `Item` is `u64`.
+/// The type of `Item` is [`u64`].
 ///
 /// # Examples
 ///
@@ -389,7 +391,7 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 /// [`IntVector`] transformed into an iterator.
 ///
-/// The type of `Item` is `u64`.
+/// The type of `Item` is [`u64`].
 ///
 /// # Examples
 ///
@@ -449,6 +451,28 @@ impl IntoIterator for IntVector {
 ///
 /// When the writer goes out of scope, the internal buffer is flushed, the file is closed, and all errors are ignored.
 /// Call [`IntVectorWriter::close`] explicitly to handle the errors.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorWriter};
+/// use simple_sds::ops::{Element, Access, Push};
+/// use simple_sds::serialize::Writer;
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-writer");
+/// let mut writer = IntVectorWriter::new(&filename, 13).unwrap();
+/// assert!(writer.is_empty());
+/// writer.push(123); writer.push(456); writer.push(789);
+/// assert_eq!(writer.len(), 3);
+/// writer.close().unwrap();
+///
+/// let v: IntVector = serialize::load_from(&filename).unwrap();
+/// assert_eq!(v.len(), 3);
+/// assert_eq!(v.get(0), 123); assert_eq!(v.get(1), 456); assert_eq!(v.get(2), 789);
+/// fs::remove_file(&filename).unwrap();
+/// ```
 #[derive(Debug)]
 pub struct IntVectorWriter {
     len: usize,
@@ -465,21 +489,6 @@ impl IntVectorWriter {
     ///
     /// * `filename`: Name of the file.
     /// * `width`: Width of each element in bits.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::IntVectorWriter;
-    /// use simple_sds::ops::Element;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("int-vector-writer-new");
-    /// let mut v = IntVectorWriter::new(&filename, 13).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
     ///
     /// # Errors
     ///
@@ -512,21 +521,6 @@ impl IntVectorWriter {
     /// * `filename`: Name of the file.
     /// * `width`: Width of each element in bits.
     /// * `buf_len`: Buffer size in elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::IntVectorWriter;
-    /// use simple_sds::ops::Element;
-    /// use simple_sds::serialize;
-    /// use std::{fs, mem};
-    ///
-    /// let filename = serialize::temp_file_name("int-vector-writer-with-buf-len");
-    /// let mut v = IntVectorWriter::with_buf_len(&filename, 13, 1024).unwrap();
-    /// assert!(v.is_empty());
-    /// mem::drop(v);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
     ///
     /// # Errors
     ///
@@ -611,6 +605,215 @@ impl Drop for IntVectorWriter {
         let _ = self.close();
     }
 }
+
+//-----------------------------------------------------------------------------
+
+/// An immutable memory-mapped [`IntVector`].
+///
+/// This is compatible with the serialization format of [`IntVector`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+/// use simple_sds::ops::{Element, Access};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-mapper");
+/// let mut v = IntVector::with_len(3, 13, 0).unwrap();
+/// v.set(0, 123); v.set(1, 456); v.set(2, 789);
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+/// assert_eq!(mapper.len(), v.len());
+/// for i in 0..mapper.len() {
+///     assert_eq!(mapper.get(i), v.get(i));
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct IntVectorMapper<'a> {
+    len: usize,
+    width: usize,
+    data: RawVectorMapper<'a>,
+}
+
+impl<'a> IntVectorMapper<'a> {
+    /// Returns an iterator visiting all elements of the vector in order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+    /// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+    /// use simple_sds::serialize;
+    /// use std::fs;
+    ///
+    /// let filename = serialize::temp_file_name("int-vector-mapper-iter");
+    /// let v = IntVector::from(vec![123u32, 456u32, 789u32, 10u32]);
+    /// serialize::serialize_to(&v, &filename);
+    ///
+    /// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    /// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+    /// assert!(mapper.iter().eq(v.iter()));
+    ///
+    /// drop(mapper); drop(map);
+    /// fs::remove_file(&filename).unwrap();
+    /// ```
+    pub fn iter(&self) -> MappedIter<'_> {
+        MappedIter {
+            parent: self,
+            next: 0,
+            limit: self.len(),
+        }
+    }
+}
+
+impl<'a> Element for IntVectorMapper<'a> {
+    type Item = u64;
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    #[inline]
+    fn max_len(&self) -> usize {
+        usize::MAX / self.width()
+    }
+}
+
+impl<'a> Access for IntVectorMapper<'a> {
+    #[inline]
+    fn get(&self, index: usize) -> <Self as Element>::Item {
+        assert!(index < self.len(), "Index is out of bounds");
+        unsafe { self.data.int(index * self.width(), self.width()) }
+    }
+
+    #[inline]
+    fn is_mutable(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn set(&mut self, _: usize, _: <Self as Element>::Item) {
+        panic!("Not implemented");
+    }
+}
+
+impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset + 1 >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        let width = slice[offset + 1] as usize;
+        let data = RawVectorMapper::new(map, offset + 2)?;
+        Ok(IntVectorMapper {
+            len: len,
+            width: width,
+            data: data,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.data.map_offset() - 2
+    }
+
+    fn map_len(&self) -> usize {
+        self.data.map_len() + 2
+    }
+}
+
+impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
+    #[inline]
+    fn as_ref(&self) -> &RawVectorMapper<'a> {
+        &(self.data)
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/// A read-only iterator over [`IntVectorMapper`].
+///
+/// The type of `Item` is [`u64`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let filename = serialize::temp_file_name("int-vector-mapped-iter");
+/// let source: Vec<u16> = vec![12, 34, 56, 78, 90, 11, 12, 13];
+/// let v: IntVector = source.iter().cloned().collect();
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapper = IntVectorMapper::new(&map, 0).unwrap();
+/// for (index, value) in mapper.iter().enumerate() {
+///     assert_eq!(value, source[index] as u64);
+/// }
+///
+/// drop(mapper); drop(map);
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(Clone, Debug)]
+pub struct MappedIter<'a> {
+    parent: &'a IntVectorMapper<'a>,
+    // The first index we have not used.
+    next: usize,
+    // The first index we should not use.
+    limit: usize,
+}
+
+impl<'a> Iterator for MappedIter<'a> {
+    type Item = <IntVectorMapper<'a> as Element>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            let result = Some(self.parent.get(self.next));
+            self.next += 1;
+            result
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.limit - self.next;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> DoubleEndedIterator for MappedIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            self.limit -= 1;
+            Some(self.parent.get(self.limit))
+        }
+    }
+}
+
+impl<'a> ExactSizeIterator for MappedIter<'a> {}
+
+impl<'a> FusedIterator for MappedIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
