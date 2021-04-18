@@ -622,6 +622,7 @@ impl Serialize for BitVector {
         Ok(())
     }
 
+    // FIXME: Sanity checks: number of blocks in rank, select, select_zero
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let ones = usize::load(reader)?;
         let data = RawVector::load(reader)?;

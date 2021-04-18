@@ -227,6 +227,25 @@ fn serialize() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[test]
+fn invalid_data() {
+    let filename = serialize::temp_file_name("raw-vector-invalid-data");
+    let mut options = OpenOptions::new();
+    let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
+
+    // 123 bits will fit in 2 words, but data length is 3.
+    let len: usize = 123;
+    let data: Vec<u64> = vec![123, 456, 789];
+    len.serialize(&mut file).unwrap();
+    data.serialize(&mut file).unwrap();
+    drop(file);
+
+    let result: io::Result<RawVector> = serialize::load_from(&filename);
+    assert_eq!(result.map_err(|e| e.kind()), Err(ErrorKind::InvalidData), "Expected ErrorKind::InvalidData");
+
+    fs::remove_file(&filename).unwrap();
+}
+
 //-----------------------------------------------------------------------------
 
 #[test]

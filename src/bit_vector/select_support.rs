@@ -265,6 +265,7 @@ impl<T: Transformation> Serialize for SelectSupport<T> {
         Ok(())
     }
 
+    // FIXME: Sanity checks: long + short == total superblocks
     fn load<W: io::Read>(reader: &mut W) -> io::Result<Self> {
         let samples = IntVector::load(reader)?;
         let long = IntVector::load(reader)?;

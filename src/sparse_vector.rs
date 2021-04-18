@@ -781,6 +781,7 @@ impl Serialize for SparseVector {
         Ok(())
     }
 
+    // FIXME: Sanity checks: len, width, high, low
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
         let width = usize::load(reader)?;
