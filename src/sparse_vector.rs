@@ -27,6 +27,7 @@ use crate::serialize::Serialize;
 use crate::bits;
 
 use std::convert::TryFrom;
+use std::io::{Error, ErrorKind};
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, Extend};
 use std::{cmp, io};
 
@@ -103,7 +104,6 @@ mod tests;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SparseVector {
     len: usize,
-    width: usize,
     high: BitVector,
     low: IntVector,
 }
@@ -152,14 +152,14 @@ impl SparseVector {
     // Split a bitvector index into high and low parts.
     fn split(&self, index: usize) -> Parts {
         Parts {
-            high: index >> self.width,
-            low: index & unsafe { bits::low_set_unchecked(self.width) as usize },
+            high: index >> self.low.width(),
+            low: index & unsafe { bits::low_set_unchecked(self.low.width()) as usize },
         }
     }
 
     // Get (rank, bitvector index) from the offsets in `high` and `low`.
     fn combine(&self, pos: Pos) -> (usize, usize) {
-        (pos.low, ((pos.high - pos.low) << self.width) + (self.low.get(pos.low) as usize))
+        (pos.low, ((pos.high - pos.low) << self.low.width()) + (self.low.get(pos.low) as usize))
     }
 
     // Get the offsets in `high` and `low` for the set bit of the given rank.
@@ -257,27 +257,31 @@ impl SparseBuilder {
             return Err("Number of set bits is greater than universe size");
         }
 
-        let log_n = bits::bit_len(universe as u64);
-        let mut log_m = bits::bit_len(ones as u64);
-        if log_m == log_n {
-            log_m -= 1;
-        }
-        let width: usize = log_n - log_m;
+        let (width, high_len) = Self::get_params(universe, ones);
         let low = IntVector::with_len(ones, width, 0).unwrap();
         let data = SparseVector {
             len: universe,
-            width: width,
             high: BitVector::from(RawVector::new()),
             low: low,
         };
 
-        let high = RawVector::with_len(ones + (1usize << log_m), false);
+        let high = RawVector::with_len(high_len, false);
         Ok(SparseBuilder {
             data: data,
             high: high,
             len: 0,
             next: 0,
         })
+    }
+
+    // Returns `(low.width(), high.len())`.
+    fn get_params(universe: usize, ones: usize) -> (usize, usize) {
+        let log_n = bits::bit_len(universe as u64);
+        let mut log_m = bits::bit_len(ones as u64);
+        if log_m == log_n {
+            log_m -= 1;
+        }
+        (log_n - log_m, ones + (1usize << log_m))
     }
 
     /// Returns the number of bits that have already been set.
@@ -771,7 +775,6 @@ impl<'a> PredSucc<'a> for SparseVector {
 impl Serialize for SparseVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)?;
-        self.width.serialize(writer)?;
         Ok(())
     }
 
@@ -783,16 +786,28 @@ impl Serialize for SparseVector {
 
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
-        let width = usize::load(reader)?;
         let mut high = BitVector::load(reader)?;
+        let low = IntVector::load(reader)?;
+
         // Enable support structures, because the data may be from a library that does not know
         // how to build them.
         high.enable_select();
         high.enable_select_zero();
-        let low = IntVector::load(reader)?;
+
+        // Sanity checks.
+        if low.len() > len {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid count of ones"))
+        }
+        let (low_width, high_len) = SparseBuilder::get_params(len, low.len());
+        if low.width() != low_width {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid low width"))
+        }
+        if high.len() != high_len {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid high_length"))
+        }
+
         let result = SparseVector {
             len: len,
-            width: width,
             high: high,
             low: low,
         };
@@ -801,7 +816,6 @@ impl Serialize for SparseVector {
 
     fn size_in_elements(&self) -> usize {
         self.len.size_in_elements() +
-        self.width.size_in_elements() +
         self.high.size_in_elements() +
         self.low.size_in_elements()
     }

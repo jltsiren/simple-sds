@@ -3,6 +3,11 @@
 //! The serialized representation closely mirrors the in-memory representation with 8-byte alignment.
 //! This makes it easy to develop memory-mapped versions of the structures.
 //!
+//! Note that loading serialized structures is fundamentally unsafe.
+//! Some [`Serialize::load`] implementations do simple sanity checks on the headers.
+//! However, it is not feasible to validate all loaded data in high-performance code.
+//! The behavior of corrupted data structures is always undefined.
+//!
 //! # Serialization formats
 //!
 //! The serialization format of a structure, as implemented with trait [`Serialize`], is split into the header and the body.
@@ -168,6 +173,7 @@ pub trait Serialize: Sized {
     /// # Errors
     ///
     /// Any errors from the reader may be passed through.
+    /// [`ErrorKind::InvalidData`] should be used to indicate that the data failed sanity checks.
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self>;
 
     /// Returns the size of the serialized struct in [`u64`] elements.
@@ -280,7 +286,12 @@ impl<V: Serialize> Serialize for Option<V> {
             Ok(None)
         } else {
             let value = V::load(reader)?;
-            Ok(Some(value))
+            if value.size_in_elements() != size {
+                Err(Error::new(ErrorKind::InvalidData, "Unexpected size for Some(value)"))
+            }
+            else {
+                Ok(Some(value))
+            }
         }
     }
 
@@ -681,7 +692,8 @@ pub trait MemoryMapped<'a>: Sized {
     ///
     /// # Errors
     ///
-    /// Implementing types should use [`ErrorKind::InvalidData`] and [`ErrorKind::UnexpectedEof`] where appropriate.
+    /// Implementing types should use [`ErrorKind::UnexpectedEof`] where appropriate.
+    /// [`ErrorKind::InvalidData`] should be used to indicate that the data failed sanity checks.
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self>;
 
     /// Returns the starting offset in the file.

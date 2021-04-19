@@ -597,10 +597,14 @@ impl Serialize for RawVector {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
         let data = <Vec<u64> as Serialize>::load(reader)?;
-        Ok(RawVector {
-            len: len,
-            data: data,
-        })
+        if bits::bits_to_words(len) != data.len() {
+            Err(Error::new(ErrorKind::InvalidData, "Bit length / word length mismatch"))
+        } else {
+            Ok(RawVector {
+                len: len,
+                data: data,
+            })
+        }
     }
 
     fn size_in_elements(&self) -> usize {

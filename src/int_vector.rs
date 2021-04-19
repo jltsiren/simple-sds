@@ -289,11 +289,16 @@ impl Serialize for IntVector {
         let len = usize::load(reader)?;
         let width = usize::load(reader)?;
         let data = RawVector::load(reader)?;
-        Ok(IntVector {
-            len: len,
-            width: width,
-            data: data,
-        })
+        if len * width != data.len() {
+            Err(Error::new(ErrorKind::InvalidData, "Data length does not match len * width"))
+        }
+        else {
+            Ok(IntVector {
+                len: len,
+                width: width,
+                data: data,
+            })
+        }
     }
 
     fn size_in_elements(&self) -> usize {

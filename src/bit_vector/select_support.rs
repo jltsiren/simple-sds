@@ -32,6 +32,7 @@ use crate::ops::{Element, Resize, Pack, Access, Push, BitVec};
 use crate::serialize::Serialize;
 use crate::bits;
 
+use std::io::{Error, ErrorKind};
 use std::{io, marker};
 
 //-----------------------------------------------------------------------------
@@ -60,7 +61,9 @@ pub struct SelectSupport<T: Transformation> {
 }
 
 impl<T: Transformation> SelectSupport<T> {
-    const SUPERBLOCK_SIZE: usize = 4096;
+    /// Number of ones per superblock (4096).
+    pub const SUPERBLOCK_SIZE: usize = 4096;
+
     const SUPERBLOCK_MASK: usize = 0xFFF;
     const BLOCKS_IN_SUPERBLOCK: usize = 64;
     const BLOCK_SIZE: usize = 64;
@@ -269,12 +272,18 @@ impl<T: Transformation> Serialize for SelectSupport<T> {
         let samples = IntVector::load(reader)?;
         let long = IntVector::load(reader)?;
         let short = IntVector::load(reader)?;
-        Ok(SelectSupport {
+        let result = SelectSupport {
             samples: samples,
             long: long,
             short: short,
             _marker: marker::PhantomData,
-        })
+        };
+        if result.superblocks() != result.long_superblocks() + result.short_superblocks() {
+            Err(Error::new(ErrorKind::InvalidData, "Invalid long/short superblock counts"))
+        }
+        else {
+            Ok(result)
+        }
     }
 
     fn size_in_elements(&self) -> usize {

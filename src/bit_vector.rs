@@ -7,6 +7,7 @@ use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
 
+use std::io::{Error, ErrorKind};
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator};
 use std::{io, marker};
 
@@ -625,17 +626,38 @@ impl Serialize for BitVector {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let ones = usize::load(reader)?;
         let data = RawVector::load(reader)?;
+        if ones > data.len() {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid count of ones"));
+        }
+
         let rank = Option::<RankSupport>::load(reader)?;
+        if let Some(value) = rank.as_ref() {
+            if value.blocks() != bits::div_round_up(data.len(), RankSupport::BLOCK_SIZE) {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of rank blocks"))
+            }
+        }
+
         let select = Option::<SelectSupport<Identity>>::load(reader)?;
+        if let Some(value) = select.as_ref() {
+            if value.superblocks() != bits::div_round_up(ones, SelectSupport::<Identity>::SUPERBLOCK_SIZE) {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select superblocks"))
+            }
+        }
+
         let select_zero = Option::<SelectSupport<Complement>>::load(reader)?;
-        let result = BitVector {
+        if let Some(value) = select_zero.as_ref() {
+            if value.superblocks() != bits::div_round_up(data.len() - ones, SelectSupport::<Complement>::SUPERBLOCK_SIZE) {
+                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select_zero superblocks"))
+            }
+        }
+
+        Ok(BitVector {
             ones: ones,
             data: data,
             rank: rank,
             select: select,
             select_zero: select_zero,
-        };
-        Ok(result)
+        })
     }
 
     fn size_in_elements(&self) -> usize {

@@ -240,6 +240,27 @@ fn serialize() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[test]
+fn invalid_data() {
+    let filename = serialize::temp_file_name("int-vector-invalid-data");
+    let mut options = OpenOptions::new();
+    let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
+
+    // 13 values of 20 bits each will take 260 bits, but data length is 240 bits
+    let len: usize = 13;
+    let width: usize = 20;
+    let data = RawVector::with_len(240, false);
+    len.serialize(&mut file).unwrap();
+    width.serialize(&mut file).unwrap();
+    data.serialize(&mut file).unwrap();
+    drop(file);
+
+    let result: io::Result<IntVector> = serialize::load_from(&filename);
+    assert_eq!(result.map_err(|e| e.kind()), Err(ErrorKind::InvalidData), "Expected ErrorKind::InvalidData");
+
+    fs::remove_file(&filename).unwrap();
+}
+
 //-----------------------------------------------------------------------------
 
 #[test]
