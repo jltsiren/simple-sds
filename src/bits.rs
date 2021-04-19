@@ -226,6 +226,26 @@ pub fn bits_to_words(n: usize) -> usize {
     (n + WORD_BITS - 1) / WORD_BITS
 }
 
+/// Divides `value` by `n` and rounds the result up.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::div_round_up(129, 13), 10);
+/// assert_eq!(bits::div_round_up(130, 13), 10);
+/// assert_eq!(bits::div_round_up(131, 13), 11);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `value + n > usize::MAX` or `n == 0`.
+#[inline]
+pub fn div_round_up(value: usize, n: usize) -> usize {
+    (value + n - 1) / n
+}
+
 /// Rounds `n` up to the next positive multiple of 64.
 ///
 /// # Examples

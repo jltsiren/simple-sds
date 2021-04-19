@@ -42,7 +42,9 @@ pub struct RankSupport {
 }
 
 impl RankSupport {
-    const BLOCK_SIZE: usize = 512;
+    /// Number of bits per block (512).
+    pub const BLOCK_SIZE: usize = 512;
+
     const RELATIVE_RANK_BITS: usize = 9;
     const RELATIVE_RANK_MASK: usize = 0x1FF;
     const WORDS_PER_BLOCK: usize = 8;
