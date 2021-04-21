@@ -78,9 +78,11 @@
 //!
 //! A file may contain multiple nested or concatenated structures.
 //! Trait [`MemoryMapped`] represents a memory-mapped structure that borrows an interval of the memory map.
-//! There are two implementations of [`MemoryMapped`] for basic serialization types:
+//! There are four implementations of [`MemoryMapped`] for basic serialization types:
 //!
-//! * [`MappedSlice`] matches the serialization format of [`Vec`].
+//! * [`MappedSlice`] matches the serialization format of [`Vec`] of a [`Serializable`] type.
+//! * [`MappedBytes`] matches the serialization format of [`Vec`] of [`u8`].
+//! * [`MappedStr`] matches the serialization format of [`String`].
 //! * [`MappedOption`] matches the serialization format of [`Option`].
 
 use crate::bits;
@@ -91,7 +93,7 @@ use std::ops::Index;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{env, io, marker, mem, process, ptr, slice};
+use std::{env, io, marker, mem, process, ptr, slice, str};
 
 #[cfg(test)]
 mod tests;
@@ -843,7 +845,7 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
         if offset + 1 + len * T::elements() > map.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
         }
-        let source: &[u64] = &slice[offset + 1 .. offset + 1 + len * T::elements()];
+        let source: &[u64] = &slice[offset + 1 ..];
         let data: &[T] = unsafe { slice::from_raw_parts(source.as_ptr() as *const T, len) };
         Ok(MappedSlice {
             data: data,
@@ -856,7 +858,170 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
     }
 
     fn map_len(&self) -> usize {
-        self.data.len() * T::elements() + 1
+        self.len() * T::elements() + 1
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/// An immutable memory-mapped slice of [`u8`].
+///
+/// The slice is compatible with the serialization format of [`Vec`] of [`u8`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::{MappedBytes, MappingMode, MemoryMap, MemoryMapped, Serialize};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let v: Vec<u8> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
+/// let filename = serialize::temp_file_name("mapped-bytes");
+/// serialize::serialize_to(&v, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapped = MappedBytes::new(&map, 0).unwrap();
+/// assert_eq!(mapped.len(), v.len());
+/// assert_eq!(mapped[3], 3);
+/// assert_eq!(mapped[6], 13);
+/// assert_eq!(mapped.as_ref(), v.as_slice());
+/// drop(mapped); drop(map);
+///
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct MappedBytes<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> MappedBytes<'a> {
+    /// Returns the length of the slice.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns `true` if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl<'a> AsRef<[u8]> for MappedBytes<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.data
+    }
+}
+
+impl<'a> Index<usize> for MappedBytes<'a> {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<'a> MemoryMapped<'a> for MappedBytes<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        if offset + 1 + bits::bytes_to_words(len) > map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
+        }
+        let source: &[u64] = &slice[offset + 1 ..];
+        let data: &[u8] = unsafe { slice::from_raw_parts(source.as_ptr() as *const u8, len) };
+        Ok(MappedBytes {
+            data: data,
+            offset: offset,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn map_len(&self) -> usize {
+        bits::bytes_to_words(self.len()) + 1
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+/// An immutable memory-mapped string slice.
+///
+/// The slice is compatible with the serialization format of [`String`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::{MappedStr, MappingMode, MemoryMap, MemoryMapped, Serialize};
+/// use simple_sds::serialize;
+/// use std::fs;
+///
+/// let s = String::from("GATTACA");
+/// let filename = serialize::temp_file_name("mapped-str");
+/// serialize::serialize_to(&s, &filename);
+///
+/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+/// let mapped = MappedStr::new(&map, 0).unwrap();
+/// assert_eq!(mapped.len(), s.len());
+/// assert_eq!(mapped.as_ref(), s.as_str());
+/// drop(mapped); drop(map);
+///
+/// fs::remove_file(&filename).unwrap();
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct MappedStr<'a> {
+    data: &'a str,
+    offset: usize,
+}
+
+impl<'a> MappedStr<'a> {
+    /// Returns the length of the slice in bytes.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns `true` if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl<'a> AsRef<str> for MappedStr<'a> {
+    fn as_ref(&self) -> &str {
+        self.data
+    }
+}
+
+impl<'a> MemoryMapped<'a> for MappedStr<'a> {
+    fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        if offset >= map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
+        }
+        let slice: &[u64] = map.as_ref();
+        let len = slice[offset] as usize;
+        if offset + 1 + bits::bytes_to_words(len) > map.len() {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
+        }
+        let source: &[u64] = &slice[offset + 1 ..];
+        let bytes: &[u8] = unsafe { slice::from_raw_parts(source.as_ptr() as *const u8, len) };
+        let data = str::from_utf8(bytes).map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid UTF-8"))?;
+        Ok(MappedStr {
+            data: data,
+            offset: offset,
+        })
+    }
+
+    fn map_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn map_len(&self) -> usize {
+        bits::bytes_to_words(self.len()) + 1
     }
 }
 
