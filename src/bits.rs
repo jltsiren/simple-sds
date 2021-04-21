@@ -6,6 +6,9 @@ use std::ops::{Index, IndexMut};
 
 //-----------------------------------------------------------------------------
 
+/// Number of bytes in [`u64`].
+pub const WORD_BYTES: usize = 8;
+
 /// Number of bits in [`u64`].
 pub const WORD_BITS: usize = 64;
 
@@ -189,6 +192,65 @@ pub unsafe fn select(n: u64, rank: usize) -> usize {
 
 //-----------------------------------------------------------------------------
 
+/// Returns the number of bytes that can be stored in `n` integers of type [`u64`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::words_to_bytes(3), 24);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `n * 8 > usize::MAX`.
+#[inline]
+pub fn words_to_bytes(n: usize) -> usize {
+    n * WORD_BYTES
+}
+
+/// Returns the number of integers of type [`u64`] required to store `n` bytes.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::bytes_to_words(8), 1);
+/// assert_eq!(bits::bytes_to_words(9), 2);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `n + 7 > usize::MAX`.
+#[inline]
+pub fn bytes_to_words(n: usize) -> usize {
+    (n + WORD_BYTES - 1) / WORD_BYTES
+}
+
+/// Rounds `n` up to the next multiple of 8.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::round_up_to_word_bytes(0), 0);
+/// assert_eq!(bits::round_up_to_word_bytes(8), 8);
+/// assert_eq!(bits::round_up_to_word_bytes(9), 16);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `n + 7 > usize::MAX`.
+#[inline]
+pub fn round_up_to_word_bytes(n: usize) -> usize {
+    words_to_bytes(bytes_to_words(n))
+}
+
+//-----------------------------------------------------------------------------
+
 /// Returns the number of bits that can be stored in `n` integers of type [`u64`].
 ///
 /// # Examples
@@ -226,6 +288,28 @@ pub fn bits_to_words(n: usize) -> usize {
     (n + WORD_BITS - 1) / WORD_BITS
 }
 
+/// Rounds `n` up to the next multiple of 64.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::round_up_to_word_bits(0), 0);
+/// assert_eq!(bits::round_up_to_word_bits(64), 64);
+/// assert_eq!(bits::round_up_to_word_bits(65), 128);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `n + 63 > usize::MAX`.
+#[inline]
+pub fn round_up_to_word_bits(n: usize) -> usize {
+    words_to_bits(bits_to_words(n))
+}
+
+//-----------------------------------------------------------------------------
+
 /// Divides `value` by `n` and rounds the result up.
 ///
 /// # Examples
@@ -244,29 +328,6 @@ pub fn bits_to_words(n: usize) -> usize {
 #[inline]
 pub fn div_round_up(value: usize, n: usize) -> usize {
     (value + n - 1) / n
-}
-
-/// Rounds `n` up to the next positive multiple of 64.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::bits;
-///
-/// assert_eq!(bits::round_up_to_word_size(0), 64);
-/// assert_eq!(bits::round_up_to_word_size(64), 64);
-/// assert_eq!(bits::round_up_to_word_size(65), 128);
-/// ```
-///
-/// # Panics
-///
-/// May panic if `n + 63 > usize::MAX`.
-#[inline]
-pub fn round_up_to_word_size(n: usize) -> usize {
-    match n {
-        0 => WORD_BITS,
-        _ => words_to_bits(bits_to_words(n)),
-    }
 }
 
 /// Returns a [`u64`] value consisting entirely of bit `value`.

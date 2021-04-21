@@ -16,13 +16,17 @@
 //! Method [`Serialize::serialize`] provides an easy way of calling both.
 //! A serialized structure is always loaded with a single [`Serialize::load`] call.
 //!
-//! There are currently three basic serialization types:
+//! There are currently five basic serialization types:
 //!
 //! * [`Serializable`]: A fixed-size type that can be serialized as one or more [`u64`] elements.
 //!   The header is empty and the body contains the value.
 //! * [`Vec`] of a type that implements [`Serializable`].
 //!   The header stores the number of items in the vector as [`usize`].
 //!   The body stores the items.
+//! * [`Vec`] of [`u8`].
+//!   The header stores the number of items in the vector as [`usize`].
+//!   The body stores the items followed by a padding of `0` bytes to make the size of the body a multiple of 8 bytes.
+//! * [`String`] stored as a [`Vec`] of [`u8`] using the UTF-8 encoding.
 //! * [`Option`]`<T>` for a type `T` that implements [`Serialize`].
 //!   The header stores the number of [`u64`] elements in the body as [`usize`].
 //!   The body stores `T` for [`Some`]`(T)` and is empty for [`None`].
@@ -78,6 +82,8 @@
 //!
 //! * [`MappedSlice`] matches the serialization format of [`Vec`].
 //! * [`MappedOption`] matches the serialization format of [`Option`].
+
+use crate::bits;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Seek, SeekFrom};
@@ -185,7 +191,7 @@ pub trait Serialize: Sized {
     ///
     /// This should be closely related to the size of the in-memory struct.
     fn size_in_bytes(&self) -> usize {
-        self.size_in_elements() * mem::size_of::<u64>()
+        bits::words_to_bytes(self.size_in_elements())
     }
 }
 
@@ -195,7 +201,7 @@ pub trait Serialize: Sized {
 pub trait Serializable: Sized + Default {
     /// Returns the number of elements needed for serializing the type.
     fn elements() -> usize {
-        mem::size_of::<Self>() / mem::size_of::<u64>()
+        mem::size_of::<Self>() / bits::WORD_BYTES
     }
 }
 
@@ -260,6 +266,71 @@ impl<V: Serializable> Serialize for Vec<V> {
 
     fn size_in_elements(&self) -> usize {
         1 + self.len() * V::elements()
+    }
+}
+
+impl Serialize for Vec<u8> {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        let size = self.len();
+        size.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        writer.write_all(self.as_slice())?;
+        let padded_len = bits::round_up_to_word_bytes(self.len());
+        if padded_len > self.len() {
+            let padding = [0u8; bits::WORD_BYTES];
+            writer.write_all(&padding[0..padded_len - self.len()])?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let size = usize::load(reader)?;
+        let mut value: Vec<u8> = Vec::with_capacity(size);
+        unsafe { value.set_len(size); }
+        reader.read_exact(value.as_mut_slice())?;
+
+        // Skip padding.
+        let padded_len = bits::round_up_to_word_bytes(value.len());
+        if padded_len > value.len() {
+            let mut padding = [0u8; bits::WORD_BYTES];
+            reader.read_exact(&mut padding[0..padded_len - value.len()])?;
+        }
+
+        Ok(value)
+    }
+
+    fn size_in_elements(&self) -> usize {
+        1 + bits::bytes_to_words(self.len())
+    }
+}
+
+impl Serialize for String {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        let size = self.len();
+        size.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        writer.write_all(self.as_bytes())?;
+        let padded_len = bits::round_up_to_word_bytes(self.len());
+        if padded_len > self.len() {
+            let padding = [0u8; bits::WORD_BYTES];
+            writer.write_all(&padding[0..padded_len - self.len()])?;
+        }
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let bytes = Vec::<u8>::load(reader)?;
+        String::from_utf8(bytes).map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid UTF-8"))
+    }
+
+    fn size_in_elements(&self) -> usize {
+        1 + bits::bytes_to_words(self.len())
     }
 }
 
@@ -550,7 +621,7 @@ impl MemoryMap {
 
         let metadata = file.metadata()?;
         let len = metadata.len() as usize;
-        if len % mem::size_of::<u64>() != 0 {
+        if len != bits::round_up_to_word_bytes(len) {
             return Err(Error::new(ErrorKind::Other, "File size must be a multiple of 8 bytes"));
         }
 
@@ -570,7 +641,7 @@ impl MemoryMap {
             filename: buf,
             mode: mode,
             ptr: ptr.cast::<u64>(),
-            len: len / mem::size_of::<u64>(),
+            len: bits::bytes_to_words(len),
         })
     }
 
