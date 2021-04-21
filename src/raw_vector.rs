@@ -6,7 +6,7 @@ use crate::bits;
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind};
 use std::path::Path;
-use std::io;
+use std::{cmp, io};
 
 #[cfg(test)]
 mod tests;
@@ -708,7 +708,8 @@ impl RawVectorWriter {
     /// * `filename`: Name of the file.
     /// * `buf_len`: Buffer size in bits.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
-        let buf_len = bits::round_up_to_word_size(buf_len);
+        // Buffer length must be a positive multiple of `bits::WORD_BITS`.
+        let buf_len = cmp::max(bits::round_up_to_word_bits(buf_len), bits::WORD_BITS);
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
         // Allocate one extra word for overflow.

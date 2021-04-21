@@ -20,7 +20,7 @@ fn mapped_vector<P, T>(filename: P, correct: &Vec<T>, name: &str) where
 {
     let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
     assert!(!map.is_empty(), "The file is empty for vector {}", name);
-    assert_eq!(map.len(), correct.size_in_bytes() / 8, "Invalid file size for {}", name);
+    assert_eq!(map.len(), correct.size_in_elements(), "Invalid file size for {}", name);
 
     let mapped = MappedSlice::<T>::new(&map, 0).unwrap();
     assert_eq!(mapped.is_empty(), correct.is_empty(), "Invaid emptiness for mapped slice of {}", name);
@@ -29,6 +29,45 @@ fn mapped_vector<P, T>(filename: P, correct: &Vec<T>, name: &str) where
         assert_eq!(mapped[i], correct[i], "Invalid value {} in {}", i, name);
     }
     assert_eq!(mapped.as_ref(), correct.as_slice(), "Invalid mapped slice for {}", name);
+}
+
+fn serialized_bytes<P: AsRef<Path>>(filename: P, correct: &Vec<u8>, name: &str) {
+    assert_eq!(correct.size_in_bytes(), 8 + bits::round_up_to_word_bytes(correct.len()), "Invalid serialization size for {}", name);
+    serialize_to(correct, &filename).unwrap();
+    let copy: Vec<u8> = load_from(&filename).unwrap();
+    assert_eq!(&copy, correct, "Serialization changed vector {}", name);
+}
+
+fn mapped_bytes<P: AsRef<Path>>(filename: P, correct: &Vec<u8>, name: &str) {
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    assert!(!map.is_empty(), "The file is empty for vector {}", name);
+    assert_eq!(map.len(), correct.size_in_elements(), "Invalid file size for {}", name);
+
+    let mapped = MappedBytes::new(&map, 0).unwrap();
+    assert_eq!(mapped.is_empty(), correct.is_empty(), "Invaid emptiness for mapped slice of {}", name);
+    assert_eq!(mapped.len(), correct.len(), "Invalid length for mapped slice of {}", name);
+    for i in 0..mapped.len() {
+        assert_eq!(mapped[i], correct[i], "Invalid value {} in {}", i, name);
+    }
+    assert_eq!(mapped.as_ref(), correct.as_slice(), "Invalid mapped slice for {}", name);
+}
+
+fn serialized_string<P: AsRef<Path>>(filename: P, correct: &String, name: &str) {
+    assert_eq!(correct.size_in_bytes(), 8 + bits::round_up_to_word_bytes(correct.len()), "Invalid serialization size for {}", name);
+    serialize_to(correct, &filename).unwrap();
+    let copy: String = load_from(&filename).unwrap();
+    assert_eq!(&copy, correct, "Serialization changed string {}", name);
+}
+
+fn mapped_string<P: AsRef<Path>>(filename: P, correct: &String, name: &str) {
+    let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
+    assert!(!map.is_empty(), "The file is empty for string {}", name);
+    assert_eq!(map.len(), correct.size_in_elements(), "Invalid file size for {}", name);
+
+    let mapped = MappedStr::new(&map, 0).unwrap();
+    assert_eq!(mapped.is_empty(), correct.is_empty(), "Invaid emptiness for mapped string slice of {}", name);
+    assert_eq!(mapped.len(), correct.len(), "Invalid length for mapped string slice of {}", name);
+    assert_eq!(mapped.as_ref(), correct.as_str(), "Invalid mapped string slice for {}", name);
 }
 
 fn serialized_option<P: AsRef<Path>>(filename: P, correct: &Option<Vec<u64>>, name: &str) {
@@ -45,7 +84,7 @@ fn serialized_option<P: AsRef<Path>>(filename: P, correct: &Option<Vec<u64>>, na
 fn mapped_option<P: AsRef<Path>>(filename: P, correct: &Option<Vec<u64>>, name: &str) {
     let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
     assert!(!map.is_empty(), "The file is empty for option {}", name);
-    assert_eq!(map.len(), correct.size_in_bytes() / 8, "Invalid file size for {}", name);
+    assert_eq!(map.len(), correct.size_in_elements(), "Invalid file size for {}", name);
 
     let mapped = MappedOption::<MappedSlice<u64>>::new(&map, 0).unwrap();
     assert_eq!(mapped.is_some(), correct.is_some(), "Invalid is_some() for {}", name);
@@ -100,6 +139,44 @@ fn serialize_vec_u64_u64() {
     let original: Vec<(u64, u64)> = vec![(1, 1), (2, 3), (5, 8), (13, 21), (34, 55), (89, 144)];
     serialized_vector(&filename, &original, "non-empty");
     mapped_vector(&filename, &original, "non-empty");
+
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn serialize_bytes() {
+    let filename = temp_file_name("vec-u8");
+
+    let empty: Vec<u8> = Vec::new();
+    serialized_bytes(&filename, &empty, "empty");
+    mapped_bytes(&filename, &empty, "empty");
+
+    let padded: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    serialized_bytes(&filename, &padded, "padded");
+    mapped_bytes(&filename, &padded, "padded");
+
+    let unpadded: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    serialized_bytes(&filename, &unpadded, "unpadded");
+    mapped_bytes(&filename, &unpadded, "unpadded");
+
+    fs::remove_file(&filename).unwrap();
+}
+
+#[test]
+fn serialize_string() {
+    let filename = temp_file_name("string");
+
+    let empty = String::new();
+    serialized_string(&filename, &empty, "empty");
+    mapped_string(&filename, &empty, "empty");
+
+    let padded = String::from("0123456789ABC");
+    serialized_string(&filename, &padded, "padded");
+    mapped_string(&filename, &padded, "padded");
+
+    let unpadded = String::from("0123456789ABCDEF");
+    serialized_string(&filename, &unpadded, "unpadded");
+    mapped_string(&filename, &unpadded, "unpadded");
 
     fs::remove_file(&filename).unwrap();
 }
