@@ -8,6 +8,8 @@
 //! However, it is not feasible to validate all loaded data in high-performance code.
 //! The behavior of corrupted data structures is always undefined.
 //!
+//! There is also some documentation on the [serialization formats](https://github.com/jltsiren/simple-sds/blob/main/SERIALIZATION.md).
+//!
 //! # Serialization formats
 //!
 //! The serialization format of a structure, as implemented with trait [`Serialize`], is split into the header and the body.
