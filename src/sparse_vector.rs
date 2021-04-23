@@ -277,17 +277,17 @@ impl SparseBuilder {
 
     // Returns `(low.width(), high.len())`.
     fn get_params(universe: usize, ones: usize) -> (usize, usize) {
-        let log_n = bits::bit_len(universe as u64);
-        let mut log_m = bits::bit_len(ones as u64);
-        if log_m == log_n {
-            log_m -= 1;
+        let mut low_width: usize = 1;
+        if ones > 0 {
+            let ideal_width = ((universe as f64 * 2.0_f64.ln()) / (ones as f64)).log2();
+            low_width = cmp::max(ideal_width.round() as usize, 1);
         }
 
-        let low_width = log_n - log_m;
         let mut buckets = universe >> low_width;
         if universe & (bits::low_set(low_width) as usize) != 0 {
             buckets += 1;
         }
+
         (low_width, ones + buckets)
     }
 
