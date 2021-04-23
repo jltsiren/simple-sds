@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.2.0. Updated 2021-04-21.
+For version 0.2.0. Updated 2021-04-22.
 
 ## Basics
 
@@ -101,9 +101,10 @@ The low parts are the lowest `w ≈ log2(n) - log2(m)` bits of each integer, wit
 They are stored in an integer vector of length `m` and width `w`.
 
 The high part of integer `x` is `x >> w`.
-A bitvector encodes the number of integers with each value of the high part in unary.
-For each value of the high part shared by `k >= 0` integers, in sorted order, the bitvector contains a sequence of `1`s of length `k` followed by `0`.
-There may be further `0`s corresponding to unused high parts.
+The integers are placed into buckets by the high part.
+A bitvector encodes the number of integers in each bucket in unary.
+For each bucket with `k >= 0` integers, in sorted order, the bitvector contains a sequence of `1`s of length `k` followed by `0`.
+There must be a bucket for each position in the semiopen interval `0..n` but no additional buckets after them.
 
 The `i`th item in the sorted vector of integers is `low[i] + ((high.select(i) - i) << w)`.
 

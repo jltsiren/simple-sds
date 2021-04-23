@@ -11,7 +11,8 @@
 //! Let `w = log(n) - log(m)`.
 //! In the integer array interpretation (see [`BitVec`]), we split each value into the low `w` bits and the high `log(m)` bits.
 //! The low bits are stored explicitly in an [`IntVector`].
-//! The high bits are encoded in unary in a [`BitVector`].
+//! The values are placed into buckets by the high bits.
+//! A [`BitVector`] encodes the number of values in each bucket in unary.
 //! If there are `k >= 0` values with the same high part, the bitvector will contain `k` set bits followed by an unset bit.
 //! Then
 //!
@@ -281,7 +282,13 @@ impl SparseBuilder {
         if log_m == log_n {
             log_m -= 1;
         }
-        (log_n - log_m, ones + (1usize << log_m))
+
+        let low_width = log_n - log_m;
+        let mut buckets = universe >> low_width;
+        if universe & (bits::low_set(low_width) as usize) != 0 {
+            buckets += 1;
+        }
+        (low_width, ones + buckets)
     }
 
     /// Returns the number of bits that have already been set.
