@@ -280,7 +280,7 @@ impl SparseBuilder {
         let mut low_width: usize = 1;
         if ones > 0 {
             let ideal_width = ((universe as f64 * 2.0_f64.ln()) / (ones as f64)).log2();
-            low_width = cmp::max(ideal_width.round() as usize, 1);
+            low_width = ideal_width.max(1.0).round() as usize;
         }
 
         let mut buckets = universe >> low_width;
