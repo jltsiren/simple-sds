@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.2.0. Updated 2021-04-22.
+For version 0.2.0. Updated 2021-04-26.
 
 ## Basics
 
@@ -48,6 +48,7 @@ Serialization format for optional structures:
 2. The structure, if present.
 
 The reader can easily skip an optional structure, because its length is stored before the structure itself.
+If the reader needs to pass through an optional structure without understanding the format, it can be loaded and serialized as a vector of elements.
 
 ## Raw bitvectors
 
