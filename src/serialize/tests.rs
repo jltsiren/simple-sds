@@ -196,23 +196,4 @@ fn serialize_option() {
     fs::remove_file(&filename).unwrap();
 }
 
-#[test]
-fn invalid_data() {
-    let filename = temp_file_name("serialize-invalid-data");
-    let mut options = OpenOptions::new();
-    let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
-
-    // The size of `u64` is one element, but the header indicates that it should take two.
-    let size: usize = 2;
-    let value: u64 = 123;
-    size.serialize(&mut file).unwrap();
-    value.serialize(&mut file).unwrap();
-    drop(file);
-
-    let result: io::Result<Option<u64>> = load_from(&filename);
-    assert_eq!(result.map_err(|e| e.kind()), Err(ErrorKind::InvalidData), "Expected ErrorKind::InvalidData");
-
-    fs::remove_file(&filename).unwrap();
-}
-
 //-----------------------------------------------------------------------------

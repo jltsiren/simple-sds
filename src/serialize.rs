@@ -361,12 +361,12 @@ impl<V: Serialize> Serialize for Option<V> {
             Ok(None)
         } else {
             let value = V::load(reader)?;
-            if value.size_in_elements() != size {
-                Err(Error::new(ErrorKind::InvalidData, "Unexpected size for Some(value)"))
-            }
-            else {
-                Ok(Some(value))
-            }
+            // Here we could check that `value.size_in_elements() == size`. However, if
+            // the value contains inner optional structures that were present in the
+            // file but were skipped by `load`, the size of the in-memory structure is
+            // too small. And because we do not require `io::Seek` from `T`, we cannot
+            // check that we advanced by `size` elements in the reader.
+            Ok(Some(value))
         }
     }
 
