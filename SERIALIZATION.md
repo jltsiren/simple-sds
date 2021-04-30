@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.2.0. Updated 2021-04-26.
+For version 0.2.0. Updated 2021-04-30.
 
 ## Basics
 
@@ -83,10 +83,11 @@ It extends the functionality of a raw bitvector.
 
 Serialization format for bitvectors:
 
-1. Raw bitvector storing the items.
-2. Optional rank support structure.
-3. Optional select support structure for set bits.
-4. Optional select support structure for unset bits.
+1. Number of set bits as an element.
+2. Raw bitvector storing the items.
+3. Optional rank support structure.
+4. Optional select support structure for set bits.
+5. Optional select support structure for unset bits.
 
 The support structures are often both application-dependent and implementation-dependent and hence optional.
 
