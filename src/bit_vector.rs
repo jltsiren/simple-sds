@@ -627,7 +627,7 @@ impl Serialize for BitVector {
         let ones = usize::load(reader)?;
         let data = RawVector::load(reader)?;
         if ones > data.len() {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid count of ones"));
+            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
         }
 
         let rank = Option::<RankSupport>::load(reader)?;

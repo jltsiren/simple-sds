@@ -1,5 +1,7 @@
 use simple_sds::ops::{BitVec, Rank, Select};
+use simple_sds::bit_vector::BitVector;
 use simple_sds::sparse_vector::SparseVector;
+use simple_sds::serialize;
 
 use std::time::Instant;
 use std::{env, process};
@@ -15,13 +17,26 @@ mod utils;
 fn main() {
     let config = Config::new();
 
-    println!("Generating a random 2^{}-bit BitVector with density {}", config.bit_len, config.density);
-    let mut bv = utils::random_vector(1usize << config.bit_len, config.density);
+    let mut bv: BitVector = if let Some(basename) = config.infile.as_ref() {
+        let bv_file: String = format!("{}.bv", basename);
+        println!("Loading BitVector from {}", bv_file);
+        serialize::load_from(bv_file).unwrap()
+    } else {
+        println!("Generating a random 2^{}-bit BitVector with density {}", config.bit_len, config.density);
+        utils::random_vector(1usize << config.bit_len, config.density)
+    };
     println!("Ones:     {} (density {:.6})", bv.count_ones(), (bv.count_ones() as f64) / (bv.len() as f64));
     bv.enable_rank();
     bv.enable_select();
     println!("Size:     {}", utils::bitvector_size(&bv));
     println!("");
+
+    if let Some(basename) = config.outfile.as_ref() {
+        let bv_file: String = format!("{}.bv", basename);
+        println!("Saving BitVector to {}", bv_file);
+        serialize::serialize_to(&bv, &bv_file).unwrap();
+        println!("");
+    }
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
     let rank_queries = utils::generate_rank_queries(config.queries, config.bit_len);
@@ -36,8 +51,14 @@ fn main() {
     independent_select(&bv, &select_queries, "BitVector");
     chained_select(&bv, &select_queries, config.chain_mask, "BitVector");
 
-    println!("Creating a SparseVector");
-    let sv = SparseVector::copy_bit_vec(&bv);
+    let sv: SparseVector = if let Some(basename) = config.infile.as_ref() {
+        let sv_file: String = format!("{}.sv", basename);
+        println!("Loading SparseVector from {}", sv_file);
+        serialize::load_from(sv_file).unwrap()
+    } else {
+        println!("Creating a SparseVector");
+        SparseVector::copy_bit_vec(&bv)
+    };
     println!("Size:     {}", utils::bitvector_size(&sv));
     println!("");
 
@@ -45,6 +66,13 @@ fn main() {
     chained_rank(&sv, &rank_queries, config.chain_mask, "SparseVector");
     independent_select(&sv, &select_queries, "SparseVector");
     chained_select(&sv, &select_queries, config.chain_mask, "SparseVector");
+
+    if let Some(basename) = config.outfile.as_ref() {
+        let sv_file: String = format!("{}.sv", basename);
+        println!("Saving SparseVector to {}", sv_file);
+        serialize::serialize_to(&sv, &sv_file).unwrap();
+        println!("");
+    }
 
     utils::report_memory_usage();
 }
@@ -56,6 +84,8 @@ pub struct Config {
     pub density: f64,
     pub queries: usize,
     pub chain_mask: usize,
+    pub infile: Option<String>,
+    pub outfile: Option<String>,
 }
 
 impl Config {
@@ -72,6 +102,8 @@ impl Config {
         opts.optopt("l", "bit-len", "use bitvectors of length 2^INT (default 32)", "INT");
         opts.optopt("d", "density", "density of set bits (default 0.5)", "FLOAT");
         opts.optopt("n", "queries", "number of queries (default 10000000)", "INT");
+        opts.optopt("L", "load", "load the vectors from NAME.bv and NAME.sv", "NAME");
+        opts.optopt("S", "save", "save the vectors to NAME.bv and NAME.sv", "NAME");
         opts.optflag("h", "help", "print this help");
         let matches = match opts.parse(&args[1..]) {
             Ok(m) => m,
@@ -86,6 +118,8 @@ impl Config {
             density: Self::DENSITY,
             queries: Self::QUERIES,
             chain_mask: Self::CHAIN_MASK,
+            infile: None,
+            outfile: None,
         };
         if matches.opt_present("h") {
             let header = format!("Usage: {} [options]", program);
@@ -137,6 +171,8 @@ impl Config {
                 },
             }
         }
+        config.infile = matches.opt_str("L");
+        config.outfile = matches.opt_str("S");
 
         config
     }
