@@ -807,10 +807,13 @@ impl Serialize for SparseVector {
 
         // Sanity checks.
         if low.len() > len {
-            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"))
+            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
+        }
+        if low.len() != high.count_ones() {
+            return Err(Error::new(ErrorKind::InvalidData, "Inconsistent number of set bits"));
         }
         if high.len() != low.len() + SparseBuilder::get_buckets(len, low.width()){
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of buckets"))
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of buckets"));
         }
 
         let result = SparseVector {
