@@ -282,13 +282,17 @@ impl SparseBuilder {
             let ideal_width = ((universe as f64 * 2.0_f64.ln()) / (ones as f64)).log2();
             low_width = ideal_width.max(1.0).round() as usize;
         }
+        let buckets = Self::get_buckets(universe, low_width);
+        (low_width, ones + buckets)
+    }
 
+    // Returns `high.len()` for the given `universe` and `low.width()`.
+    fn get_buckets(universe: usize, low_width: usize) -> usize {
         let mut buckets = universe >> low_width;
         if universe & (bits::low_set(low_width) as usize) != 0 {
             buckets += 1;
         }
-
-        (low_width, ones + buckets)
+        buckets
     }
 
     /// Returns the number of bits that have already been set.
@@ -803,14 +807,10 @@ impl Serialize for SparseVector {
 
         // Sanity checks.
         if low.len() > len {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid count of ones"))
+            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"))
         }
-        let (low_width, high_len) = SparseBuilder::get_params(len, low.len());
-        if low.width() != low_width {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid low width"))
-        }
-        if high.len() != high_len {
-            return Err(Error::new(ErrorKind::InvalidData, "Invalid high_length"))
+        if high.len() != low.len() + SparseBuilder::get_buckets(len, low.width()){
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of buckets"))
         }
 
         let result = SparseVector {
