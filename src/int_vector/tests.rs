@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::serialize::{Serialize, MappingMode, Writer};
+use crate::serialize::{Serialize, MappingMode};
 use crate::serialize;
 
 use std::fs::OpenOptions;
@@ -271,11 +271,13 @@ fn empty_writer() {
     let mut v = IntVectorWriter::new(&first, 13).unwrap();
     assert!(v.is_empty(), "Created a non-empty empty writer");
     assert!(v.is_open(), "Newly created writer is not open");
+    assert_eq!(v.filename(), first, "Invalid file name");
     v.close().unwrap();
 
     let mut w = IntVectorWriter::with_buf_len(&second, 13, 1024).unwrap();
     assert!(w.is_empty(), "Created a non-empty empty writer with custom buffer size");
     assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
+    assert_eq!(w.filename(), second, "Invalid file name with custom buffer size");
     w.close().unwrap();
 
     fs::remove_file(&first).unwrap();

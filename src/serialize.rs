@@ -8,8 +8,6 @@
 //! However, it is not feasible to validate all loaded data in high-performance code.
 //! The behavior of corrupted data structures is always undefined.
 //!
-//! There is also some documentation on the [serialization formats](https://github.com/jltsiren/simple-sds/blob/main/SERIALIZATION.md).
-//!
 //! # Serialization formats
 //!
 //! The serialization format of a structure, as implemented with trait [`Serialize`], is split into the header and the body.
@@ -33,44 +31,7 @@
 //!   The header stores the number of [`u64`] elements in the body as [`usize`].
 //!   The body stores `T` for [`Some`]`(T)` and is empty for [`None`].
 //!
-//! # Nested structures
-//!
-//! Assume that we have a nested structure `A` that contains `B`, which is in turn contains `C`.
-//! The serialization format of `A` should be the following:
-//!
-//! * Header of `A`.
-//!   * Header information.
-//!   * Header of `B`.
-//!     * Header information.
-//!     * Header of `C`.
-//! * Body of `C`.
-//!
-//! The header of the outer structure should always end with the header of the inner structure.
-//! If we want to generate `A` directly to a file, we can then start by writing a placeholder header of `A`.
-//! After we have finished writing the body, we go back to the beginning and write the true header.
-//!
-//! # Composite structures
-//!
-//! Assume that structure `A` contains `B` and `C`.
-//! The serialization format of `A` should be the following:
-//!
-//! * Header of `A`.
-//! * Structure `B`.
-//!   * Header of `B`.
-//!   * Body of `B`.
-//! * Structure `C`.
-//!   * Header of `C`.
-//!   * Body of `C`.
-//!
-//! In this case, each structure is responsible for its own header.
-//!
-//! # Writer structures
-//!
-//! Trait [`Writer`] provides an interface for writing a nested data structure directly to a file.
-//! Like with serialization, the innermost writer is responsible for handling the buffer and the file.
-//! The outermost structure is responsible for writing the header.
-//! Most methods in the outer writer should simply call the corresponding method of the inner writer.
-//! In [`Writer::write_header`], the outer writer should first write its own header before calling the inner writer.
+//! See also: [https://github.com/jltsiren/simple-sds/blob/main/SERIALIZATION.md](https://github.com/jltsiren/simple-sds/blob/main/SERIALIZATION.md).
 //!
 //! # Memory-mapped structures
 //!
@@ -90,7 +51,7 @@
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
-use std::io::{Error, ErrorKind, Seek, SeekFrom};
+use std::io::{Error, ErrorKind};
 use std::ops::Index;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -376,175 +337,6 @@ impl<V: Serialize> Serialize for Option<V> {
             result += value.size_in_elements();
         }
         result
-    }
-}
-
-//-----------------------------------------------------------------------------
-
-/// Ways of flushing a write buffer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum FlushMode {
-    /// Only flush the part of the buffer that can be flushed safely.
-    Safe,
-    /// Flush the entire buffer.
-    /// Subsequent writes to the buffer may leave it in an invalid state.
-    Final,
-}
-
-/// Write a nested data structure directly to a file using a buffer.
-///
-/// Any structure implementing `Writer` should also implement [`Drop`] that calls [`Writer::close`].
-/// The implementation should ignore any errors from [`Writer::close`] silently.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::serialize::{Serialize, Writer, FlushMode};
-/// use std::fs::{File, OpenOptions};
-/// use std::path::Path;
-/// use simple_sds::serialize;
-/// use std::{fs, io};
-///
-/// struct VecWriter {
-///     len: usize,
-///     file: Option<File>,
-///     buf: Vec<u64>,
-/// }
-///
-/// impl VecWriter {
-///     fn new<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<VecWriter> {
-///         let mut options = OpenOptions::new();
-///         let file = options.create(true).write(true).truncate(true).open(filename)?;
-///         let mut result = VecWriter {
-///             len: 0,
-///             file: Some(file),
-///             buf: Vec::with_capacity(buf_len),
-///         };
-///         result.write_header()?;
-///         Ok(result)
-///     }
-///
-///     fn push(&mut self, value: u64) {
-///         self.buf.push(value); self.len += 1;
-///         if self.buf.len() >= self.buf.capacity() {
-///             self.flush(FlushMode::Safe).unwrap();
-///         }
-///     }
-/// }
-///
-/// impl Writer for VecWriter {
-///     fn file(&mut self) -> Option<&mut File> {
-///         self.file.as_mut()
-///     }
-///
-///     fn flush(&mut self, _: FlushMode) -> io::Result<()> {
-///         if let Some(f) = self.file.as_mut() {
-///             self.buf.serialize_body(f)?;
-///             self.buf.clear();
-///         }
-///         Ok(())
-///     }
-///
-///     fn write_header(&mut self) -> io::Result<()> {
-///         if let Some(f) = self.file.as_mut() {
-///             self.len.serialize(f)?;
-///         }
-///         Ok(())
-///     }
-///
-///     fn close_file(&mut self) {
-///         self.file = None;
-///     }
-/// }
-///
-/// impl Drop for VecWriter {
-///     fn drop(&mut self) {
-///         let _ = self.close();
-///     }
-/// }
-///
-/// let original: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-/// let filename = serialize::temp_file_name("vec-writer");
-/// let mut writer = VecWriter::new(&filename, 4).unwrap();
-/// for value in original.iter() {
-///     writer.push(*value);
-/// }
-/// writer.close().unwrap();
-///
-/// let copy: Vec<u64> = serialize::load_from(&filename).unwrap();
-/// assert_eq!(copy, original);
-/// fs::remove_file(&filename).unwrap();
-/// ```
-pub trait Writer {
-    /// Returns the file used by the writer, or [`None`] if the file is closed.
-    fn file(&mut self) -> Option<&mut File>;
-
-    /// Writes the contents of the buffer to the file.
-    ///
-    /// No effect if the file is closed.
-    /// If `FlushMode::Final` is used, further writes may leave the file in an invalid state.
-    ///
-    /// # Errors
-    ///
-    /// Any errors from writing to the file may be passed through.
-    fn flush(&mut self, mode: FlushMode) -> io::Result<()>;
-
-    /// Writes the header to the current offset in the file.
-    ///
-    /// No effect if the file is closed.
-    ///
-    /// # Errors
-    ///
-    /// Any errors from writing to the file may be passed through.
-    fn write_header(&mut self) -> io::Result<()>;
-
-    /// Closes the file immediately without flushing the buffer.
-    ///
-    /// No effect if the file is closed.
-    fn close_file(&mut self);
-
-    /// Returns `true` if the file is open for writing.
-    fn is_open(&mut self) -> bool {
-        match self.file() {
-            Some(_) => true,
-            None    => false,
-        }
-    }
-
-    /// Seeks to the start of the file.
-    ///
-    /// No effect if the file is closed.
-    ///
-    /// # Errors
-    ///
-    /// Any errors from seeking in the file will be passed through.
-    fn seek_to_start(&mut self) -> io::Result<()> {
-        if let Some(f) = self.file() {
-            f.seek(SeekFrom::Start(0))?;
-        }
-        Ok(())
-    }
-
-    /// Flushes the buffer, writes the header, and closes the file.
-    ///
-    /// No effect if the file is closed.
-    /// Otherwise this is equivalent to calling the following methods:
-    /// * `self.flush(FlushMode::Final)`
-    /// * `self.seek_to_start()`
-    /// * `self.write_header()`
-    /// * `self.close_file()`
-    ///
-    /// # Errors
-    ///
-    /// Any errors from the method calls will be passed through.
-    fn close(&mut self) -> io::Result<()> {
-        if self.is_open() {
-            self.flush(FlushMode::Final)?;
-            self.seek_to_start()?;
-            self.write_header()?;
-            self.close_file();
-        }
-        Ok(())
     }
 }
 
