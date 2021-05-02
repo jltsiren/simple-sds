@@ -258,12 +258,14 @@ fn empty_writer() {
     assert!(v.is_empty(), "Created a non-empty empty writer");
     assert_eq!(v.len(), 0, "Nonzero length for an empty writer");
     assert!(v.is_open(), "Newly created writer is not open");
+    assert_eq!(v.filename(), first, "Invalid file name");
     v.close().unwrap();
 
     let mut header: Vec<u64> = Vec::new();
     let mut w = RawVectorWriter::with_buf_len(&second, &mut header, 1024).unwrap();
     assert!(w.is_empty(), "Created a non-empty empty writer with custom buffer size");
     assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
+    assert_eq!(w.filename(), second, "Invalid file name with custom buffer size");
     w.close().unwrap();
 
     fs::remove_file(&first).unwrap();

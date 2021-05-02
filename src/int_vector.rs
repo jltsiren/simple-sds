@@ -546,6 +546,11 @@ impl IntVectorWriter {
         Ok(result)
     }
 
+    /// Returns the name of the file.
+    pub fn filename(&self) -> &Path {
+        self.writer.filename()
+    }
+
     /// Returns `true` if the file is open for writing.
     pub fn is_open(&self) -> bool {
         self.writer.is_open()

@@ -5,7 +5,7 @@ use crate::bits;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{cmp, io};
 
 #[cfg(test)]
@@ -428,7 +428,6 @@ impl RawVector {
     /// assert_eq!(v, w);
     /// ```
     pub fn resize(&mut self, new_len: usize, value: bool) {
-
         // Fill the unused bits if necessary.
         if new_len > self.len() {
             self.set_unused_bits(value);
@@ -660,8 +659,9 @@ impl AsRef<Vec<u64>> for RawVector {
 pub struct RawVectorWriter {
     len: usize,
     buf_len: usize,
-    file: Option<File>,
     buf: RawVector,
+    file: Option<File>,
+    filename: PathBuf,
 }
 
 // Ways of flushing a write buffer.
@@ -700,14 +700,17 @@ impl RawVectorWriter {
     /// * `header`: Header of the parent structure (may be empty).
     pub fn new<P: AsRef<Path>>(filename: P, header: &mut Vec<u64>) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
-        let file = options.create(true).write(true).truncate(true).open(filename)?;
+        let file = options.create(true).write(true).truncate(true).open(&filename)?;
         // Allocate one extra word for overflow.
         let buf = RawVector::with_capacity(Self::DEFAULT_BUFFER_SIZE + bits::WORD_BITS);
+        let mut name = PathBuf::new();
+        name.push(&filename);
         let mut result = RawVectorWriter {
             len: 0,
             buf_len: Self::DEFAULT_BUFFER_SIZE,
-            file: Some(file),
             buf: buf,
+            file: Some(file),
+            filename: name,
         };
         result.write_header(header)?;
         Ok(result)
@@ -727,17 +730,25 @@ impl RawVectorWriter {
         // Buffer length must be a positive multiple of `bits::WORD_BITS`.
         let buf_len = cmp::max(bits::round_up_to_word_bits(buf_len), bits::WORD_BITS);
         let mut options = OpenOptions::new();
-        let file = options.create(true).write(true).truncate(true).open(filename)?;
+        let file = options.create(true).write(true).truncate(true).open(&filename)?;
         // Allocate one extra word for overflow.
         let buf = RawVector::with_capacity(buf_len + bits::WORD_BITS);
+        let mut name = PathBuf::new();
+        name.push(&filename);
         let mut result = RawVectorWriter {
             len: 0,
             buf_len: buf_len,
-            file: Some(file),
             buf: buf,
+            file: Some(file),
+            filename: name,
         };
         result.write_header(header)?;
         Ok(result)
+    }
+
+    /// Returns the name of the file.
+    pub fn filename(&self) -> &Path {
+        self.filename.as_path()
     }
 
     /// Returns `true` if the file is open for writing.
