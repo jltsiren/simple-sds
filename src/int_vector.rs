@@ -2,10 +2,9 @@
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
 use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
-use crate::serialize::{MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
+use crate::serialize::{MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
 
-use std::fs::File;
 use std::io::{Error, ErrorKind};
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator, Extend};
 use std::path::Path;
@@ -462,7 +461,6 @@ impl IntoIterator for IntVector {
 /// ```
 /// use simple_sds::int_vector::{IntVector, IntVectorWriter};
 /// use simple_sds::ops::{Element, Access, Push};
-/// use simple_sds::serialize::Writer;
 /// use simple_sds::serialize;
 /// use std::fs;
 ///
@@ -503,16 +501,14 @@ impl IntVectorWriter {
         if width == 0 || width > bits::WORD_BITS {
             return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
         }
-        let writer = RawVectorWriter::new(filename)?;
-        let mut result = IntVectorWriter {
+        // The header will contain `len` and `width`.
+        let mut header: Vec<u64> = vec![0, 0];
+        let writer = RawVectorWriter::new(filename, &mut header)?;
+        let result = IntVectorWriter {
             len: 0,
             width: width,
             writer: writer,
         };
-        // TODO: This is an ugly hack. The writer already wrote the header, so we have to
-        // go back and write the right header.
-        result.seek_to_start()?;
-        result.write_header()?;
         Ok(result)
     }
 
@@ -539,17 +535,34 @@ impl IntVectorWriter {
         if width == 0 || width > bits::WORD_BITS {
             return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
         }
-        let writer = RawVectorWriter::with_buf_len(filename, buf_len * width)?;
-        let mut result = IntVectorWriter {
+        // The header will contain `len` and `width`.
+        let mut header: Vec<u64> = vec![0, 0];
+        let writer = RawVectorWriter::with_buf_len(filename, &mut header, buf_len * width)?;
+        let result = IntVectorWriter {
             len: 0,
             width: width,
             writer: writer,
         };
-        // TODO: This is an ugly hack. The writer already wrote the header, so we have to
-        // go back and write the right header.
-        result.seek_to_start()?;
-        result.write_header()?;
         Ok(result)
+    }
+
+    /// Returns `true` if the file is open for writing.
+    pub fn is_open(&self) -> bool {
+        self.writer.is_open()
+    }
+
+    /// Flushes the buffer, writes the header, and closes the file.
+    ///
+    /// No effect if the file is closed.
+    ///
+    /// # Errors
+    ///
+    /// Any I/O errors will be passed through.
+    pub fn close(&mut self) -> io::Result<()> {
+        let mut header: Vec<u64> = Vec::new();
+        header.push(self.len as u64);
+        header.push(self.width as u64);
+        self.writer.close_with_header(&mut header)
     }
 }
 
@@ -579,29 +592,6 @@ impl Push for IntVectorWriter {
     fn push(&mut self, value: <Self as Element>::Item) {
         unsafe { self.writer.push_int(value, self.width()); }
         self.len += 1;
-    }
-}
-
-impl Writer for IntVectorWriter {
-    fn file(&mut self) -> Option<&mut File> {
-        self.writer.file()
-    }
-
-    fn flush(&mut self, mode: FlushMode) -> io::Result<()> {
-        self.writer.flush(mode)
-    }
-
-    fn write_header(&mut self) -> io::Result<()> {
-        if let Some(f) = self.writer.file() {
-            self.len.serialize(f)?;
-            self.width.serialize(f)?;
-        }
-        self.writer.write_header()?;
-        Ok(())
-    }
-
-    fn close_file(&mut self) {
-        self.writer.close_file()
     }
 }
 

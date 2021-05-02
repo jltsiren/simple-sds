@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
-use crate::serialize::{Serialize, MappingMode, Writer};
+use crate::serialize::{Serialize, MappingMode};
 use crate::serialize;
 
 use std::fs::OpenOptions;

@@ -1,10 +1,10 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize, Writer, FlushMode};
+use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Seek, SeekFrom};
 use std::path::Path;
 use std::{cmp, io};
 
@@ -632,13 +632,13 @@ impl AsRef<Vec<u64>> for RawVector {
 ///
 /// ```
 /// use simple_sds::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw};
-/// use simple_sds::serialize::Writer;
 /// use simple_sds::serialize;
 /// use std::fs;
 ///
 /// let filename = serialize::temp_file_name("raw-vector-writer");
 /// let width = 29;
-/// let mut writer = RawVectorWriter::new(&filename).unwrap();
+/// let mut header: Vec<u64> = Vec::new();
+/// let mut writer = RawVectorWriter::new(&filename, &mut header).unwrap();
 /// unsafe {
 ///     writer.push_int(123, width);
 ///     writer.push_int(456, width);
@@ -664,6 +664,16 @@ pub struct RawVectorWriter {
     buf: RawVector,
 }
 
+// Ways of flushing a write buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum FlushMode {
+    // Only flush the part of the buffer that can be flushed safely.
+    Safe,
+    // Flush the entire buffer.
+    // Subsequent writes to the buffer may leave it in an invalid state.
+    Final,
+}
+
 impl RawVectorWriter {
     /// Default buffer size in bits.
     pub const DEFAULT_BUFFER_SIZE: usize = 8 * 1024 * 1024;
@@ -683,7 +693,12 @@ impl RawVectorWriter {
     /// Creates an empty vector stored in the specified file with the default buffer size.
     ///
     /// If the file already exists, it will be overwritten.
-    pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<RawVectorWriter> {
+    ///
+    /// # Arguments
+    ///
+    /// * `filename`: Name of the file.
+    /// * `header`: Header of the parent structure (may be empty).
+    pub fn new<P: AsRef<Path>>(filename: P, header: &mut Vec<u64>) -> io::Result<RawVectorWriter> {
         let mut options = OpenOptions::new();
         let file = options.create(true).write(true).truncate(true).open(filename)?;
         // Allocate one extra word for overflow.
@@ -694,7 +709,7 @@ impl RawVectorWriter {
             file: Some(file),
             buf: buf,
         };
-        result.write_header()?;
+        result.write_header(header)?;
         Ok(result)
     }
 
@@ -706,8 +721,9 @@ impl RawVectorWriter {
     /// # Arguments
     ///
     /// * `filename`: Name of the file.
+    /// * `header`: Header of the parent structure (may be empty).
     /// * `buf_len`: Buffer size in bits.
-    pub fn with_buf_len<P: AsRef<Path>>(filename: P, buf_len: usize) -> io::Result<RawVectorWriter> {
+    pub fn with_buf_len<P: AsRef<Path>>(filename: P, header: &mut Vec<u64>, buf_len: usize) -> io::Result<RawVectorWriter> {
         // Buffer length must be a positive multiple of `bits::WORD_BITS`.
         let buf_len = cmp::max(bits::round_up_to_word_bits(buf_len), bits::WORD_BITS);
         let mut options = OpenOptions::new();
@@ -720,34 +736,19 @@ impl RawVectorWriter {
             file: Some(file),
             buf: buf,
         };
-        result.write_header()?;
+        result.write_header(header)?;
         Ok(result)
     }
-}
 
-//-----------------------------------------------------------------------------
-
-impl PushRaw for RawVectorWriter {
-    fn push_bit(&mut self, value: bool) {
-        self.buf.push_bit(value); self.len += 1;
-        if self.buf.len() >= self.buf_len {
-            self.flush(FlushMode::Safe).unwrap();
+    /// Returns `true` if the file is open for writing.
+    pub fn is_open(&self) -> bool {
+        match self.file {
+            Some(_) => true,
+            None    => false,
         }
     }
 
-    unsafe fn push_int(&mut self, value: u64, width: usize) {
-        self.buf.push_int(value, width); self.len += width;
-        if self.buf.len() >= self.buf_len {
-            self.flush(FlushMode::Safe).unwrap();
-        }
-    }
-}
-
-impl Writer for RawVectorWriter {
-    fn file(&mut self) -> Option<&mut File> {
-        self.file.as_mut()
-    }
-
+    // Flushes the buffer.
     fn flush(&mut self, mode: FlushMode) -> io::Result<()> {
         if let Some(f) = self.file.as_mut() {
             // Handle the overflow if not serializing the entire buffer.
@@ -773,17 +774,62 @@ impl Writer for RawVectorWriter {
         Ok(())
     }
 
-    fn write_header(&mut self) -> io::Result<()> {
+    // Seeks to the start of the file, appends its own header to `header`, and writes it into the file.
+    fn write_header(&mut self, header: &mut Vec<u64>) -> io::Result<()> {
         if let Some(f) = self.file.as_mut() {
-            self.len.serialize(f)?;
-            let words: usize = bits::bits_to_words(self.len);
-            words.serialize(f)?;
+            f.seek(SeekFrom::Start(0))?;
+            header.push(self.len as u64);
+            header.push(bits::bits_to_words(self.len) as u64);
+            header.serialize_body(f)?;
         }
         Ok(())
     }
 
-    fn close_file(&mut self) {
-        self.file = None;
+    /// Flushes the buffer, writes the header, and closes the file.
+    ///
+    /// No effect if the file is closed.
+    ///
+    /// # Errors
+    ///
+    /// Any I/O errors will be passed through.
+    pub fn close(&mut self) -> io::Result<()> {
+        let mut header: Vec<u64> = Vec::new();
+        self.close_with_header(&mut header)
+    }
+
+    /// Flushes the buffer, writes the header, and closes the file.
+    ///
+    /// No effect if the file is closed.
+    /// This method should only be called by the `close` method of a parent writer.
+    ///
+    /// # Errors
+    ///
+    /// Any I/O errors will be passed through.
+    pub fn close_with_header(&mut self, header: &mut Vec<u64>) -> io::Result<()> {
+        if self.is_open() {
+            self.flush(FlushMode::Final)?;
+            self.write_header(header)?;
+            self.file = None
+        }
+        Ok(())
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl PushRaw for RawVectorWriter {
+    fn push_bit(&mut self, value: bool) {
+        self.buf.push_bit(value); self.len += 1;
+        if self.buf.len() >= self.buf_len {
+            self.flush(FlushMode::Safe).unwrap();
+        }
+    }
+
+    unsafe fn push_int(&mut self, value: u64, width: usize) {
+        self.buf.push_int(value, width); self.len += width;
+        if self.buf.len() >= self.buf_len {
+            self.flush(FlushMode::Safe).unwrap();
+        }
     }
 }
 

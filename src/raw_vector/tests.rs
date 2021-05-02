@@ -253,13 +253,15 @@ fn empty_writer() {
     let first = serialize::temp_file_name("empty-raw-vector-writer");
     let second = serialize::temp_file_name("empty-raw-vector-writer");
 
-    let mut v = RawVectorWriter::new(&first).unwrap();
+    let mut header: Vec<u64> = Vec::new();
+    let mut v = RawVectorWriter::new(&first, &mut header).unwrap();
     assert!(v.is_empty(), "Created a non-empty empty writer");
     assert_eq!(v.len(), 0, "Nonzero length for an empty writer");
     assert!(v.is_open(), "Newly created writer is not open");
     v.close().unwrap();
 
-    let mut w = RawVectorWriter::with_buf_len(&second, 1024).unwrap();
+    let mut header: Vec<u64> = Vec::new();
+    let mut w = RawVectorWriter::with_buf_len(&second, &mut header, 1024).unwrap();
     assert!(w.is_empty(), "Created a non-empty empty writer with custom buffer size");
     assert!(w.is_open(), "Newly created writer is not open with custom buffer size");
     w.close().unwrap();
@@ -278,7 +280,8 @@ fn push_bits_to_writer() {
         correct.push(rng.gen());
     }
 
-    let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
+    let mut header: Vec<u64> = Vec::new();
+    let mut v = RawVectorWriter::with_buf_len(&filename, &mut header, 1024).unwrap();
     for bit in correct.iter() {
         v.push_bit(*bit);
     }
@@ -301,7 +304,8 @@ fn push_ints_to_writer() {
     let width: usize = 31;
     let correct = random_vector(71, width);
 
-    let mut v = RawVectorWriter::with_buf_len(&filename, 1024).unwrap();
+    let mut header: Vec<u64> = Vec::new();
+    let mut v = RawVectorWriter::with_buf_len(&filename, &mut header, 1024).unwrap();
     for value in correct.iter() {
         unsafe { v.push_int(*value, width); }
     }
@@ -325,7 +329,8 @@ fn large_writer() {
     let width: usize = 31;
     let correct = random_vector(620001, width);
 
-    let mut v = RawVectorWriter::new(&filename).unwrap();
+    let mut header: Vec<u64> = Vec::new();
+    let mut v = RawVectorWriter::new(&filename, &mut header).unwrap();
     for value in correct.iter() {
         unsafe { v.push_int(*value, width); }
     }
