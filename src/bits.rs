@@ -746,6 +746,8 @@ mod tests {
     #[ignore]
     fn environment() {
         assert_eq!(mem::size_of::<usize>(), 8, "Things may not work if usize is not 64 bits");
+        assert_eq!(mem::align_of_val(&1usize), 8, "Things may not work if the minimum alignment of usize is not 8 bytes");
+        assert_eq!(mem::align_of_val(&1u64), 8, "Things may not work if the minimum alignment of u64 is not 8 bytes");
         assert!(cfg!(target_endian = "little"), "Things may not work on a big-endian system");
         assert!(cfg!(any(target_arch = "x86_64", target_arch = "aarch64")), "Target architecture should be x86_64 or aarch64");
         assert!(cfg!(unix), "Memory mapping requires Unix-like OS");
