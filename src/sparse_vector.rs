@@ -7,13 +7,18 @@
 //! > Proc. ALENEX 2007.  
 //! > DOI: [10.1137/1.9781611972870.6](https://doi.org/10.1137/1.9781611972870.6)
 //!
+//! The rule for selecting the number of low bits and buckets is from:
+//!
+//! > Ma, Puglisi, Raman, Zhukova: On Elias-Fano for Rank Queries in FM-Indexes.  
+//! > Proc. DCC 2021.  
+//! > DOI: [10.1109/DCC50243.2021.00030](https://doi.org/10.1109/DCC50243.2021.00030)
+//!
 //! Assume that we have a bitvector of length `n` with `m` set bits, with `m` much smaller than `n`.
-//! Let `w = log(n) - log(m)`.
-//! In the integer array interpretation (see [`BitVec`]), we split each value into the low `w` bits and the high `log(m)` bits.
-//! The low bits are stored explicitly in an [`IntVector`].
-//! The values are placed into buckets by the high bits.
+//! Let `w ≈ log(n) - log(m)`.
+//! In the integer array interpretation (see [`BitVec`]), we take the low `w` bits from each value and store them in an [`IntVector`].
+//! We place the values in buckets by the remaining high bits.
 //! A [`BitVector`] encodes the number of values in each bucket in unary.
-//! If there are `k >= 0` values with the same high part, the bitvector will contain `k` set bits followed by an unset bit.
+//! If there are `k >= 0` values in a bucket, the bitvector will contain `k` set bits followed by an unset bit.
 //! Then
 //!
 //! > `select(i) = low[i] + ((high.select(i) - i) << w)`.
