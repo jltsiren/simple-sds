@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.2.0. Updated 2021-04-30.
+For version 0.2.0. Updated 2021-05-10.
 
 ## Basics
 
@@ -50,7 +50,10 @@ Serialization format for optional structures:
 The reader can easily skip an optional structure, because its length is stored before the structure itself.
 If the reader needs to pass through an optional structure without understanding the format, it can be loaded and serialized as a vector of elements.
 
-## Raw bitvectors
+**Note:** Making a structure optional implies that the content of the structure optional.
+An empty structure may often be a better way of representing core data that is not always present.
+
+## Raw bitvector
 
 A **raw bitvector** is a vector of bits.
 The items of a raw bitvector are concatenated and stored in a vector of elements in little-endian order.
@@ -95,7 +98,6 @@ The support structures are often both application-dependent and implementation-d
 
 A **sparse bitvector** is an Elias-Fano encoded vector of bits that supports rank, select, and similar queries.
 It can be interpreted as a set of integers or a vector of sorted integers, where the integers are the positions of the set bits.
-The encoding also supports multisets / duplicate items, but the semantics are not fully clear yet.
 
 Assume that the length of the vector of bits is `n` and that there are `m` set bits.
 Each integer is split into a **low part** and a **high part**.
@@ -115,3 +117,5 @@ Serialization format for sparse bitvectors:
 1. Length of the vector of bits as an element.
 2. Bitvector storing the high parts.
 3. Integer vector storing the low parts.
+
+**Note:** The encoding also supports multisets / duplicate items, but the semantics are not fully clear yet.
