@@ -302,10 +302,8 @@ pub unsafe fn high_set_unchecked(n: usize) -> u64 {
 /// ```
 #[inline]
 pub fn bit_len(n: u64) -> usize {
-    match n {
-        0 => 1,
-        _ => WORD_BITS - (n.leading_zeros() as usize),
-    }
+    // The `| 1` to avoid a branch was obvious in hindsight.
+    WORD_BITS - ((n | 1).leading_zeros() as usize)
 }
 
 /// Returns the bit offset of the set bit of specified rank.
