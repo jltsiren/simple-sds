@@ -8,7 +8,7 @@ use crate::serialize::Serialize;
 use crate::bits;
 
 use std::io::{Error, ErrorKind};
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator};
+use std::iter::{FusedIterator, FromIterator};
 use std::{io, marker};
 
 pub mod rank_support;

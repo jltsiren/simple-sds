@@ -34,7 +34,7 @@ use crate::bits;
 
 use std::convert::TryFrom;
 use std::io::{Error, ErrorKind};
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, Extend};
+use std::iter::FusedIterator;
 use std::{cmp, io};
 
 #[cfg(test)]

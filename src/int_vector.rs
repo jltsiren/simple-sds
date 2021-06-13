@@ -6,7 +6,7 @@ use crate::serialize::{MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
 
 use std::io::{Error, ErrorKind};
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator, Extend};
+use std::iter::{FusedIterator, FromIterator};
 use std::path::Path;
 use std::io;
 

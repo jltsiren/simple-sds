@@ -4,7 +4,6 @@ use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::serialize;
 
-use std::iter::{DoubleEndedIterator, ExactSizeIterator};
 use std::{cmp, fs};
 
 use rand::distributions::{Bernoulli, Distribution};
