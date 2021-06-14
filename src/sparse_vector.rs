@@ -164,7 +164,6 @@ impl SparseVector {
         SparseVector::try_from(builder).unwrap()
     }
 
-    // FIXME tests
     /// Builds a vector from the values in the iterator using multiset semantics.
     ///
     /// Returns an error message if the values are not sorted.
@@ -343,7 +342,6 @@ impl SparseBuilder {
         })
     }
 
-    // FIXME tests
     /// Returns an empty SparseBuilder with multiset semantics.
     ///
     /// # Arguments
@@ -392,7 +390,6 @@ impl SparseBuilder {
         }
     }
 
-    // FIXME tests
     /// Returns `true` if the builder is using multiset semantics.
     pub fn is_multiset(&self) -> bool {
         self.increment == 0
@@ -541,12 +538,15 @@ impl<'a> Iterator for Iter<'a> {
         match self.next_set {
             Some(value) => {
                 if value == self.next {
-                    self.next_set = if let Some((_, index)) = self.parent.next() {
-                        Some(index)
-                    } else {
-                        // If `next_set == last_set` already, we cannot reach the same index again.
-                        self.last_set
-                    };
+                    // We have to find the next unvisited (unique) value, and `last_set` is the initial candidate.
+                    self.next_set = self.last_set;
+                    // Skip duplicates until we find a new value or run out of values.
+                    while let Some((_, index)) = self.parent.next() {
+                        if index > self.next {
+                            self.next_set = Some(index);
+                            break;
+                        }
+                    }
                     self.next += 1;
                     Some(true)
                 } else {
@@ -577,12 +577,15 @@ impl<'a> DoubleEndedIterator for Iter<'a> {
         match self.last_set {
             Some(value) => {
                 if value == self.limit {
-                    self.last_set = if let Some((_, index)) = self.parent.next_back() {
-                        Some(index)
-                    } else {
-                        // If `next_set == last_set` already, we cannot reach the same index again.
-                        self.next_set
-                    };
+                    // We have to find the previsous unvisited (unique) value, and `next_set` is the initial candidate.
+                    self.last_set = self.next_set;
+                    // Skip duplicates until we find a new value or run out of values.
+                    while let Some((_, index)) = self.parent.next_back() {
+                        if index < self.limit {
+                            self.last_set = Some(index);
+                            break;
+                        }
+                    }
                     Some(true)
                 } else {
                     Some(false)
@@ -933,9 +936,6 @@ impl Serialize for SparseVector {
         high.enable_select_zero();
 
         // Sanity checks.
-        if low.len() > len {
-            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
-        }
         if low.len() != high.count_ones() {
             return Err(Error::new(ErrorKind::InvalidData, "Inconsistent number of set bits"));
         }
