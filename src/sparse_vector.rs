@@ -27,7 +27,7 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Element, Access, BitVec, Rank, Select, PredSucc, SelectZero};
+use crate::ops::{Vector, Access, BitVec, Rank, Select, PredSucc, SelectZero};
 use crate::raw_vector::{RawVector, AccessRaw};
 use crate::serialize::Serialize;
 use crate::bits;

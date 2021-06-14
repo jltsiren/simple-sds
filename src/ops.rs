@@ -2,12 +2,12 @@
 //!
 //! # Integer vectors
 //!
-//! * [`Element`]: Basic operations.
+//! * [`Vector`]: Basic operations.
 //! * [`Resize`]: Resizable vectors.
 //! * [`Pack`]: Space-efficiency by e.g. bit packing.
 //! * [`Access`]: Random access.
 //! * [`Push`], [`Pop`]: Stack operations.
-//! * [`SubElement`]: The elements are tuples of fixed type.
+//! * [`SubItem`]: The items are tuples of fixed type.
 //! * [`AccessSub`]: Access to individual fields in the tuples.
 //!
 //! # Bitvectors
@@ -20,12 +20,12 @@
 
 //-----------------------------------------------------------------------------
 
-/// A vector that contains elements of a fixed type.
+/// A vector that contains items of a fixed type.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Element, Resize, Pack, Access};
+/// use simple_sds::ops::{Vector, Resize, Pack, Access};
 /// use simple_sds::bits;
 ///
 /// #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,7 +37,7 @@
 ///     }
 /// }
 ///
-/// impl Element for Example {
+/// impl Vector for Example {
 ///     type Item = u8;
 ///
 ///     fn len(&self) -> usize {
@@ -90,7 +90,7 @@
 ///     }
 /// }
 ///
-/// // Element
+/// // Vector
 /// let mut v = Example::new();
 /// assert!(v.is_empty());
 /// assert_eq!(v.len(), 0);
@@ -117,11 +117,11 @@
 ///     assert_eq!(v.get(i), i as u8);
 /// }
 /// ```
-pub trait Element {
-    /// The type of the elements in the vector.
+pub trait Vector {
+    /// The type of the items in the vector.
     type Item;
 
-    /// Returns the number of elements in the vector.
+    /// Returns the number of items in the vector.
     fn len(&self) -> usize;
 
     /// Returns `true` if the vector is empty.
@@ -129,7 +129,7 @@ pub trait Element {
         self.len() == 0
     }
 
-    /// Returns the width of of an element in bits.
+    /// Returns the width of of an item in bits.
     fn width(&self) -> usize;
 
     /// Returns the maximum length of the vector.
@@ -138,8 +138,8 @@ pub trait Element {
 
 /// A vector that can be resized.
 ///
-/// See [`Element`] for an example.
-pub trait Resize: Element {
+/// See [`Vector`] for an example.
+pub trait Resize: Vector {
     /// Resizes the vector to a specified length.
     ///
     /// If `new_len > self.len()`, the new `new_len - self.len()` values will be initialized.
@@ -153,15 +153,15 @@ pub trait Resize: Element {
     /// # Panics
     ///
     /// May panic if the length would exceed the maximum length.
-    fn resize(&mut self, new_len: usize, value: <Self as Element>::Item);
+    fn resize(&mut self, new_len: usize, value: <Self as Vector>::Item);
 
     /// Clears the vector without freeing the data.
     fn clear(&mut self);
 
-    /// Returns the number of elements that the vector can store without reallocations.
+    /// Returns the number of items that the vector can store without reallocations.
     fn capacity(&self) -> usize;
 
-    /// Reserves space for storing at least `self.len() + additional` elements in the vector.
+    /// Reserves space for storing at least `self.len() + additional` items in the vector.
     ///
     /// Does nothing if the capacity is already sufficient.
     ///
@@ -173,59 +173,59 @@ pub trait Resize: Element {
 
 /// Store the vector more space-efficiently.
 ///
-/// This may, for example, reduce the width of an element.
+/// This may, for example, reduce the width of an item.
 ///
-/// See [`Element`] for an example.
-pub trait Pack: Element {
-    /// Try to store the elements of the vector more space-efficiently.
+/// See [`Vector`] for an example.
+pub trait Pack: Vector {
+    /// Try to store the items of the vector more space-efficiently.
     fn pack(&mut self);
 }
 
 //-----------------------------------------------------------------------------
 
-/// A vector that supports random access to its elements.
+/// A vector that supports random access to its items.
 ///
-/// See [`Element`] for an example.
-pub trait Access: Element {
-    /// Gets an element from the vector.
+/// See [`Vector`] for an example.
+pub trait Access: Vector {
+    /// Gets an item from the vector.
     ///
     /// # Panics
     ///
     /// May panic if `index` is not a valid index in the vector.
     /// May panic from I/O errors.
-    fn get(&self, index: usize) -> <Self as Element>::Item;
+    fn get(&self, index: usize) -> <Self as Vector>::Item;
 
     /// Returns `true` if the underlying data is mutable.
     ///
     /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
     fn is_mutable(&self) -> bool;
 
-    /// Sets an element in the vector.
+    /// Sets an item in the vector.
     ///
     ///
     /// # Arguments
     ///
     /// * `index`: Index in the vector.
-    /// * `value`: New value of the element.
+    /// * `value`: New value of the item.
     ///
     /// # Panics
     ///
     /// May panic if `index` is not a valid index in the vector.
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
-    fn set(&mut self, index: usize, value: <Self as Element>::Item);
+    fn set(&mut self, index: usize, value: <Self as Vector>::Item);
 }
 
 //-----------------------------------------------------------------------------
 
-/// Append elements to a vector.
+/// Append items to a vector.
 ///
 /// [`Pop`] is a separate trait, because a file writer may not implement it.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Element, Push, Pop};
+/// use simple_sds::ops::{Vector, Push, Pop};
 ///
 /// struct Example(Vec<u8>);
 ///
@@ -235,7 +235,7 @@ pub trait Access: Element {
 ///     }
 /// }
 ///
-/// impl Element for Example {
+/// impl Vector for Example {
 ///     type Item = u8;
 ///
 ///     fn len(&self) -> usize {
@@ -278,38 +278,39 @@ pub trait Access: Element {
 /// assert_eq!(v.pop(), None);
 /// assert!(v.is_empty());
 /// ```
-pub trait Push: Element {
-    /// Appends an element to the vector.
+pub trait Push: Vector {
+    /// Appends an item to the vector.
     ///
     /// # Panics
     ///
     /// May panic from I/O errors.
     /// May panic if the vector would exceed the maximum length.
-    fn push(&mut self, value: <Self as Element>::Item);
+    fn push(&mut self, value: <Self as Vector>::Item);
 }
 
-/// Remove and return top elements from a vector.
+/// Remove and return top items from a vector.
 ///
 /// [`Push`] is a separate trait, because a file writer may not implement `Pop`.
 ///
 /// See [`Push`] for an example.
-pub trait Pop: Element {
-    /// Removes and returns the last element from the vector.
-    /// Returns [`None`] if there are no more elements in the vector.
-    fn pop(&mut self) -> Option<<Self as Element>::Item>;
+pub trait Pop: Vector {
+    /// Removes and returns the last item from the vector.
+    ///
+    /// Returns [`None`] if there are no more items in the vector.
+    fn pop(&mut self) -> Option<<Self as Vector>::Item>;
 }
 
 //-----------------------------------------------------------------------------
 
-/// A vector that contains elements with a fixed number of subelements of a fixed type in each element.
+/// A vector that contains items with a fixed number of subitems of a fixed type in each item.
 ///
-/// Term *index* refers to the location of an element within a vector, while *offset* refers to the location of a subelement within an element.
-/// Every subelement at the same offset has the same width in bits.
+/// Term *index* refers to the location of an item within a vector, while *offset* refers to the location of a subitem within an item.
+/// Every subitem at the same offset has the same width in bits.
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Element, SubElement, AccessSub};
+/// use simple_sds::ops::{Vector, SubItem, AccessSub};
 /// use simple_sds::bits;
 /// use std::mem;
 ///
@@ -321,7 +322,7 @@ pub trait Pop: Element {
 ///     }
 /// }
 ///
-/// impl Element for Example {
+/// impl Vector for Example {
 ///     type Item = [u8; 8];
 ///
 ///     fn len(&self) -> usize {
@@ -337,10 +338,10 @@ pub trait Pop: Element {
 ///     }
 /// } 
 ///
-/// impl SubElement for Example {
+/// impl SubItem for Example {
 ///     type SubItem = u8;
 ///
-///     fn element_len(&self) -> usize {
+///     fn item_len(&self) -> usize {
 ///         8
 ///     }
 ///
@@ -359,10 +360,10 @@ pub trait Pop: Element {
 ///     }
 /// }
 ///
-/// // SubElement
+/// // SubItem
 /// let v = Example::new();
 /// assert!(v.is_empty());
-/// assert_eq!(v.element_len(), mem::size_of::<<Example as Element>::Item>());
+/// assert_eq!(v.item_len(), mem::size_of::<<Example as Vector>::Item>());
 /// for i in 0..v.len() {
 ///     assert_eq!(v.sub_width(i), bits::bit_len(u8::MAX as u64));
 /// }
@@ -376,52 +377,52 @@ pub trait Pop: Element {
 /// v.set_sub(1, 3, 55u8);
 /// assert_eq!(v.sub(1, 3), 55u8);
 /// ```
-pub trait SubElement: Element {
-    /// The type of the subelements of an element.
+pub trait SubItem: Vector {
+    /// The type of the subitems of an item.
     type SubItem;
 
-    /// Returns the number of subelements in an element.
-    fn element_len(&self) -> usize;
+    /// Returns the number of subitems in an item.
+    fn item_len(&self) -> usize;
 
-    /// Returns the width of the specified subelement in bits.
+    /// Returns the width of the specified subitem in bits.
     ///
     /// # Panics
     ///
-    /// May panic if `offset >= self.element_len()`.
+    /// May panic if `offset >= self.item_len()`.
     fn sub_width(&self, offset: usize) -> usize;
 }
 
-/// A vector that supports random access to the subelements of its elements.
+/// A vector that supports random access to the subitems of its items.
 ///
-/// See [`SubElement`] for an example.
-pub trait AccessSub: SubElement {
-    /// Gets a subelement from the vector.
+/// See [`SubItem`] for an example.
+pub trait AccessSub: SubItem {
+    /// Gets a subitem from the vector.
     ///
     /// # Arguments
     ///
     /// * `index`: Index in the vector.
-    /// * `offset`: Offset in the element.
+    /// * `offset`: Offset in the item.
     ///
     /// # Panics
     ///
-    /// May panic if `index` is not a valid index in the vector or `offset` is not a valid offset in the element.
+    /// May panic if `index` is not a valid index in the vector or `offset` is not a valid offset in the item.
     /// May panic from I/O errors.
-    fn sub(&self, index: usize, offset: usize) -> <Self as SubElement>::SubItem;
+    fn sub(&self, index: usize, offset: usize) -> <Self as SubItem>::SubItem;
 
-    /// Sets a subelement in the vector.
+    /// Sets a subitem in the vector.
     ///
     /// # Arguments
     ///
     /// * `index`: Index in the vector.
-    /// * `offset`: Offset in the element.
-    /// * `value`: New value of the subelement.
+    /// * `offset`: Offset in the item.
+    /// * `value`: New value of the subitem.
     ///
     /// # Panics
     ///
-    /// May panic if `index` is not a valid index in the vector or `offset` is not a valid offset in the element.
+    /// May panic if `index` is not a valid index in the vector or `offset` is not a valid offset in the item.
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
-    fn set_sub(&mut self, index: usize, offset: usize, value: <Self as SubElement>::SubItem);
+    fn set_sub(&mut self, index: usize, offset: usize, value: <Self as SubItem>::SubItem);
 }
 
 //-----------------------------------------------------------------------------

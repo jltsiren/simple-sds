@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
+use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::serialize::{Serialize, MappingMode};
 use crate::serialize;
 
