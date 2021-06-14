@@ -28,7 +28,7 @@
 
 use crate::bit_vector::{BitVector, Transformation};
 use crate::int_vector::IntVector;
-use crate::ops::{Element, Resize, Pack, Access, Push, BitVec};
+use crate::ops::{Vector, Resize, Pack, Access, Push, BitVec};
 use crate::serialize::Serialize;
 use crate::bits;
 

@@ -383,6 +383,19 @@ impl RawVector {
         }
     }
 
+    /// Returns the size of a serialized vector with the given capacity in [`u64`] elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::raw_vector::RawVector;
+    ///
+    /// assert_eq!(RawVector::size_by_params(247), 6);
+    /// ```
+    pub fn size_by_params(capacity: usize) -> usize {
+        2 + bits::bits_to_words(capacity)
+    }
+
     /// Returns a copy of the vector with each bit flipped.
     ///
     /// # Examples

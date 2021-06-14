@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
+use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::serialize::{Serialize, MappingMode};
 use crate::serialize;
 
@@ -230,6 +230,7 @@ fn serialize() {
         original.push(i * (i + 1) * (i + 2));
     }
     assert_eq!(original.size_in_bytes(), 160, "Invalid IntVector size in bytes");
+    assert_eq!(IntVector::size_by_params(original.capacity(), original.width()), original.size_in_elements(), "Invalid IntVector size estimate");
 
     let filename = serialize::temp_file_name("int-vector");
     serialize::serialize_to(&original, &filename).unwrap();

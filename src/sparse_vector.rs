@@ -24,17 +24,20 @@
 //! > `select(i) = low[i] + ((high.select(i) - i) << w)`.
 //!
 //! Rank, predecessor, and successor queries use `select_zero` on `high` followed by a linear scan.
+//!
+//! We can also support multisets that contain duplicate values (in the integer array interpretation).
+//! Rank queries for unset bits do not work correctly with multisets.
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Element, Access, BitVec, Rank, Select, PredSucc, SelectZero};
+use crate::ops::{Vector, Access, BitVec, Rank, Select, PredSucc, SelectZero};
 use crate::raw_vector::{RawVector, AccessRaw};
 use crate::serialize::Serialize;
 use crate::bits;
 
 use std::convert::TryFrom;
 use std::io::{Error, ErrorKind};
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, Extend};
+use std::iter::FusedIterator;
 use std::{cmp, io};
 
 #[cfg(test)]
@@ -50,7 +53,12 @@ mod tests;
 /// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
 /// Conversions between `SparseVector` and [`BitVector`] are possible using the [`From`] trait.
-/// 
+///
+/// `SparseVector` supports partial multiset semantics.
+/// A multiset bitvector is one that contains duplicate values in the integer array interpretation.
+/// Queries that operate on present values work correctly with a multiset, while [`Rank::rank_zero`] does not.
+/// Multiset vectors can be built with [`SparseBuilder::multiset`] and [`SparseVector::try_from_iter`].
+///
 /// `SparseVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
 /// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`]
@@ -146,6 +154,7 @@ impl SparseVector {
     /// let sv = SparseVector::copy_bit_vec(&bv);
     /// assert_eq!(sv.len(), bv.len());
     /// assert_eq!(sv.count_ones(), bv.count_ones());
+    /// assert!(!sv.is_multiset());
     /// ```
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> SparseVector {
         let mut builder = SparseBuilder::new(source.len(), source.count_ones()).unwrap();
@@ -153,6 +162,55 @@ impl SparseVector {
             unsafe { builder.set_unchecked(index); }
         }
         SparseVector::try_from(builder).unwrap()
+    }
+
+    /// Builds a vector from the values in the iterator using multiset semantics.
+    ///
+    /// Returns an error message if the values are not sorted.
+    /// Universe size is set to be barely large enough for the values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::sparse_vector::SparseVector;
+    /// use simple_sds::ops::{BitVec, Select};
+    ///
+    /// let source: Vec<usize> = vec![3, 4, 4, 7, 11, 19];
+    /// let sv = SparseVector::try_from_iter(source.iter().cloned()).unwrap();
+    /// assert_eq!(sv.len(), 20);
+    /// assert_eq!(sv.count_ones(), source.len());
+    /// assert!(sv.is_multiset());
+    ///
+    /// for (index, value) in sv.one_iter() {
+    ///     assert_eq!(value, source[index]);
+    /// }
+    /// ```
+    pub fn try_from_iter<T: Iterator<Item = usize> + DoubleEndedIterator + ExactSizeIterator>(iter: T) -> Result<SparseVector, &'static str> {
+        let mut iter = iter;
+        let (ones, _) = iter.size_hint();
+        let universe = if let Some(pos) = iter.next_back() { pos + 1 } else { 0 };
+        let mut builder = SparseBuilder::multiset(universe, ones);
+        for pos in iter {
+            builder.try_set(pos)?;
+        }
+        if universe > 0 {
+            builder.try_set(universe - 1)?;
+        }
+        SparseVector::try_from(builder)
+    }
+
+    /// Returns `true` if the vector is a multiset (contains duplicate values).
+    ///
+    /// This method is somewhat expensive, as it iterates over the vector.
+    pub fn is_multiset(&self) -> bool {
+        let mut prev = self.len();
+        for (_, value) in self.one_iter() {
+            if value == prev {
+                return true;
+            }
+            prev = value;
+        }
+        return false;
     }
 
     // Split a bitvector index into high and low parts.
@@ -219,6 +277,7 @@ impl SparseVector {
 /// assert_eq!(builder.universe(), 300);
 /// assert_eq!(builder.next_index(), 0);
 /// assert!(!builder.is_full());
+/// assert!(!builder.is_multiset());
 ///
 /// builder.set(12);
 /// assert_eq!(builder.len(), 1);
@@ -247,10 +306,12 @@ pub struct SparseBuilder {
     len: usize,
     // The first index that can be set.
     next: usize,
+    // `0` if we are building a multiset, `1` if not.
+    increment: usize,
 }
 
 impl SparseBuilder {
-    /// Returns an empty SparseBuilder.
+    /// Returns an empty SparseBuilder without multiset semantics.
     ///
     /// Returns [`Err`] if `ones > universe`.
     ///
@@ -277,13 +338,67 @@ impl SparseBuilder {
             high: high,
             len: 0,
             next: 0,
+            increment: 1,
         })
     }
 
-    // Returns `(low.width(), high.len())`.
+    /// Returns an empty SparseBuilder with multiset semantics.
+    ///
+    /// # Arguments
+    ///
+    /// * `universe`: Universe size or length of the bitvector.
+    /// * `ones`: Number of bits that will be set in the bitvector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::ops::BitVec;
+    /// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+    /// use std::convert::TryFrom;
+    ///
+    /// let mut builder = SparseBuilder::multiset(120, 3);
+    /// assert_eq!(builder.capacity(), 3);
+    /// assert_eq!(builder.universe(), 120);
+    /// assert!(builder.is_multiset());
+    ///
+    /// builder.set(12);
+    /// builder.set(24);
+    /// builder.set(24);
+    /// assert!(builder.is_full());
+    ///
+    /// let sv = SparseVector::try_from(builder).unwrap();
+    /// assert_eq!(sv.len(), 120);
+    /// assert_eq!(sv.count_ones(), 3);
+    /// assert!(sv.is_multiset());
+    /// ```
+    pub fn multiset(universe: usize, ones: usize) -> SparseBuilder {
+        let (width, high_len) = Self::get_params(universe, ones);
+        let low = IntVector::with_len(ones, width, 0).unwrap();
+        let data = SparseVector {
+            len: universe,
+            high: BitVector::from(RawVector::new()),
+            low: low,
+        };
+
+        let high = RawVector::with_len(high_len, false);
+        SparseBuilder {
+            data: data,
+            high: high,
+            len: 0,
+            next: 0,
+            increment: 0,
+        }
+    }
+
+    /// Returns `true` if the builder is using multiset semantics.
+    pub fn is_multiset(&self) -> bool {
+        self.increment == 0
+    }
+
+    // Returns `(low.width(), high.len())`. Now works with overfull multisets as well.
     fn get_params(universe: usize, ones: usize) -> (usize, usize) {
         let mut low_width: usize = 1;
-        if ones > 0 {
+        if ones > 0 && ones <= universe {
             let ideal_width = ((universe as f64 * 2.0_f64.ln()) / (ones as f64)).log2();
             low_width = ideal_width.max(1.0).round() as usize;
         }
@@ -341,7 +456,7 @@ impl SparseBuilder {
         let parts = self.data.split(index);
         self.high.set_bit(parts.high + self.len, true);
         self.data.low.set(self.len, parts.low as u64);
-        self.len += 1; self.next = index + 1;
+        self.len += 1; self.next = index + self.increment;
     }
 
     /// Tries to set the specified bit in the bitvector.
@@ -352,7 +467,11 @@ impl SparseBuilder {
             return Err("The builder is full");
         }
         if index < self.next_index() {
-            return Err("Index must be past the previous set bit");
+            if self.increment == 0 {
+                return Err("Index must be >= previous set position");
+            } else {
+                return Err("Index must be > previous set position");
+            }
         }
         if index >= self.universe() {
             return Err("Index is larger than universe size");
@@ -419,12 +538,15 @@ impl<'a> Iterator for Iter<'a> {
         match self.next_set {
             Some(value) => {
                 if value == self.next {
-                    self.next_set = if let Some((_, index)) = self.parent.next() {
-                        Some(index)
-                    } else {
-                        // If `next_set == last_set` already, we cannot reach the same index again.
-                        self.last_set
-                    };
+                    // We have to find the next unvisited (unique) value, and `last_set` is the initial candidate.
+                    self.next_set = self.last_set;
+                    // Skip duplicates until we find a new value or run out of values.
+                    while let Some((_, index)) = self.parent.next() {
+                        if index > self.next {
+                            self.next_set = Some(index);
+                            break;
+                        }
+                    }
                     self.next += 1;
                     Some(true)
                 } else {
@@ -455,12 +577,15 @@ impl<'a> DoubleEndedIterator for Iter<'a> {
         match self.last_set {
             Some(value) => {
                 if value == self.limit {
-                    self.last_set = if let Some((_, index)) = self.parent.next_back() {
-                        Some(index)
-                    } else {
-                        // If `next_set == last_set` already, we cannot reach the same index again.
-                        self.next_set
-                    };
+                    // We have to find the previsous unvisited (unique) value, and `next_set` is the initial candidate.
+                    self.last_set = self.next_set;
+                    // Skip duplicates until we find a new value or run out of values.
+                    while let Some((_, index)) = self.parent.next_back() {
+                        if index < self.limit {
+                            self.last_set = Some(index);
+                            break;
+                        }
+                    }
                     Some(true)
                 } else {
                     Some(false)
@@ -811,9 +936,6 @@ impl Serialize for SparseVector {
         high.enable_select_zero();
 
         // Sanity checks.
-        if low.len() > len {
-            return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
-        }
         if low.len() != high.count_ones() {
             return Err(Error::new(ErrorKind::InvalidData, "Inconsistent number of set bits"));
         }
@@ -857,15 +979,15 @@ impl From<SparseVector> for BitVector {
 impl TryFrom<SparseBuilder> for SparseVector {
     type Error = &'static str;
 
-    fn try_from(value: SparseBuilder) -> Result<Self, Self::Error> {
-        let mut value = value;
-        if !value.is_full() {
+    fn try_from(builder: SparseBuilder) -> Result<Self, Self::Error> {
+        let mut builder = builder;
+        if !builder.is_full() {
             return Err("The builder is not full");
         }
-        value.data.high = BitVector::from(value.high);
-        value.data.high.enable_select();
-        value.data.high.enable_select_zero();
-        Ok(value.data)
+        builder.data.high = BitVector::from(builder.high);
+        builder.data.high.enable_select();
+        builder.data.high.enable_select_zero();
+        Ok(builder.data)
     }
 }
 

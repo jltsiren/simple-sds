@@ -217,6 +217,7 @@ fn serialize() {
         unsafe { original.push_int(i * (i + 1) * (i + 2), 16); }
     }
     assert_eq!(original.size_in_bytes(), 144, "Invalid RawVector size in bytes");
+    assert_eq!(RawVector::size_by_params(original.capacity()), original.size_in_elements(), "Invalid RawVector size estimate");
 
     let filename = serialize::temp_file_name("raw-vector");
     serialize::serialize_to(&original, &filename).unwrap();

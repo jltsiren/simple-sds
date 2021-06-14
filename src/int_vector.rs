@@ -1,12 +1,12 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
-use crate::ops::{Element, Resize, Pack, Access, Push, Pop};
+use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
 use crate::serialize::{MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
 
 use std::io::{Error, ErrorKind};
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator, FromIterator, Extend};
+use std::iter::{FusedIterator, FromIterator};
 use std::path::Path;
 use std::io;
 
@@ -18,14 +18,14 @@ mod tests;
 /// A contiguous growable bit-packed array of fixed-width integers.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
-/// Each element consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by parameter `width`.
-/// The maximum length of the vector is `usize::MAX / width` elements.
+/// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by parameter `width`.
+/// The maximum length of the vector is `usize::MAX / width` items.
 ///
 /// A default constructed `IntVector` has `width == 64`.
 /// `IntVector` can be built from an iterator over [`u8`], [`u16`], [`u32`], [`u64`], or [`usize`] values.
 ///
 /// `IntVector` implements the following `simple_sds` traits:
-/// * Basic functionality: [`Element`], [`Resize`], [`Pack`]
+/// * Basic functionality: [`Vector`], [`Resize`], [`Pack`]
 /// * Queries and operations: [`Access`], [`Push`], [`Pop`]
 /// * Serialization: [`Serialize`]
 ///
@@ -48,7 +48,7 @@ impl IntVector {
     ///
     /// ```
     /// use simple_sds::int_vector::IntVector;
-    /// use simple_sds::ops::Element;
+    /// use simple_sds::ops::Vector;
     ///
     /// let v = IntVector::new(13).unwrap();
     /// assert!(v.is_empty());
@@ -73,15 +73,15 @@ impl IntVector {
     ///
     /// # Arguments
     ///
-    /// * `len`: Number of elements in the vector.
-    /// * `width`: Width of each element in bits.
+    /// * `len`: Number of items in the vector.
+    /// * `width`: Width of each item in bits.
     /// * `value`: Initialization value.
     ///
     /// # Examples
     ///
     /// ```
     /// use simple_sds::int_vector::IntVector;
-    /// use simple_sds::ops::{Element, Access};
+    /// use simple_sds::ops::{Vector, Access};
     ///
     /// let v = IntVector::with_len(4, 13, 1234).unwrap();
     /// assert_eq!(v.len(), 4);
@@ -109,20 +109,20 @@ impl IntVector {
         })
     }
 
-    /// Creates an empty vector with enough capacity for at least the specified number of elements of specified width.
+    /// Creates an empty vector with enough capacity for at least the specified number of items of specified width.
     ///
     /// Returns [`Err`] if the width is invalid.
     ///
     /// # Arguments
     ///
-    /// * `capacity`: Minimun capacity of the vector in elements.
-    /// * `width`: Width of each element in bits.
+    /// * `capacity`: Minimum capacity of the vector in items.
+    /// * `width`: Width of each item in bits.
     ///
     /// # Examples
     ///
     /// ```
     /// use simple_sds::int_vector::IntVector;
-    /// use simple_sds::ops::{Element, Resize};
+    /// use simple_sds::ops::{Vector, Resize};
     ///
     /// let v = IntVector::with_capacity(4, 13).unwrap();
     /// assert!(v.is_empty());
@@ -145,7 +145,29 @@ impl IntVector {
         }
     }
 
-    /// Returns an iterator visiting all elements of the vector in order.
+    /// Returns the size of a serialized vector with the given parameters in [`u64`] elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity`: Minimum capacity of the vector in items.
+    /// * `width`: Width of each item in bits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::IntVector;
+    ///
+    /// assert_eq!(IntVector::size_by_params(12, 31), 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the vector would exceed the maximum length.
+    pub fn size_by_params(capacity: usize, width: usize) -> usize {
+        2 + RawVector::size_by_params(capacity * width)
+    }
+
+    /// Returns an iterator visiting all items of the vector in order.
     ///
     /// # Examples
     ///
@@ -169,7 +191,7 @@ impl IntVector {
 
 //-----------------------------------------------------------------------------
 
-impl Element for IntVector {
+impl Vector for IntVector {
     type Item = u64;
 
     #[inline]
@@ -189,7 +211,7 @@ impl Element for IntVector {
 }
 
 impl Resize for IntVector {
-    fn resize(&mut self, new_len: usize, value: <Self as Element>::Item) {
+    fn resize(&mut self, new_len: usize, value: <Self as Vector>::Item) {
         if new_len > self.len() {
             self.reserve(new_len - self.len());
             while self.len() < new_len {
@@ -236,7 +258,7 @@ impl Pack for IntVector {
 
 impl Access for IntVector {
     #[inline]
-    fn get(&self, index: usize) -> <Self as Element>::Item {
+    fn get(&self, index: usize) -> <Self as Vector>::Item {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
     }
@@ -247,7 +269,7 @@ impl Access for IntVector {
     }
 
     #[inline]
-    fn set(&mut self, index: usize, value: <Self as Element>::Item) {
+    fn set(&mut self, index: usize, value: <Self as Vector>::Item) {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.set_int(index * self.width(), value, self.width()); }
     }
@@ -255,7 +277,7 @@ impl Access for IntVector {
 
 impl Push for IntVector {
     #[inline]
-    fn push(&mut self, value: <Self as Element>::Item) {
+    fn push(&mut self, value: <Self as Vector>::Item) {
         unsafe { self.data.push_int(value, self.width()); }
         self.len += 1;
     }    
@@ -263,7 +285,7 @@ impl Push for IntVector {
 
 impl Pop for IntVector {
     #[inline]
-    fn pop(&mut self) -> Option<<Self as Element>::Item> {
+    fn pop(&mut self) -> Option<<Self as Vector>::Item> {
         if self.len() > 0 {
             self.len -= 1;
         }
@@ -357,7 +379,7 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = <IntVector as Element>::Item;
+    type Item = <IntVector as Vector>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next >= self.limit {
@@ -414,7 +436,7 @@ pub struct IntoIter {
 }
 
 impl Iterator for IntoIter {
-    type Item = <IntVector as Element>::Item;
+    type Item = <IntVector as Vector>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.parent.len() {
@@ -438,7 +460,7 @@ impl ExactSizeIterator for IntoIter {}
 impl FusedIterator for IntoIter {}
 
 impl IntoIterator for IntVector {
-    type Item = <Self as Element>::Item;
+    type Item = <Self as Vector>::Item;
     type IntoIter = IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -460,7 +482,7 @@ impl IntoIterator for IntVector {
 ///
 /// ```
 /// use simple_sds::int_vector::{IntVector, IntVectorWriter};
-/// use simple_sds::ops::{Element, Access, Push};
+/// use simple_sds::ops::{Vector, Access, Push};
 /// use simple_sds::serialize;
 /// use std::fs;
 ///
@@ -491,7 +513,7 @@ impl IntVectorWriter {
     /// # Arguments
     ///
     /// * `filename`: Name of the file.
-    /// * `width`: Width of each element in bits.
+    /// * `width`: Width of each item in bits.
     ///
     /// # Errors
     ///
@@ -520,8 +542,8 @@ impl IntVectorWriter {
     /// # Arguments
     ///
     /// * `filename`: Name of the file.
-    /// * `width`: Width of each element in bits.
-    /// * `buf_len`: Buffer size in elements.
+    /// * `width`: Width of each item in bits.
+    /// * `buf_len`: Buffer size in items.
     ///
     /// # Errors
     ///
@@ -573,7 +595,7 @@ impl IntVectorWriter {
 
 //-----------------------------------------------------------------------------
 
-impl Element for IntVectorWriter {
+impl Vector for IntVectorWriter {
     type Item = u64;
 
     #[inline]
@@ -594,7 +616,7 @@ impl Element for IntVectorWriter {
 
 impl Push for IntVectorWriter {
     #[inline]
-    fn push(&mut self, value: <Self as Element>::Item) {
+    fn push(&mut self, value: <Self as Vector>::Item) {
         unsafe { self.writer.push_int(value, self.width()); }
         self.len += 1;
     }
@@ -616,7 +638,7 @@ impl Drop for IntVectorWriter {
 ///
 /// ```
 /// use simple_sds::int_vector::{IntVector, IntVectorMapper};
-/// use simple_sds::ops::{Element, Access};
+/// use simple_sds::ops::{Vector, Access};
 /// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
 /// use simple_sds::serialize;
 /// use std::fs;
@@ -644,7 +666,7 @@ pub struct IntVectorMapper<'a> {
 }
 
 impl<'a> IntVectorMapper<'a> {
-    /// Returns an iterator visiting all elements of the vector in order.
+    /// Returns an iterator visiting all items of the vector in order.
     ///
     /// # Examples
     ///
@@ -674,7 +696,7 @@ impl<'a> IntVectorMapper<'a> {
     }
 }
 
-impl<'a> Element for IntVectorMapper<'a> {
+impl<'a> Vector for IntVectorMapper<'a> {
     type Item = u64;
 
     #[inline]
@@ -695,7 +717,7 @@ impl<'a> Element for IntVectorMapper<'a> {
 
 impl<'a> Access for IntVectorMapper<'a> {
     #[inline]
-    fn get(&self, index: usize) -> <Self as Element>::Item {
+    fn get(&self, index: usize) -> <Self as Vector>::Item {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
     }
@@ -706,7 +728,7 @@ impl<'a> Access for IntVectorMapper<'a> {
     }
 
     #[inline]
-    fn set(&mut self, _: usize, _: <Self as Element>::Item) {
+    fn set(&mut self, _: usize, _: <Self as Vector>::Item) {
         panic!("Not implemented");
     }
 }
@@ -781,7 +803,7 @@ pub struct MappedIter<'a> {
 }
 
 impl<'a> Iterator for MappedIter<'a> {
-    type Item = <IntVectorMapper<'a> as Element>::Item;
+    type Item = <IntVectorMapper<'a> as Vector>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.next >= self.limit {
@@ -841,7 +863,7 @@ macro_rules! from_extend_int_vector {
                 let (lower_bound, _) = iter.size_hint();
                 self.reserve(lower_bound);
                 while let Some(value) = iter.next() {
-                    self.push(value as <Self as Element>::Item);
+                    self.push(value as <Self as Vector>::Item);
                 }
             }
         }
@@ -849,7 +871,7 @@ macro_rules! from_extend_int_vector {
         impl Extend<$t> for IntVectorWriter {
             fn extend<I: IntoIterator<Item = $t>>(&mut self, iter: I) {
                 for value in iter {
-                    self.push(value as <Self as Element>::Item);
+                    self.push(value as <Self as Vector>::Item);
                 }
             }
         }
