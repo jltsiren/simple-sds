@@ -67,6 +67,9 @@ mod tests;
 ///
 /// `self.size_in_elements()` should always be nonzero.
 ///
+/// A structure that implements `Serialize` may also have an associated function `size_by_params`.
+/// The function determines the size of a serialized structure with the given parameters in [`u64`] elements without building the structure.
+///
 /// # Examples
 ///
 /// ```
@@ -149,12 +152,12 @@ pub trait Serialize: Sized {
 
     /// Returns the size of the serialized struct in [`u64`] elements.
     ///
-    /// This should be closely related to the size of the in-memory struct.
+    /// This is usually closely related to the size of the in-memory struct.
     fn size_in_elements(&self) -> usize;
 
     /// Returns the size of the serialized struct in bytes.
     ///
-    /// This should be closely related to the size of the in-memory struct.
+    /// This is usually closely related to the size of the in-memory struct.
     fn size_in_bytes(&self) -> usize {
         bits::words_to_bytes(self.size_in_elements())
     }

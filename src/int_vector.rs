@@ -115,7 +115,7 @@ impl IntVector {
     ///
     /// # Arguments
     ///
-    /// * `capacity`: Minimun capacity of the vector in elements.
+    /// * `capacity`: Minimum capacity of the vector in elements.
     /// * `width`: Width of each element in bits.
     ///
     /// # Examples
@@ -143,6 +143,28 @@ impl IntVector {
                 data: RawVector::with_capacity(capacity * width),
             })
         }
+    }
+
+    /// Returns the size of a serialized vector with the given parameters in [`u64`] elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity`: Minimum capacity of the vector in elements.
+    /// * `width`: Width of each element in bits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::int_vector::IntVector;
+    ///
+    /// assert_eq!(IntVector::size_by_params(12, 31), 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the vector would exceed the maximum length.
+    pub fn size_by_params(capacity: usize, width: usize) -> usize {
+        2 + RawVector::size_by_params(capacity * width)
     }
 
     /// Returns an iterator visiting all elements of the vector in order.
