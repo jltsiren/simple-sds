@@ -28,7 +28,7 @@ fn mapped_vector<P, T>(filename: P, correct: &Vec<T>, name: &str) where
     for i in 0..mapped.len() {
         assert_eq!(mapped[i], correct[i], "Invalid value {} in {}", i, name);
     }
-    assert_eq!(mapped.as_ref(), correct.as_slice(), "Invalid mapped slice for {}", name);
+    assert_eq!(*mapped, *correct, "Invalid mapped slice for {}", name);
 }
 
 fn serialized_bytes<P: AsRef<Path>>(filename: P, correct: &Vec<u8>, name: &str) {
@@ -49,7 +49,7 @@ fn mapped_bytes<P: AsRef<Path>>(filename: P, correct: &Vec<u8>, name: &str) {
     for i in 0..mapped.len() {
         assert_eq!(mapped[i], correct[i], "Invalid value {} in {}", i, name);
     }
-    assert_eq!(mapped.as_ref(), correct.as_slice(), "Invalid mapped slice for {}", name);
+    assert_eq!(*mapped, *correct, "Invalid mapped slice for {}", name);
 }
 
 fn serialized_string<P: AsRef<Path>>(filename: P, correct: &String, name: &str) {
@@ -67,7 +67,7 @@ fn mapped_string<P: AsRef<Path>>(filename: P, correct: &String, name: &str) {
     let mapped = MappedStr::new(&map, 0).unwrap();
     assert_eq!(mapped.is_empty(), correct.is_empty(), "Invaid emptiness for mapped string slice of {}", name);
     assert_eq!(mapped.len(), correct.len(), "Invalid length for mapped string slice of {}", name);
-    assert_eq!(mapped.as_ref(), correct.as_str(), "Invalid mapped string slice for {}", name);
+    assert_eq!(*mapped, *correct, "Invalid mapped string slice for {}", name);
 }
 
 fn serialized_option<P: AsRef<Path>>(filename: P, correct: &Option<Vec<u64>>, name: &str) {

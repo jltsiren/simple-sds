@@ -52,7 +52,7 @@ use crate::bits;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind};
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -595,7 +595,7 @@ pub trait MemoryMapped<'a>: Sized {
 /// assert_eq!(mapped.len(), v.len());
 /// assert_eq!(mapped[0], (123, 456));
 /// assert_eq!(mapped[1], (789, 101112));
-/// assert_eq!(mapped.as_ref(), v.as_slice());
+/// assert_eq!(*mapped, *v);
 /// drop(mapped); drop(map);
 ///
 /// fs::remove_file(&filename).unwrap();
@@ -620,6 +620,14 @@ impl<'a, T: Serializable> MappedSlice<'a, T> {
 
 impl<'a, T: Serializable> AsRef<[T]> for MappedSlice<'a, T> {
     fn as_ref(&self) -> &[T] {
+        self.data
+    }
+}
+
+impl<'a, T: Serializable> Deref for MappedSlice<'a, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
         self.data
     }
 }
@@ -681,7 +689,7 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
 /// assert_eq!(mapped.len(), v.len());
 /// assert_eq!(mapped[3], 3);
 /// assert_eq!(mapped[6], 13);
-/// assert_eq!(mapped.as_ref(), v.as_slice());
+/// assert_eq!(*mapped, *v);
 /// drop(mapped); drop(map);
 ///
 /// fs::remove_file(&filename).unwrap();
@@ -706,6 +714,14 @@ impl<'a> MappedBytes<'a> {
 
 impl<'a> AsRef<[u8]> for MappedBytes<'a> {
     fn as_ref(&self) -> &[u8] {
+        self.data
+    }
+}
+
+impl<'a> Deref for MappedBytes<'a> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
         self.data
     }
 }
@@ -765,7 +781,7 @@ impl<'a> MemoryMapped<'a> for MappedBytes<'a> {
 /// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
 /// let mapped = MappedStr::new(&map, 0).unwrap();
 /// assert_eq!(mapped.len(), s.len());
-/// assert_eq!(mapped.as_ref(), s.as_str());
+/// assert_eq!(*mapped, *s);
 /// drop(mapped); drop(map);
 ///
 /// fs::remove_file(&filename).unwrap();
@@ -794,6 +810,13 @@ impl<'a> AsRef<str> for MappedStr<'a> {
     }
 }
 
+impl<'a> Deref for MappedStr<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.data
+    }
+}
 impl<'a> MemoryMapped<'a> for MappedStr<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
