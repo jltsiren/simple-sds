@@ -1,4 +1,4 @@
-//! Simple succinct data structures.
+//! # Simple succinct data structures
 //!
 //! These structures are comparable to those in [SDSL](https://github.com/simongog/sdsl-lite) in performance and scalability.
 //! As the focus is on (relative) simplicity, ugly low-level optimizations are generally avoided.

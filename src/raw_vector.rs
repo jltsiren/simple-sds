@@ -626,10 +626,10 @@ impl Serialize for RawVector {
 
 //-----------------------------------------------------------------------------
 
-impl AsRef<Vec<u64>> for RawVector {
+impl AsRef<[u64]> for RawVector {
     #[inline]
-    fn as_ref(&self) -> &Vec<u64> {
-        &(self.data)
+    fn as_ref(&self) -> &[u64] {
+        self.data.as_ref()
     }
 }
 
@@ -921,7 +921,7 @@ impl<'a> RawVectorMapper<'a> {
     /// Counts the number of ones in the bit array.
     pub fn count_ones(&self) -> usize {
         let mut result: usize = 0;
-        for value in self.data.as_ref().iter() {
+        for value in self.data.iter() {
             result += (*value).count_ones() as usize;
         }
         result
@@ -947,7 +947,7 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
 
     #[inline]
     unsafe fn word_unchecked(&self, index: usize) -> u64 {
-        *self.data.as_ref().get_unchecked(index)
+        *self.data.get_unchecked(index)
     }
 
     #[inline]
