@@ -229,16 +229,7 @@ fn serialize() {
     for i in 0..64 {
         original.push(i * (i + 1) * (i + 2));
     }
-    assert_eq!(original.size_in_bytes(), 160, "Invalid IntVector size in bytes");
-    assert_eq!(IntVector::size_by_params(original.capacity(), original.width()), original.size_in_elements(), "Invalid IntVector size estimate");
-
-    let filename = serialize::temp_file_name("int-vector");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: IntVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the IntVector");
-
-    fs::remove_file(&filename).unwrap();
+    let _ = serialize::test(&original, "int-vector", Some(20), true);
 }
 
 #[test]

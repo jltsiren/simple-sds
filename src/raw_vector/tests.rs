@@ -216,16 +216,7 @@ fn serialize() {
     for i in 0..64 {
         unsafe { original.push_int(i * (i + 1) * (i + 2), 16); }
     }
-    assert_eq!(original.size_in_bytes(), 144, "Invalid RawVector size in bytes");
-    assert_eq!(RawVector::size_by_params(original.capacity()), original.size_in_elements(), "Invalid RawVector size estimate");
-
-    let filename = serialize::temp_file_name("raw-vector");
-    serialize::serialize_to(&original, &filename).unwrap();
-
-    let copy: RawVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, original, "Serialization changed the RawVector");
-
-    fs::remove_file(&filename).unwrap();
+    let _ = serialize::test(&original, "raw-vector", Some(18), true);
 }
 
 #[test]

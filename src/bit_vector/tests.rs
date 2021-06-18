@@ -4,7 +4,7 @@ use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::serialize;
 
-use std::{cmp, fs};
+use std::cmp;
 
 use rand::distributions::{Bernoulli, Distribution};
 use rand::Rng;
@@ -75,20 +75,6 @@ fn non_uniform_vector(regions: &[(usize, f64)], complement: bool) -> BitVector {
     assert_eq!(bv.count_ones(), total_ones, "Invalid number of ones in the non-uniform BitVector");
 
     bv
-}
-
-fn try_serialize(bv: &BitVector, base_name: &str, expected_size: Option<usize>) {
-    if let Some(bytes) = expected_size {
-        assert_eq!(bv.size_in_bytes(), bytes, "Invalid BitVector size in bytes");
-    }
-
-    let filename = serialize::temp_file_name(base_name);
-    serialize::serialize_to(bv, &filename).unwrap();
-
-    let copy: BitVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, *bv, "Serialization changed the BitVector");
-
-    fs::remove_file(&filename).unwrap();
 }
 
 //-----------------------------------------------------------------------------
@@ -182,7 +168,7 @@ fn iter() {
 #[test]
 fn serialize() {
     let bv = random_vector(2137, 0.5);
-    try_serialize(&bv, "bitvector", Some(320));
+    let _ = serialize::test(&bv, "bitvector", Some(40), true);
 }
 
 #[test]
@@ -190,7 +176,7 @@ fn serialize() {
 fn large() {
     let bv = random_vector(9875321, 0.5);
     try_iter(&bv);
-    try_serialize(&bv, "large-bitvector", Some(1234464));
+    let _ = serialize::test(&bv, "large-bitvector", Some(154308), true);
 }
 
 //-----------------------------------------------------------------------------
@@ -227,7 +213,7 @@ fn nonempty_rank() {
 fn serialize_rank() {
     let mut bv = random_vector(1921, 0.5);
     bv.enable_rank();
-    try_serialize(&bv, "bitvector-rank", Some(368));
+    let _ = serialize::test(&bv, "bitvector-rank", Some(46), true);
 }
 
 #[test]
@@ -236,7 +222,7 @@ fn large_rank() {
     let mut bv = random_vector(9871248, 0.5);
     bv.enable_rank();
     try_rank(&bv);
-    try_serialize(&bv, "large-bitvector-rank", Some(1542448));
+    let _ = serialize::test(&bv, "large-bitvector-rank", Some(192806), true);
 }
 
 //-----------------------------------------------------------------------------
@@ -365,7 +351,7 @@ fn serialize_select() {
     let old_size = bv.size_in_bytes();
     bv.enable_select();
     assert!(bv.size_in_bytes() > old_size, "Select support did not increase the size in bytes");
-    try_serialize(&bv, "bitvector-select", None);
+    let _ = serialize::test(&bv, "bitvector-select", None, true);
 }
 
 #[test]
@@ -382,7 +368,7 @@ fn large_select() {
 
     try_select(&bv);
     try_one_iter::<Identity>(&bv);
-    try_serialize(&bv, "large-bitvector-select", None);
+    let _ = serialize::test(&bv, "large-bitvector-select", None, true);
 }
 
 //-----------------------------------------------------------------------------
@@ -449,7 +435,7 @@ fn serialize_select_zero() {
     let old_size = bv.size_in_bytes();
     bv.enable_select_zero();
     assert!(bv.size_in_bytes() > old_size, "Select zero support did not increase the size in bytes");
-    try_serialize(&bv, "bitvector-select-zero", None);
+    let _ = serialize::test(&bv, "bitvector-select-zero", None, true);
 }
 
 #[test]
@@ -466,7 +452,7 @@ fn large_select_zero() {
 
     try_select_zero(&bv);
     try_one_iter::<Complement>(&bv);
-    try_serialize(&bv, "large-bitvector-select-zero", None);
+    let _ = serialize::test(&bv, "large-bitvector-select-zero", None, true);
 }
 
 //-----------------------------------------------------------------------------
@@ -535,7 +521,7 @@ fn serialize_pred_succ() {
     let old_size = bv.size_in_bytes();
     bv.enable_pred_succ();
     assert!(bv.size_in_bytes() > old_size, "Predecessor/successor support did not increase the size in bytes");
-    try_serialize(&bv, "bitvector-pred-succ", None);
+    let _ = serialize::test(&bv, "bitvector-pred-succ", None, true);
 }
 
 #[test]
@@ -546,7 +532,7 @@ fn large_pred_succ() {
     bv.enable_pred_succ();
 
     try_pred_succ(&bv);
-    try_serialize(&bv, "large-bitvector-pred-succ", None);
+    let _ = serialize::test(&bv, "large-bitvector-pred-succ", None, true);
 }
 
 //-----------------------------------------------------------------------------

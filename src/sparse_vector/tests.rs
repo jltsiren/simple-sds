@@ -4,8 +4,6 @@ use crate::bit_vector::BitVector;
 use crate::raw_vector::{RawVector, PushRaw};
 use crate::serialize;
 
-use std::fs;
-
 use rand::distributions::{Bernoulli, Distribution};
 
 //-----------------------------------------------------------------------------
@@ -102,16 +100,6 @@ fn try_iter(sv: &SparseVector) {
     assert_eq!(next, limit, "Iterator did not visit all values");
 }
 
-fn try_serialize(sv: &SparseVector, base_name: &str) {
-    let filename = serialize::temp_file_name(base_name);
-    serialize::serialize_to(sv, &filename).unwrap();
-
-    let copy: SparseVector = serialize::load_from(&filename).unwrap();
-    assert_eq!(copy, *sv, "Serialization changed the SparseVector");
-
-    fs::remove_file(&filename).unwrap();
-}
-
 #[test]
 fn empty_vector() {
     let empty = zero_vector(0);
@@ -188,7 +176,7 @@ fn iter() {
 #[test]
 fn serialize() {
     let sv = random_vector(66, 0.01);
-    try_serialize(&sv, "sparse-vector");
+    let _ = serialize::test(&sv, "sparse-vector", None, true);
 }
 
 #[test]
@@ -196,7 +184,7 @@ fn serialize() {
 fn large() {
     let sv = random_vector(20179, 0.02);
     try_iter(&sv);
-    try_serialize(&sv, "large-sparse-vector");
+    let _ = serialize::test(&sv, "large-sparse-vector", None, true);
 }
 
 //-----------------------------------------------------------------------------
@@ -500,7 +488,7 @@ fn multiset_tests(sv: &SparseVector, len: usize, truth: &[usize]) {
 
     multiset_access(&sv, truth);
     try_iter(&sv);
-    try_serialize(&sv, "multiset");
+    let _ = serialize::test(sv, "multiset-sparse-vector", None, true);
 
     multiset_rank(&sv, &truth);
     try_select(&sv, 0);

@@ -198,7 +198,6 @@ mod tests {
     use crate::ops::BitVec;
     use crate::raw_vector::{RawVector, PushRaw};
     use crate::serialize;
-    use std::fs;
     use rand::Rng;
 
     #[test]
@@ -254,14 +253,7 @@ mod tests {
         let data = raw_vector(5187);
         let bv = BitVector::from(data);
         let original = RankSupport::new(&bv);
-
-        let filename = serialize::temp_file_name("rank-support");
-        serialize::serialize_to(&original, &filename).unwrap();
-
-        let copy: RankSupport = serialize::load_from(&filename).unwrap();
-        assert_eq!(copy, original, "Serialization changed the RankSupport");
-
-        fs::remove_file(&filename).unwrap();
+        let _ = serialize::test(&original, "rank-support", None, true);
     }
 }
 

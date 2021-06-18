@@ -300,7 +300,6 @@ mod tests {
     use crate::ops::BitVec;
     use crate::raw_vector::{RawVector, PushRaw};
     use crate::serialize;
-    use std::fs;
     use rand::distributions::{Bernoulli, Distribution};
 
     #[test]
@@ -373,14 +372,7 @@ mod tests {
         let data = with_density(5187, 0.5);
         let bv = BitVector::from(data);
         let original = SelectSupport::<Identity>::new(&bv);
-
-        let filename = serialize::temp_file_name("select-support");
-        serialize::serialize_to(&original, &filename).unwrap();
-
-        let copy: SelectSupport<Identity> = serialize::load_from(&filename).unwrap();
-        assert_eq!(copy, original, "Serialization changed the SelectSupport");
-
-        fs::remove_file(&filename).unwrap();
+        let _ = serialize::test(&original, "select-support", None, true);
     }
 }
 

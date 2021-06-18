@@ -8,6 +8,8 @@
 //! However, it is not feasible to validate all loaded data in high-performance code.
 //! The behavior of corrupted data structures is always undefined.
 //!
+//! Function [`test()`] offers a convenient way of testing that the serialization interface works correctly for a custom type.
+//!
 //! # Serialization formats
 //!
 //! The serialization format of a structure, as implemented with trait [`Serialize`], is split into the header and the body.
@@ -50,13 +52,14 @@
 
 use crate::bits;
 
+use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind};
 use std::ops::{Deref, Index};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{env, io, marker, mem, process, ptr, slice, str};
+use std::{env, fs, io, marker, mem, process, ptr, slice, str};
 
 #[cfg(test)]
 mod tests;
@@ -985,4 +988,50 @@ pub fn temp_file_name(name_part: &str) -> PathBuf {
     buf
 }
 
+/// Tests that the [`Serialize`] implementation works correctly.
+///
+/// Returns the name of the temporary file if `remove == false` and removes the file if `remove == true`.
+/// The type must also implement [`PartialEq`] and [`Debug`] for the tests.
+///
+/// # Arguments
+///
+/// * `original`: Structure to be serialized.
+/// * `name`: Name of the type (for temporary file names and error messages).
+/// * `expected_size`: Expected size in elements, or [`None`] if not known.
+/// * `remove`: Should the temporary file be removed instead of returning its name.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize;;
+///
+/// let v: Vec<u64> = vec![1, 11, 111, 1111];
+/// let _ = serialize::test(&v, "vec-u64", Some(1 + v.len()), true);
+/// ```
+///
+/// # Panics
+///
+/// Will panic if any of the tests fails.
+pub fn test<T: Serialize + PartialEq + Debug>(original: &T, name: &str, expected_size: Option<usize>, remove: bool) -> Option<PathBuf> {
+    if let Some(value) = expected_size {
+        assert_eq!(original.size_in_elements(), value, "Size estimate for the serialized {} is not as expected", name);
+    }
+
+    let filename = temp_file_name(name);
+    serialize_to(original, &filename).unwrap();
+
+    let metadata = fs::metadata(&filename).unwrap();
+    let len = metadata.len() as usize;
+    assert_eq!(original.size_in_bytes(), len, "Invalid size estimate for the serialized {}", name);
+
+    let copy: T = load_from(&filename).unwrap();
+    assert_eq!(copy, *original, "Serialization changed the {}", name);
+
+    if remove {
+        fs::remove_file(&filename).unwrap();
+        None
+    } else {
+        Some(filename)
+    }
+}
 //-----------------------------------------------------------------------------
