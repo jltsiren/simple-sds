@@ -151,6 +151,7 @@ fn skip_options() {
     let first: usize = 123;
     let some: Option<usize> = Some(456);
     let second: usize = 789;
+    let third: usize = 101112;
 
     let filename = temp_file_name("skip-option");
     let mut options = OpenOptions::new();
@@ -159,6 +160,8 @@ fn skip_options() {
     first.serialize(&mut file).unwrap();
     some.serialize(&mut file).unwrap();
     second.serialize(&mut file).unwrap();
+    absent_option(&mut file).unwrap();
+    third.serialize(&mut file).unwrap();
     drop(file);
 
     let mut options = OpenOptions::new();
@@ -167,6 +170,8 @@ fn skip_options() {
     assert_eq!(usize::load(&mut file).unwrap(), first, "Invalid value after skipped empty option");
     skip_option(&mut file).unwrap();
     assert_eq!(usize::load(&mut file).unwrap(), second, "Invalid value after skipped non-empty option");
+    assert_eq!(Option::<usize>::load(&mut file).unwrap(), None, "Invalid absent option");
+    assert_eq!(usize::load(&mut file).unwrap(), third, "Invalid value after absent option");
     drop(file);
 
     fs::remove_file(&filename).unwrap();

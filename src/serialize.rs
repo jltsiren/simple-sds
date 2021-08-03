@@ -968,6 +968,17 @@ pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
     <T as Serialize>::load(&mut file)
 }
 
+/// Serializes an absent optional structure of any type.
+///
+/// # Errors
+///
+/// Any errors from the writer will be passed through.
+pub fn absent_option<T: Write>(writer: &mut T) -> io::Result<()> {
+    let size: usize = 0;
+    size.serialize(writer)?;
+    Ok(())
+}
+
 /// Skips a serialized optional structure.
 ///
 /// # Errors
