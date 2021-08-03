@@ -54,7 +54,7 @@ use crate::bits;
 
 use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read, Write};
 use std::ops::{Deref, Index};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -125,7 +125,7 @@ pub trait Serialize: Sized {
     /// # Errors
     ///
     /// Any errors from the writer may be passed through.
-    fn serialize<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         self.serialize_header(writer)?;
         self.serialize_body(writer)?;
         Ok(())
@@ -136,14 +136,14 @@ pub trait Serialize: Sized {
     /// # Errors
     ///
     /// Any errors from the writer may be passed through.
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()>;
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()>;
 
     /// Serializes the body to the writer.
     ///
     /// # Errors
     ///
     /// Any errors from the writer may be passed through.
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()>;
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()>;
 
     /// Loads the struct from the reader.
     ///
@@ -151,7 +151,7 @@ pub trait Serialize: Sized {
     ///
     /// Any errors from the reader may be passed through.
     /// [`ErrorKind::InvalidData`] should be used to indicate that the data failed sanity checks.
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self>;
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self>;
 
     /// Returns the size of the serialized struct in [`u64`] elements.
     ///
@@ -181,11 +181,11 @@ impl Serializable for usize {}
 impl Serializable for (u64, u64) {}
 
 impl<V: Serializable> Serialize for V {
-    fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
+    fn serialize_header<T: Write>(&self, _: &mut T) -> io::Result<()> {
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         unsafe {
             let buf: &[u8] = slice::from_raw_parts(self as *const Self as *const u8, mem::size_of::<Self>());
             writer.write_all(buf)?;
@@ -193,7 +193,7 @@ impl<V: Serializable> Serialize for V {
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let mut value = Self::default();
         unsafe {
             let buf: &mut [u8] = slice::from_raw_parts_mut(&mut value as *mut Self as *mut u8, mem::size_of::<Self>());
@@ -208,13 +208,13 @@ impl<V: Serializable> Serialize for V {
 }
 
 impl<V: Serializable> Serialize for Vec<V> {
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         let size = self.len();
         size.serialize(writer)?;
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         unsafe {
             let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<V>());
             writer.write_all(&buf)?;
@@ -222,7 +222,7 @@ impl<V: Serializable> Serialize for Vec<V> {
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
         let mut value: Vec<V> = Vec::with_capacity(size);
 
@@ -241,13 +241,13 @@ impl<V: Serializable> Serialize for Vec<V> {
 }
 
 impl Serialize for Vec<u8> {
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         let size = self.len();
         size.serialize(writer)?;
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         writer.write_all(self.as_slice())?;
         let padded_len = bits::round_up_to_word_bytes(self.len());
         if padded_len > self.len() {
@@ -257,7 +257,7 @@ impl Serialize for Vec<u8> {
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
         let mut value: Vec<u8> = Vec::with_capacity(size);
         unsafe { value.set_len(size); }
@@ -279,13 +279,13 @@ impl Serialize for Vec<u8> {
 }
 
 impl Serialize for String {
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         let size = self.len();
         size.serialize(writer)?;
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         writer.write_all(self.as_bytes())?;
         let padded_len = bits::round_up_to_word_bytes(self.len());
         if padded_len > self.len() {
@@ -295,7 +295,7 @@ impl Serialize for String {
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let bytes = Vec::<u8>::load(reader)?;
         String::from_utf8(bytes).map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid UTF-8"))
     }
@@ -306,7 +306,7 @@ impl Serialize for String {
 }
 
 impl<V: Serialize> Serialize for Option<V> {
-    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         let mut size: usize = 0;
         if let Some(value) = self {
             size = value.size_in_elements();
@@ -315,14 +315,14 @@ impl<V: Serialize> Serialize for Option<V> {
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         if let Some(value) = self {
             value.serialize(writer)?;
         }
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
         if size == 0 {
             Ok(None)
@@ -968,6 +968,19 @@ pub fn load_from<T: Serialize, P: AsRef<Path>>(filename: P) -> io::Result<T> {
     <T as Serialize>::load(&mut file)
 }
 
+/// Skips a serialized optional structure.
+///
+/// # Errors
+///
+/// Any errors from the reader will be passed through.
+pub fn skip_option<T: Read>(reader: &mut T) -> io::Result<()> {
+    let elements = usize::load(reader)?;
+    if elements > 0 {
+        io::copy(&mut reader.by_ref().take((elements * bits::WORD_BYTES) as u64), &mut io::sink())?;
+    }
+    Ok(())
+}
+
 // Counter used for temporary file names.
 static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -996,7 +1009,7 @@ pub fn temp_file_name(name_part: &str) -> PathBuf {
 /// # Arguments
 ///
 /// * `original`: Structure to be serialized.
-/// * `name`: Name of the type (for temporary file names and error messages).
+/// * `name`: Name of the structure (for temporary file names and error messages).
 /// * `expected_size`: Expected size in elements, or [`None`] if not known.
 /// * `remove`: Should the temporary file be removed instead of returning its name.
 ///
