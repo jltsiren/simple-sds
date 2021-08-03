@@ -992,6 +992,11 @@ pub fn skip_option<T: Read>(reader: &mut T) -> io::Result<()> {
     Ok(())
 }
 
+/// Returns the size of an absent optional structure (of any type) in elements.
+pub fn absent_option_size() -> usize {
+    1
+}
+
 // Counter used for temporary file names.
 static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
