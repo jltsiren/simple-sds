@@ -14,10 +14,10 @@ bench = ["getopts", "rand"]
 [dependencies]
 getopts = { version = "0.2", optional = true }
 libc = "0.2"
-rand = { version = "0.7", optional = true }
+rand = { version = "0.8", optional = true }
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.8"
 
 [[bin]]
 name = "benchmark"
