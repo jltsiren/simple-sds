@@ -70,30 +70,30 @@ mod tests;
 /// // Select
 /// bv.enable_select();
 /// assert!(bv.supports_select());
-/// assert_eq!(bv.select(1), Ok(33));
+/// assert_eq!(bv.select(1), Some(33));
 /// let mut iter = bv.select_iter(2);
 /// assert_eq!(iter.next(), Some((2, 95)));
 /// assert_eq!(iter.next(), Some((3, 123)));
-/// assert_eq!(iter.next(), None);
+/// assert!(iter.next().is_none());
 /// let v: Vec<(usize, usize)> = bv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
 ///
 /// // SelectZero
 /// bv.enable_select_zero();
 /// assert!(bv.supports_select_zero());
-/// assert_eq!(bv.select_zero(2), Ok(3));
+/// assert_eq!(bv.select_zero(2), Some(3));
 /// let v: Vec<(usize, usize)> = bv.zero_iter().take(4).collect();
 /// assert_eq!(v, vec![(0, 0), (1, 2), (2, 3), (3, 4)]);
 ///
 /// // PredSucc
 /// bv.enable_pred_succ();
 /// assert!(bv.supports_pred_succ());
-/// assert_eq!(bv.predecessor(0).next(), None);
+/// assert!(bv.predecessor(0).next().is_none());
 /// assert_eq!(bv.predecessor(1).next(), Some((0, 1)));
 /// assert_eq!(bv.predecessor(2).next(), Some((0, 1)));
 /// assert_eq!(bv.successor(122).next(), Some((3, 123)));
 /// assert_eq!(bv.successor(123).next(), Some((3, 123)));
-/// assert_eq!(bv.successor(124).next(), None);
+/// assert!(bv.successor(124).next().is_none());
 /// ```
 ///
 /// # Notes
@@ -367,12 +367,12 @@ impl Transformation for Complement {
 /// assert_eq!(iter.nth(0), Some((1, 2)));
 /// assert_eq!(iter.nth(1), Some((3, 5)));
 /// assert_eq!(iter.next(), Some((4, 6)));
-/// assert_eq!(iter.nth(1), None);
+/// assert!(iter.nth(1).is_none());
 ///
 /// let mut iter = bv.zero_iter();
 /// assert_eq!(iter.nth(1), Some((1, 4)));
 /// assert_eq!(iter.next(), Some((2, 7)));
-/// assert_eq!(iter.next(), None);
+/// assert!(iter.next().is_none());
 /// ```
 #[derive(Clone, Debug)]
 pub struct OneIter<'a, T: Transformation + ?Sized> {
@@ -497,13 +497,13 @@ impl<'a> Select<'a> for BitVector {
         }
     }
 
-    fn select(&'a self, rank: usize) -> Result<usize, &'static str> {
+    fn select(&'a self, rank: usize) -> Option<usize> {
          if rank >= Identity::count_ones(self) {
-             Err("Invalid rank")
+             None
         } else {
             let select_support = self.select.as_ref().unwrap();
             let value = unsafe { select_support.select_unchecked(self, rank) };
-            Ok(value)
+            Some(value)
         }
     }
 
@@ -548,13 +548,13 @@ impl<'a> SelectZero<'a> for BitVector {
         }
     }
 
-    fn select_zero(&'a self, rank: usize) -> Result<usize, &'static str> {
+    fn select_zero(&'a self, rank: usize) -> Option<usize> {
          if rank >= Complement::count_ones(self) {
-             Err("Invalid rank")
+             None
         } else {
             let select_support = self.select_zero.as_ref().unwrap();
             let value = unsafe { select_support.select_unchecked(self, rank) };
-            Ok(value)
+            Some(value)
         }
     }
 

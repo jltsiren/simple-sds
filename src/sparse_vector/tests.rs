@@ -107,7 +107,7 @@ fn empty_vector() {
     assert!(empty.is_empty(), "Created a non-empty empty vector");
     assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
     assert_eq!(empty.count_ones(), 0, "Empty vector contains ones");
-    assert_eq!(empty.iter().next(), None, "Non-empty iterator from an empty vector");
+    assert!(empty.iter().next().is_none(), "Non-empty iterator from an empty vector");
 }
 
 #[test]
@@ -231,11 +231,8 @@ fn large_rank() {
 
 fn try_select(sv: &SparseVector, increment: usize) {
     assert!(sv.supports_select(), "Failed to enable select support");
-    match sv.select(sv.count_ones()) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(sv.select_iter(sv.count_ones()).next(), None, "Got a result for select_iter past the end");
+    assert!(sv.select(sv.count_ones()).is_none(), "Got a result for select past the end");
+    assert!(sv.select_iter(sv.count_ones()).next().is_none(), "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
     for i in 0..sv.count_ones() {
@@ -298,11 +295,8 @@ fn try_one_iter(sv: &SparseVector, increment: usize) {
 #[test]
 fn empty_select() {
     let empty = zero_vector(0);
-    match empty.select(empty.count_ones()) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(empty.select_iter(empty.count_ones()).next(), None, "Got a result for select_iter past the end");
+    assert!(empty.select(empty.count_ones()).is_none(), "Got a result for select past the end");
+    assert!(empty.select_iter(empty.count_ones()).next().is_none(), "Got a result for select_iter past the end");
 }
 
 #[test]
@@ -347,7 +341,7 @@ fn try_pred_succ(sv: &SparseVector) {
             assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
         } else {
             if rank == 0 {
-                assert_eq!(pred_result, None, "Got a predecessor result before the first set bit");
+                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
             } else {
                 if let Some((pred_rank, pred_value)) = pred_result {
                     let new_rank = sv.rank(pred_value);
@@ -359,7 +353,7 @@ fn try_pred_succ(sv: &SparseVector) {
                 }
             }
             if rank == sv.count_ones() {
-                assert_eq!(succ_result, None, "Got a successor result after the last set bit");
+                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
             } else {
                 if let Some((succ_rank, succ_value)) = succ_result {
                     let new_rank = sv.rank(succ_value);
@@ -376,14 +370,14 @@ fn try_pred_succ(sv: &SparseVector) {
     if sv.len() > 0 {
         assert_eq!(sv.predecessor(sv.len()).next(), sv.predecessor(sv.len() - 1).next(), "Invalid predecessor at vector size");
     }
-    assert_eq!(sv.successor(sv.len()).next(), None, "Invalid successor at vector size");
+    assert!(sv.successor(sv.len()).next().is_none(), "Invalid successor at vector size");
 }
 
 #[test]
 fn empty_pred_succ() {
     let empty = zero_vector(0);
-    assert_eq!(empty.predecessor(0).next(), None, "Invalid predecessor at 0");
-    assert_eq!(empty.successor(empty.len()).next(), None, "Invalid successor at vector size");
+    assert!(empty.predecessor(0).next().is_none(), "Invalid predecessor at 0");
+    assert!(empty.successor(empty.len()).next().is_none(), "Invalid successor at vector size");
 }
 
 #[test]
@@ -451,7 +445,7 @@ fn multiset_pred_succ(sv: &SparseVector, truth: &[usize]) {
             assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
         } else {
             if rank == 0 {
-                assert_eq!(pred_result, None, "Got a predecessor result before the first set bit");
+                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
             } else {
                 if let Some((pred_rank, pred_value)) = pred_result {
                     assert_eq!(pred_rank, rank - 1, "Predecessor returned an invalid rank");
@@ -461,7 +455,7 @@ fn multiset_pred_succ(sv: &SparseVector, truth: &[usize]) {
                 }
             }
             if rank == sv.count_ones() {
-                assert_eq!(succ_result, None, "Got a successor result after the last set bit");
+                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
             } else {
                 if let Some((succ_rank, succ_value)) = succ_result {
                     assert_eq!(succ_rank, rank, "Successor returned an invalid rank");
@@ -477,7 +471,7 @@ fn multiset_pred_succ(sv: &SparseVector, truth: &[usize]) {
     if sv.len() > 0 {
         assert_eq!(sv.predecessor(sv.len()).next(), sv.predecessor(sv.len() - 1).next(), "Invalid predecessor at vector size");
     }
-    assert_eq!(sv.successor(sv.len()).next(), None, "Invalid successor at vector size");
+    assert!(sv.successor(sv.len()).next().is_none(), "Invalid successor at vector size");
 }
 
 fn multiset_tests(sv: &SparseVector, len: usize, truth: &[usize]) {

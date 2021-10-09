@@ -275,7 +275,7 @@ pub trait Access: Vector {
 /// assert_eq!(v.pop(), Some(3));
 /// assert_eq!(v.pop(), Some(2));
 /// assert_eq!(v.pop(), Some(1));
-/// assert_eq!(v.pop(), None);
+/// assert!(v.pop().is_none());
 /// assert!(v.is_empty());
 /// ```
 pub trait Push: Vector {
@@ -558,17 +558,17 @@ pub trait AccessSub: SubItem {
 ///         }
 ///     }
 ///
-///     fn select(&'a self, rank: usize) -> Result<usize, &'static str> {
+///     fn select(&'a self, rank: usize) -> Option<usize> {
 ///         let mut found: usize = 0;
 ///         for index in 0..self.len() {
 ///             if self.get(index) {
 ///                 if found == rank {
-///                     return Ok(index);
+///                     return Some(index);
 ///                 }
 ///                 found += 1;
 ///             }
 ///         }
-///         Err("Invalid rank")
+///         None
 ///     }
 ///
 ///     fn select_iter(&'a self, rank: usize) -> Self::OneIter {
@@ -667,23 +667,23 @@ pub trait AccessSub: SubItem {
 /// // Select
 /// bv.enable_select();
 /// assert!(bv.supports_select());
-/// assert_eq!(bv.select(1), Ok(33));
+/// assert_eq!(bv.select(1), Some(33));
 /// let mut iter = bv.select_iter(2);
 /// assert_eq!(iter.next(), Some((2, 95)));
 /// assert_eq!(iter.next(), Some((3, 123)));
-/// assert_eq!(iter.next(), None);
+/// assert!(iter.next().is_none());
 /// let v: Vec<(usize, usize)> = bv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
 ///
 /// // PredSucc
 /// bv.enable_pred_succ();
 /// assert!(bv.supports_pred_succ());
-/// assert_eq!(bv.predecessor(0).next(), None);
+/// assert!(bv.predecessor(0).next().is_none());
 /// assert_eq!(bv.predecessor(1).next(), Some((0, 1)));
 /// assert_eq!(bv.predecessor(2).next(), Some((0, 1)));
 /// assert_eq!(bv.successor(122).next(), Some((3, 123)));
 /// assert_eq!(bv.successor(123).next(), Some((3, 123)));
-/// assert_eq!(bv.successor(124).next(), None);
+/// assert!(bv.successor(124).next().is_none());
 /// ```
 pub trait BitVec<'a> {
     /// Iterator type over the bit array.
@@ -800,7 +800,7 @@ pub trait Select<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reason.
     fn one_iter(&'a self) -> Self::OneIter;
 
-    /// Returns the specified value in the integer array or [`Err`] if no such value exists.
+    /// Returns the specified value in the integer array or [`None`] if no such value exists.
     ///
     /// In the bit array interpretation, the return value is an index `i` such that `self.get(i) == true` and `self.rank(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
@@ -809,7 +809,7 @@ pub trait Select<'a>: BitVec<'a> {
     ///
     /// May panic if select support has not been enabled.
     /// May panic from I/O errors.
-    fn select(&'a self, rank: usize) -> Result<usize, &'static str>;
+    fn select(&'a self, rank: usize) -> Option<usize>;
 
     /// Returns an iterator at the specified rank in the integer array.
     ///
@@ -860,7 +860,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reason.
     fn zero_iter(&'a self) -> Self::ZeroIter;
 
-    /// Returns the specified value in the complement of the integer array or [`Err`] if no such value exists.
+    /// Returns the specified value in the complement of the integer array or [`None`] if no such value exists.
     ///
     /// In the bit array interpretation, the return value is an index `i` such that `self.get(i) == false` and `self.rank_zero(i) == rank`.
     /// This trait uses 0-based indexing, while the [SDSL](https://github.com/simongog/sdsl-lite) select uses 1-based indexing.
@@ -869,7 +869,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     ///
     /// May panic if select support has not been enabled for the complement.
     /// May panic from I/O errors.
-    fn select_zero(&'a self, rank: usize) -> Result<usize, &'static str>;
+    fn select_zero(&'a self, rank: usize) -> Option<usize>;
 
     /// Returns an iterator at the specified rank in the complement of the integer array.
     ///

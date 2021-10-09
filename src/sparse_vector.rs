@@ -93,22 +93,22 @@ mod tests;
 ///
 /// // Select
 /// assert!(sv.supports_select());
-/// assert_eq!(sv.select(1), Ok(33));
+/// assert_eq!(sv.select(1), Some(33));
 /// let mut iter = sv.select_iter(2);
 /// assert_eq!(iter.next(), Some((2, 95)));
 /// assert_eq!(iter.next(), Some((3, 123)));
-/// assert_eq!(iter.next(), None);
+/// assert!(iter.next().is_none());
 /// let v: Vec<(usize, usize)> = sv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
 ///
 /// // PredSucc
 /// assert!(sv.supports_pred_succ());
-/// assert_eq!(sv.predecessor(0).next(), None);
+/// assert!(sv.predecessor(0).next().is_none());
 /// assert_eq!(sv.predecessor(1).next(), Some((0, 1)));
 /// assert_eq!(sv.predecessor(2).next(), Some((0, 1)));
 /// assert_eq!(sv.successor(122).next(), Some((3, 123)));
 /// assert_eq!(sv.successor(123).next(), Some((3, 123)));
-/// assert_eq!(sv.successor(124).next(), None);
+/// assert!(sv.successor(124).next().is_none());
 /// ```
 ///
 /// # Notes
@@ -725,7 +725,7 @@ impl<'a> Rank<'a> for SparseVector {
 /// assert_eq!(iter.next(), Some((2, 3)));
 /// assert_eq!(iter.next(), Some((3, 5)));
 /// assert_eq!(iter.next(), Some((4, 6)));
-/// assert_eq!(iter.next(), None);
+/// assert!(iter.next().is_none());
 /// ```
 #[derive(Clone, Debug)]
 pub struct OneIter<'a> {
@@ -807,11 +807,11 @@ impl<'a> Select<'a> for SparseVector {
         }
     }
 
-    fn select(&'a self, rank: usize) -> Result<usize, &'static str> {
+    fn select(&'a self, rank: usize) -> Option<usize> {
          if rank >= self.count_ones() {
-             Err("Invalid rank")
+             None
         } else {
-            Ok(self.combine(self.pos(rank)).1)
+            Some(self.combine(self.pos(rank)).1)
         }
     }
 

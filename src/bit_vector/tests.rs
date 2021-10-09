@@ -117,7 +117,7 @@ fn empty_vector() {
     assert!(empty.is_empty(), "Created a non-empty empty vector");
     assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
     assert_eq!(empty.count_ones(), 0, "Empty vector contains ones");
-    assert_eq!(empty.iter().next(), None, "Non-empty iterator from an empty vector");
+    assert!(empty.iter().next().is_none(), "Non-empty iterator from an empty vector");
 }
 
 #[test]
@@ -229,11 +229,8 @@ fn large_rank() {
 
 fn try_select(bv: &BitVector) {
     assert!(bv.supports_select(), "Failed to enable select support");
-    match bv.select(bv.count_ones()) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(bv.select_iter(bv.count_ones()).next(), None, "Got a result for select_iter past the end");
+    assert!(bv.select(bv.count_ones()).is_none(), "Got a result for select past the end");
+    assert!(bv.select_iter(bv.count_ones()).next().is_none(), "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
     for i in 0..bv.count_ones() {
@@ -315,11 +312,8 @@ fn empty_select() {
     assert!(!empty.supports_select(), "Select support was enabled by default");
     empty.enable_select();
     assert!(empty.supports_select(), "Failed to enable select support");
-    match empty.select(empty.count_ones()) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(empty.select_iter(empty.count_ones()).next(), None, "Got a result for select_iter past the end");
+    assert!(empty.select_iter(empty.count_ones()).next().is_none(), "Got a result for select_iter past the end");
+    assert!(empty.select_iter(empty.count_ones()).next().is_none(), "Got a result for select_iter past the end");
 }
 
 #[test]
@@ -375,11 +369,8 @@ fn large_select() {
 
 fn try_select_zero(bv: &BitVector) {
     assert!(bv.supports_select_zero(), "Failed to enable select zero support");
-    match bv.select_zero(Complement::count_ones(bv)) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(bv.select_zero_iter(Complement::count_ones(bv)).next(), None, "Got a result for select_iter past the end");
+    assert!(bv.select_zero(Complement::count_ones(bv)).is_none(), "Got a result for select past the end");
+    assert!(bv.select_zero_iter(Complement::count_ones(bv)).next().is_none(), "Got a result for select_iter past the end");
 
     let mut next: usize = 0;
     for i in 0..Complement::count_ones(bv) {
@@ -399,11 +390,8 @@ fn empty_select_zero() {
     assert!(!empty.supports_select_zero(), "Select zero support was enabled by default");
     empty.enable_select_zero();
     assert!(empty.supports_select_zero(), "Failed to enable select zero support");
-    match empty.select_zero(Complement::count_ones(&empty)) {
-        Err(_) => (),
-        Ok(_) => panic!("Got a result for select past the end"),
-    }
-    assert_eq!(empty.select_zero_iter(Complement::count_ones(&empty)).next(), None, "Got a result for select_iter past the end");
+    assert!(empty.select_zero(Complement::count_ones(&empty)).is_none(), "Got a result for select past the end");
+    assert!(empty.select_zero_iter(Complement::count_ones(&empty)).next().is_none(), "Got a result for select_iter past the end");
 }
 
 #[test]
@@ -469,7 +457,7 @@ fn try_pred_succ(bv: &BitVector) {
             assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
         } else {
             if rank == 0 {
-                assert_eq!(pred_result, None, "Got a predecessor result before the first set bit");
+                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
             } else {
                 if let Some((pred_rank, pred_value)) = pred_result {
                     let new_rank = bv.rank(pred_value);
@@ -481,7 +469,7 @@ fn try_pred_succ(bv: &BitVector) {
                 }
             }
             if rank == bv.count_ones() {
-                assert_eq!(succ_result, None, "Got a successor result after the last set bit");
+                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
             } else {
                 if let Some((succ_rank, succ_value)) = succ_result {
                     let new_rank = bv.rank(succ_value);
@@ -502,8 +490,8 @@ fn empty_pred_succ() {
     assert!(!empty.supports_pred_succ(), "Predecessor/successor support was enabled by default");
     empty.enable_pred_succ();
     assert!(empty.supports_pred_succ(), "Failed to enable predecessor/successor support");
-    assert_eq!(empty.predecessor(0).next(), None, "Invalid predecessor at 0");
-    assert_eq!(empty.successor(empty.len()).next(), None, "Invalid successor at vector size");
+    assert!(empty.predecessor(0).next().is_none(), "Invalid predecessor at 0");
+    assert!(empty.successor(empty.len()).next().is_none(), "Invalid successor at vector size");
 }
 
 #[test]
