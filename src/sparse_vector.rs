@@ -408,7 +408,7 @@ impl SparseBuilder {
 
     // Returns `high.len()` for the given `universe` and `low.width()`.
     fn get_buckets(universe: usize, low_width: usize) -> usize {
-        let mut buckets = universe >> low_width;
+        let mut buckets = if low_width < bits::WORD_BITS { universe >> low_width } else { 0 };
         if universe & (bits::low_set(low_width) as usize) != 0 {
             buckets += 1;
         }
@@ -577,7 +577,7 @@ impl<'a> DoubleEndedIterator for Iter<'a> {
         match self.last_set {
             Some(value) => {
                 if value == self.limit {
-                    // We have to find the previsous unvisited (unique) value, and `next_set` is the initial candidate.
+                    // We have to find the previous unvisited (unique) value, and `next_set` is the initial candidate.
                     self.last_set = self.next_set;
                     // Skip duplicates until we find a new value or run out of values.
                     while let Some((_, index)) = self.parent.next_back() {
