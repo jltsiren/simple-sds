@@ -389,7 +389,7 @@ pub enum MappingMode {
 /// ```
 #[derive(Debug)]
 pub struct MemoryMap {
-    file: File,
+    _file: File, // The compiler might otherwise get overzealous and complain that we don't touch the file.
     filename: PathBuf,
     mode: MappingMode,
     ptr: *mut u64,
@@ -439,7 +439,7 @@ impl MemoryMap {
         let mut buf = PathBuf::new();
         buf.push(&filename);
         Ok(MemoryMap {
-            file: file,
+            _file: file,
             filename: buf,
             mode: mode,
             ptr: ptr.cast::<u64>(),
