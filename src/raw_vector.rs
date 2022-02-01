@@ -86,12 +86,14 @@ pub trait AccessRaw {
 
     /// Reads an integer from the container.
     ///
-    /// Behavior is undefined if `width > 64`.
-    ///
     /// # Arguments
     ///
     /// * `bit_offset`: Starting offset in the bit array.
     /// * `width`: The width of the integer in bits.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Panics
     ///
@@ -110,6 +112,8 @@ pub trait AccessRaw {
     fn word(&self, index: usize) -> u64;
 
     /// Unsafe version of [`AccessRaw::word`] without bounds checks.
+    ///
+    /// # Safety
     ///
     /// Behavior is undefined in situations where the safe versions may panic.
     unsafe fn word_unchecked(&self, index: usize) -> u64;
@@ -135,13 +139,15 @@ pub trait AccessRaw {
 
     /// Writes an integer to the container.
     ///
-    /// Behavior is undefined if `width > 64`.
-    ///
     /// # Arguments
     ///
     /// * `bit_offset`: Starting offset in the bit array.
     /// * `value`: The integer to be written.
     /// * `width`: The width of the integer in bits.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Panics
     ///
@@ -202,12 +208,14 @@ pub trait PushRaw {
 
     /// Appends an integer to the container.
     ///
-    /// Behavior is undefined if `width > 64`.
-    ///
     /// # Arguments
     ///
     /// * `value`: The integer to be appended.
     /// * `width`: The width of the integer in bits.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if `width > 64`.
     ///
     /// # Panics
     ///
@@ -259,11 +267,15 @@ pub trait PushRaw {
 /// ```
 pub trait PopRaw {
     /// Removes and returns the last bit from the container.
+    ///
     /// Returns [`None`] the container does not have more bits.
     fn pop_bit(&mut self) -> Option<bool>;
 
     /// Removes and returns the last `width` bits from the container as an integer.
+    ///
     /// Returns [`None`] if the container does not have more integers of that width.
+    ///
+    /// # Safety
     ///
     /// Behavior is undefined if `width > 64`.
     unsafe fn pop_int(&mut self, width: usize) -> Option<u64>;
@@ -359,8 +371,7 @@ impl RawVector {
         let val = bits::filler_value(value);
         let data: Vec<u64> = vec![val; bits::bits_to_words(len)];
         let mut result = RawVector {
-            len: len,
-            data: data,
+            len, data,
         };
         result.set_unused_bits(false);
         result
@@ -570,7 +581,7 @@ impl PushRaw for RawVector {
 
 impl PopRaw for RawVector {
     fn pop_bit(&mut self) -> Option<bool> {
-        if self.len() > 0 {
+        if !self.is_empty() {
             let result = self.bit(self.len - 1);
             self.len -= 1;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
@@ -613,8 +624,7 @@ impl Serialize for RawVector {
             Err(Error::new(ErrorKind::InvalidData, "Bit length / word length mismatch"))
         } else {
             Ok(RawVector {
-                len: len,
-                data: data,
+                len, data,
             })
         }
     }
@@ -721,7 +731,7 @@ impl RawVectorWriter {
         let mut result = RawVectorWriter {
             len: 0,
             buf_len: Self::DEFAULT_BUFFER_SIZE,
-            buf: buf,
+            buf,
             file: Some(file),
             filename: name,
         };
@@ -750,8 +760,8 @@ impl RawVectorWriter {
         name.push(&filename);
         let mut result = RawVectorWriter {
             len: 0,
-            buf_len: buf_len,
-            buf: buf,
+            buf_len,
+            buf,
             file: Some(file),
             filename: name,
         };
@@ -766,10 +776,7 @@ impl RawVectorWriter {
 
     /// Returns `true` if the file is open for writing.
     pub fn is_open(&self) -> bool {
-        match self.file {
-            Some(_) => true,
-            None    => false,
-        }
+        self.file.is_some()
     }
 
     // Flushes the buffer.
@@ -975,8 +982,7 @@ impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
         let len = slice[offset] as usize;
         let data = MappedSlice::new(map, offset + 1)?;
         Ok(RawVectorMapper {
-            len: len,
-            data: data,
+            len, data,
         })
     }
 

@@ -217,7 +217,7 @@ impl<V: Serializable> Serialize for Vec<V> {
     fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         unsafe {
             let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<V>());
-            writer.write_all(&buf)?;
+            writer.write_all(buf)?;
         }
         Ok(())
     }
@@ -441,7 +441,7 @@ impl MemoryMap {
         Ok(MemoryMap {
             _file: file,
             filename: buf,
-            mode: mode,
+            mode,
             ptr: ptr.cast::<u64>(),
             len: bits::bytes_to_words(len),
         })
@@ -459,6 +459,8 @@ impl MemoryMap {
     }
 
     /// Returns a mutable slice corresponding to the file.
+    ///
+    /// # Safety
     ///
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
     pub unsafe fn as_mut_slice(&mut self) -> &mut [u64] {
@@ -656,8 +658,7 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
         let source: &[u64] = &slice[offset + 1 ..];
         let data: &[T] = unsafe { slice::from_raw_parts(source.as_ptr() as *const T, len) };
         Ok(MappedSlice {
-            data: data,
-            offset: offset,
+            data, offset,
         })
     }
 
@@ -750,8 +751,7 @@ impl<'a> MemoryMapped<'a> for MappedBytes<'a> {
         let source: &[u64] = &slice[offset + 1 ..];
         let data: &[u8] = unsafe { slice::from_raw_parts(source.as_ptr() as *const u8, len) };
         Ok(MappedBytes {
-            data: data,
-            offset: offset,
+            data, offset,
         })
     }
 
@@ -834,8 +834,7 @@ impl<'a> MemoryMapped<'a> for MappedStr<'a> {
         let bytes: &[u8] = unsafe { slice::from_raw_parts(source.as_ptr() as *const u8, len) };
         let data = str::from_utf8(bytes).map_err(|_| Error::new(ErrorKind::InvalidData, "Invalid UTF-8"))?;
         Ok(MappedStr {
-            data: data,
-            offset: offset,
+            data, offset,
         })
     }
 
@@ -898,15 +897,15 @@ impl<'a, T: MemoryMapped<'a>> MappedOption<'a, T> {
     /// Panics if the option is a [`None`] value.
     pub fn unwrap(&self) -> &T {
         match &self.data {
-            Some(value) => return &value,
+            Some(value) => value,
             None => panic!("No value to unwrap"),
-        };
+        }
     }
 
     /// Returns [`Option`]`<&T>` referencing the possibly contained value.
     pub fn as_ref(&self) -> Option<&T> {
         match &self.data {
-            Some(value) => Some(&value),
+            Some(value) => Some(value),
             None => None,
         }
     }
@@ -919,7 +918,7 @@ impl<'a, T: MemoryMapped<'a>> MemoryMapped<'a> for MappedOption<'a, T> {
         }
         let mut result = MappedOption {
             data: None,
-            offset: offset,
+            offset,
             data_len: map.as_ref()[offset] as usize,
             _marker: marker::PhantomData,
         };

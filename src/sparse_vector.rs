@@ -210,7 +210,7 @@ impl SparseVector {
             }
             prev = value;
         }
-        return false;
+        false
     }
 
     // Split a bitvector index into high and low parts.
@@ -329,13 +329,13 @@ impl SparseBuilder {
         let data = SparseVector {
             len: universe,
             high: BitVector::from(RawVector::new()),
-            low: low,
+            low,
         };
 
         let high = RawVector::with_len(high_len, false);
         Ok(SparseBuilder {
-            data: data,
-            high: high,
+            data,
+            high,
             len: 0,
             next: 0,
             increment: 1,
@@ -377,13 +377,13 @@ impl SparseBuilder {
         let data = SparseVector {
             len: universe,
             high: BitVector::from(RawVector::new()),
-            low: low,
+            low,
         };
 
         let high = RawVector::with_len(high_len, false);
         SparseBuilder {
-            data: data,
-            high: high,
+            data,
+            high,
             len: 0,
             next: 0,
             increment: 0,
@@ -440,6 +440,13 @@ impl SparseBuilder {
         self.len() == self.capacity()
     }
 
+    /// Returns `true` if no bits have been set.
+    ///
+    /// Keeps Clippy happy.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Sets the specified bit in the bitvector.
     ///
     /// # Panics
@@ -450,6 +457,8 @@ impl SparseBuilder {
     }
 
     /// Unsafe version of [`SparseBuilder::set`] without sanity checks.
+    ///
+    /// # Safety
     ///
     /// Behavior is undefined if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
     pub unsafe fn set_unchecked(&mut self, index: usize) {
@@ -541,7 +550,7 @@ impl<'a> Iterator for Iter<'a> {
                     // We have to find the next unvisited (unique) value, and `last_set` is the initial candidate.
                     self.next_set = self.last_set;
                     // Skip duplicates until we find a new value or run out of values.
-                    while let Some((_, index)) = self.parent.next() {
+                    for (_, index) in self.parent.by_ref() {
                         if index > self.next {
                             self.next_set = Some(index);
                             break;
@@ -630,7 +639,7 @@ impl<'a> BitVec<'a> for SparseVector {
             pos.high += 1; pos.low += 1;
         }
 
-        return false;
+        false
     }
 
     fn iter(&'a self) -> Self::Iter {
@@ -648,9 +657,9 @@ impl<'a> BitVec<'a> for SparseVector {
         Self::Iter {
             parent: one_iter,
             next: 0,
-            next_set: next_set,
+            next_set,
             limit: self.len(),
-            last_set: last_set,
+            last_set,
         }
     }
 }
@@ -740,7 +749,7 @@ impl<'a> OneIter<'a> {
     // Build an empty iterator for the parent bitvector.
     fn empty_iter(parent: &'a SparseVector) -> OneIter<'a> {
         OneIter {
-            parent: parent,
+            parent,
             next: Pos { high: parent.high.len(), low: parent.low.len(), },
             limit: Pos { high: parent.high.len(), low: parent.low.len(), },
         }
@@ -944,9 +953,7 @@ impl Serialize for SparseVector {
         }
 
         let result = SparseVector {
-            len: len,
-            high: high,
-            low: low,
+            len, high, low,
         };
         Ok(result)
     }

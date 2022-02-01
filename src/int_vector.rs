@@ -61,7 +61,7 @@ impl IntVector {
         else {
             Ok(IntVector {
                 len: 0,
-                width: width,
+                width,
                 data: RawVector::new(),
             })
         }
@@ -103,9 +103,7 @@ impl IntVector {
             unsafe { data.push_int(value, width); }
         }
         Ok(IntVector {
-            len: len,
-            width: width,
-            data: data,
+            len, width, data,
         })
     }
 
@@ -139,7 +137,7 @@ impl IntVector {
         } else {
             Ok(IntVector {
                 len: 0,
-                width: width,
+                width,
                 data: RawVector::with_capacity(capacity * width),
             })
         }
@@ -212,14 +210,18 @@ impl Vector for IntVector {
 
 impl Resize for IntVector {
     fn resize(&mut self, new_len: usize, value: <Self as Vector>::Item) {
-        if new_len > self.len() {
-            self.reserve(new_len - self.len());
-            while self.len() < new_len {
-                self.push(value);
-            }
-        } else if new_len < self.len() {
-            self.data.resize(new_len * self.width(), false);
-            self.len = new_len;
+        match new_len {
+            new_len if new_len > self.len() => {
+                self.reserve(new_len - self.len());
+                while self.len() < new_len {
+                    self.push(value);
+                }
+            },
+            new_len if new_len < self.len() => {
+                self.data.resize(new_len * self.width(), false);
+                self.len = new_len;
+            },
+            _ => (),
         }
     }
 
@@ -315,9 +317,7 @@ impl Serialize for IntVector {
         }
         else {
             Ok(IntVector {
-                len: len,
-                width: width,
-                data: data,
+                len, width, data,
             })
         }
     }
@@ -528,8 +528,8 @@ impl IntVectorWriter {
         let writer = RawVectorWriter::new(filename, &mut header)?;
         let result = IntVectorWriter {
             len: 0,
-            width: width,
-            writer: writer,
+            width,
+            writer,
         };
         Ok(result)
     }
@@ -562,8 +562,8 @@ impl IntVectorWriter {
         let writer = RawVectorWriter::with_buf_len(filename, &mut header, buf_len * width)?;
         let result = IntVectorWriter {
             len: 0,
-            width: width,
-            writer: writer,
+            width,
+            writer,
         };
         Ok(result)
     }
@@ -586,9 +586,7 @@ impl IntVectorWriter {
     ///
     /// Any I/O errors will be passed through.
     pub fn close(&mut self) -> io::Result<()> {
-        let mut header: Vec<u64> = Vec::new();
-        header.push(self.len as u64);
-        header.push(self.width as u64);
+        let mut header: Vec<u64> = vec![self.len as u64, self.width as u64];
         self.writer.close_with_header(&mut header)
     }
 }
@@ -743,9 +741,7 @@ impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {
         let width = slice[offset + 1] as usize;
         let data = RawVectorMapper::new(map, offset + 2)?;
         Ok(IntVectorMapper {
-            len: len,
-            width: width,
-            data: data,
+            len, width, data,
         })
     }
 

@@ -255,6 +255,8 @@ pub trait Transformation {
 
     /// Unsafe version of [`Transformation::word`] without bounds checks.
     ///
+    /// # Safety
+    ///
     /// Behavior is undefined if `index * 64` is not a valid offset in the bit array.
     unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64;
 
@@ -262,7 +264,7 @@ pub trait Transformation {
     fn count_ones(parent: &BitVector) -> usize;
 
     /// Returns an iterator over the set bits in the transformed bitvector.
-    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self>;
+    fn one_iter(parent: &BitVector) -> OneIter<'_, Self>;
 }
 
 /// The bitvector as it is.
@@ -290,7 +292,7 @@ impl Transformation for Identity {
         parent.count_ones()
     }
 
-    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self> {
+    fn one_iter(parent: &BitVector) -> OneIter<'_, Self> {
         parent.one_iter()
     }
 }
@@ -328,7 +330,7 @@ impl Transformation for Complement {
         parent.len() - parent.count_ones()
     }
 
-    fn one_iter<'a>(parent: &'a BitVector) -> OneIter<'a, Self> {
+    fn one_iter(parent: &BitVector) -> OneIter<'_, Self> {
         parent.zero_iter()
     }
 }
@@ -389,7 +391,7 @@ impl<'a, T: Transformation + ?Sized> OneIter<'a, T> {
     // Build an empty iterator for the parent bitvector.
     fn empty_iter(parent: &'a BitVector) -> OneIter<'a, T> {
         OneIter {
-            parent: parent,
+            parent,
             next: (T::count_ones(parent), parent.len()),
             limit: (T::count_ones(parent), parent.len()),
             _marker: marker::PhantomData,
@@ -652,11 +654,7 @@ impl Serialize for BitVector {
         }
 
         Ok(BitVector {
-            ones: ones,
-            data: data,
-            rank: rank,
-            select: select,
-            select_zero: select_zero,
+            ones, data, rank, select, select_zero,
         })
     }
 
@@ -682,8 +680,8 @@ impl From<RawVector> for BitVector {
     fn from(data: RawVector) -> Self {
         let ones = data.count_ones();
         BitVector {
-            ones: ones,
-            data: data,
+            ones,
+            data,
             rank: None,
             select: None,
             select_zero: None,
@@ -699,16 +697,16 @@ impl From<BitVector> for RawVector {
 
 impl FromIterator<bool> for BitVector {
     fn from_iter<I: IntoIterator<Item = bool>>(iter: I) -> Self {
-        let mut iter = iter.into_iter();
+        let iter = iter.into_iter();
         let (lower_bound, _) = iter.size_hint();
         let mut data = RawVector::with_capacity(lower_bound);
-        while let Some(value) = iter.next() {
+        for value in iter {
             data.push_bit(value);
         }
         let ones = data.count_ones();
         BitVector {
-            ones: ones,
-            data: data,
+            ones,
+            data,
             rank: None,
             select: None,
             select_zero: None,

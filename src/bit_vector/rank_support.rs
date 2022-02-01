@@ -89,7 +89,7 @@ impl RankSupport {
         }
 
         RankSupport {
-            samples: samples,
+            samples,
         }
     }
 
@@ -141,6 +141,8 @@ impl RankSupport {
 
     /// Unsafe version of [`RankSupport::rank`] without bounds checks.
     ///
+    /// # Safety
+    ///
     /// Behavior is undefined if `index >= parent.len()`.
     pub unsafe fn rank_unchecked(&self, parent: &BitVector, index: usize) -> usize {
         let block = index / Self::BLOCK_SIZE;
@@ -180,7 +182,7 @@ impl Serialize for RankSupport {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let samples = Vec::<(u64, u64)>::load(reader)?;
         Ok(RankSupport {
-            samples: samples,
+            samples,
         })
     }
 

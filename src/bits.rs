@@ -258,6 +258,8 @@ pub fn low_set(n: usize) -> u64 {
 
 /// Unsafe version of [`low_set`].
 ///
+/// # Safety
+///
 /// Behavior is undefined if `n > 64`.
 #[inline]
 pub unsafe fn low_set_unchecked(n: usize) -> u64 {
@@ -284,6 +286,8 @@ pub fn high_set(n: usize) -> u64 {
 
 /// Unsafe version of [`high_set`].
 ///
+/// # Safety
+///
 /// Behavior is undefined if `n > 64`.
 #[inline]
 pub unsafe fn high_set_unchecked(n: usize) -> u64 {
@@ -308,8 +312,6 @@ pub fn bit_len(n: u64) -> usize {
 
 /// Returns the bit offset of the set bit of specified rank.
 ///
-/// Behavior is undefined if `rank >= n.count_ones()`.
-///
 /// # Arguments
 ///
 /// * `n`: An integer.
@@ -326,6 +328,10 @@ pub fn bit_len(n: u64) -> usize {
 ///     assert_eq!(bits::select(0b00100001_00010000, 2), 13);
 /// }
 /// ```
+///
+/// # Safety
+///
+/// Behavior is undefined if `rank >= n.count_ones()`.
 #[inline]
 pub unsafe fn select(n: u64, rank: usize) -> usize {
     // The first argument to `__pdep_u64` has a single 1 at bit offset `rank`. The
@@ -560,8 +566,6 @@ pub fn bit_offset(index: usize, offset: usize) -> usize {
 
 /// Writes an integer into a bit array implemented as an array of [`u64`] values.
 ///
-/// Behavior is undefined if `width > 64`.
-///
 /// # Arguments
 ///
 /// * `bit_offset`: Starting offset in the bit array.
@@ -580,6 +584,10 @@ pub fn bit_offset(index: usize, offset: usize) -> usize {
 /// }
 /// assert_eq!(array[0], 0x37);
 /// ```
+///
+/// # Safety
+///
+/// Behavior is undefined if `width > 64`.
 ///
 /// # Panics
 ///
@@ -601,8 +609,6 @@ pub unsafe fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_off
 
 /// Reads an integer from a bit array implemented as an array of [`u64`] values.
 ///
-/// Behavior is undefined if `width > 64`.
-///
 /// # Arguments
 ///
 /// * `bit_offset`: Starting offset in the bit array.
@@ -619,6 +625,10 @@ pub unsafe fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_off
 ///     assert_eq!(bits::read_int(&array, 4, 4), 3);
 /// }
 /// ```
+///
+/// # Safety
+///
+/// Behavior is undefined if `width > 64`.
 ///
 /// # Panics
 ///

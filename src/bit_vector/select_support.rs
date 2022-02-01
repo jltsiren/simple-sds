@@ -114,11 +114,11 @@ impl<T: Transformation> SelectSupport<T> {
         result.samples.reserve(superblocks * 2);
 
         // `sample_iter` will iterate over superblock samples.
-        let mut sample_iter = T::one_iter(&parent);
+        let mut sample_iter = T::one_iter(parent);
         let mut sample = sample_iter.next();
 
         // `iter` will iterate over the values we store in `self.long` and `self.short`.
-        let mut iter = T::one_iter(&parent);
+        let mut iter = T::one_iter(parent);
         let mut value = iter.next();
 
         while sample != None {
@@ -217,6 +217,8 @@ impl<T: Transformation> SelectSupport<T> {
 
     /// Unsafe version of [`SelectSupport::select`] without some bounds checks.
     ///
+    /// # Safety
+    ///
     /// Behavior is undefined if `rank >= T::count_ones(parent)`.
     pub unsafe fn select_unchecked(&self, parent: &BitVector, rank: usize) -> usize {
         let (superblock, offset) = (rank / Self::SUPERBLOCK_SIZE, rank & Self::SUPERBLOCK_MASK);
@@ -273,9 +275,9 @@ impl<T: Transformation> Serialize for SelectSupport<T> {
         let long = IntVector::load(reader)?;
         let short = IntVector::load(reader)?;
         let result = SelectSupport {
-            samples: samples,
-            long: long,
-            short: short,
+            samples,
+            long,
+            short,
             _marker: marker::PhantomData,
         };
         if result.superblocks() != result.long_superblocks() + result.short_superblocks() {
