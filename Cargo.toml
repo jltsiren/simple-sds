@@ -1,6 +1,6 @@
 [package]
 name = "simple-sds"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Jouni Siren <jouni.siren@iki.fi>"]
 edition = "2018"
 description = "Basic succinct data structures."

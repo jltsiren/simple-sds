@@ -1,5 +1,9 @@
 # Simple-SDS releases
 
+## Simple-SDS 0.3.1 (2022-02-17)
+
+* Minor patch release for the GBZ paper.
+
 ## Simple-SDS 0.3.0 (2021-11-17)
 
 ### Compressed multisets
