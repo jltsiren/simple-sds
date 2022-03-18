@@ -259,8 +259,7 @@ impl Serialize for Vec<u8> {
 
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
-        let mut value: Vec<u8> = Vec::with_capacity(size);
-        unsafe { value.set_len(size); }
+        let mut value: Vec<u8> = vec![0; size];
         reader.read_exact(value.as_mut_slice())?;
 
         // Skip padding.
