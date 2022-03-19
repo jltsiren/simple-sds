@@ -327,7 +327,7 @@ impl Transformation for Complement {
 
     #[inline]
     fn count_ones(parent: &BitVector) -> usize {
-        parent.len() - parent.count_ones()
+        parent.count_zeros()
     }
 
     fn one_iter(parent: &BitVector) -> OneIter<'_, Self> {

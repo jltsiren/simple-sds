@@ -224,18 +224,6 @@ impl SparseVector {
         false
     }
 
-    // FIXME Move to BitVec
-    /// Counts the number of unset bits in the bitvector.
-    ///
-    /// The value will be a lower bound if the vector is a multiset.
-    pub fn count_zeros(&self) -> usize {
-        if self.count_ones() >= self.len() {
-            0
-        } else {
-            self.len() - self.count_ones()
-        }
-    }
-
     // Split a bitvector index into high and low parts.
     fn split(&self, index: usize) -> Parts {
         Parts {
@@ -666,6 +654,16 @@ impl<'a> BitVec<'a> for SparseVector {
     #[inline]
     fn count_ones(&self) -> usize {
         self.low.len()
+    }
+
+    // Override the default implementation, because it may underflow with multisets.
+    #[inline]
+    fn count_zeros(&self) -> usize {
+        if self.count_ones() >= self.len() {
+            0
+        } else {
+            self.len() - self.count_ones()
+        }
     }
 
     fn get(&self, index: usize) -> bool {
