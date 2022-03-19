@@ -107,6 +107,7 @@ fn empty_vector() {
     assert!(empty.is_empty(), "Created a non-empty empty vector");
     assert_eq!(empty.len(), 0, "Nonzero length for an empty vector");
     assert_eq!(empty.count_ones(), 0, "Empty vector contains ones");
+    assert_eq!(empty.count_zeros(), 0, "Empty vector contains zeros");
     assert!(empty.iter().next().is_none(), "Non-empty iterator from an empty vector");
 }
 
@@ -121,6 +122,7 @@ fn non_empty_vector() {
     assert!(!sv.is_empty(), "The bitvector is empty");
     assert_eq!(sv.len(), 18, "Invalid length for the bitvector");
     assert_eq!(sv.count_ones(), 4, "Invalid number of ones in the bitvector");
+    assert_eq!(sv.count_zeros(), 14, "Invalid number of zeros in the bitvector");
     assert_eq!(sv.iter().len(), sv.len(), "Invalid size hint from the iterator");
     assert!(sv.iter().eq(bv.iter()), "Invalid values from the iterator");
 }
@@ -144,6 +146,7 @@ fn uniform_vector() {
     assert!(!zeros.is_empty(), "The zero vector is empty");
     assert_eq!(zeros.len(), 1861, "Invalid length for the zero vector");
     assert_eq!(zeros.count_ones(), 0, "Invalid number of ones in the zero vector");
+    assert_eq!(zeros.count_zeros(), zeros.len(), "Invalid number of zeros in the zero vector");
     assert_eq!(zeros.iter().len(), zeros.len(), "Invalid size hint from the zero vector");
     assert_eq!(zeros.iter().filter(|b| !*b).count(), zeros.len(), "Some bits were set in the iterator");
 
@@ -152,6 +155,7 @@ fn uniform_vector() {
     assert!(!ones.is_empty(), "The ones vector is empty");
     assert_eq!(ones.len(), 2133, "Invalid length for the ones vector");
     assert_eq!(ones.count_ones(), ones.len(), "Invalid number of ones in the ones vector");
+    assert_eq!(ones.count_zeros(), 0, "Invalid number of zeros in the ones vector");
     assert_eq!(ones.iter().len(), ones.len(), "Invalid size hint from the ones vector");
     assert_eq!(ones.iter().filter(|b| *b).count(), ones.len(), "Some bits were unset in the iterator");
 }
@@ -325,6 +329,73 @@ fn large_select() {
     let sv = random_vector(20304, 0.02);
     try_select(&sv, 1);
     try_one_iter(&sv, 1);
+}
+
+//-----------------------------------------------------------------------------
+
+fn try_select_zero(sv: &SparseVector) {
+    assert!(sv.supports_select_zero(), "Failed to enable select_zero support");
+    assert!(sv.select_zero(sv.count_zeros()).is_none(), "Got a result for select_zero past the end");
+    assert!(sv.select_zero_iter(sv.count_zeros()).next().is_none(), "Got a result for select_zero_iter past the end");
+
+    let mut next: usize = 0;
+    for i in 0..sv.count_zeros() {
+        let value = sv.select_zero_iter(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select_zero_iter({})", i);
+        assert!(value.1 >= next, "select_zero_iter({}) == {}, expected at least {}", i, value.1, next);
+        let index = sv.select_zero(i).unwrap();
+        assert_eq!(index, value.1, "Different results for select_zero({}) and select_zero_iter({})", i, i);
+        assert!(!sv.get(index), "Bit select_zero({}) == {} is set", i, index);
+        next = value.1 + 1;
+    }
+}
+
+fn try_zero_iter(sv: &SparseVector) {
+    assert_eq!(sv.zero_iter().len(), sv.count_zeros(), "Invalid ZeroIter length");
+
+    // Iterate forward.
+    let mut next: (usize, usize) = (0, 0);
+    for (index, value) in sv.zero_iter() {
+        assert_eq!(index, next.0, "Invalid rank from ZeroIter (forward)");
+        assert!(value >= next.1, "Too small value from ZeroIter (forward)");
+        assert!(!sv.get(value), "ZeroIter returned a set bit (forward)");
+        next = (next.0 + 1, value + 1);
+    }
+}
+
+#[test]
+fn empty_select_zero() {
+    let empty = zero_vector(0);
+    assert!(empty.select_zero(empty.count_zeros()).is_none(), "Got a result for select_zero past the end");
+    assert!(empty.select_zero_iter(empty.count_zeros()).next().is_none(), "Got a result for select_zero_iter past the end");
+}
+
+#[test]
+fn nonempty_select_zero() {
+    let sv = random_vector(77, 0.025);
+    try_select_zero(&sv);
+}
+
+#[test]
+fn uniform_select_zero() {
+    let zeros = zero_vector(1998);
+    let ones = one_vector(2022);
+    try_select_zero(&zeros);
+    try_select_zero(&ones);
+}
+
+#[test]
+fn zero_iter() {
+    let sv = random_vector(97, 0.02);
+    try_zero_iter(&sv);
+}
+
+#[test]
+#[ignore]
+fn large_select_zero() {
+    let sv = random_vector(19664, 0.022);
+    try_select_zero(&sv);
+    try_zero_iter(&sv);
 }
 
 //-----------------------------------------------------------------------------
