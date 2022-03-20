@@ -148,6 +148,9 @@ struct Parts {
 }
 
 impl SparseVector {
+    // Stop binary search in `select_zero` when there are at most this many runs left.
+    const BINARY_SEARCH_THRESHOLD: usize = 24;
+
     /// Returns a copy of the source bitvector as `SparseVector`.
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
@@ -270,8 +273,7 @@ impl SparseVector {
         let mut result = (0, self.one_iter());
 
         // Invariant: `self.rank_zero(high) > rank`.
-        // FIXME use a symbolic constant
-        while high - low > 32 {
+        while high - low > Self::BINARY_SEARCH_THRESHOLD {
             let mid = low + (high - low) / 2;
             let mut iter = self.select_iter(mid);
             let (_, mid_pos) = iter.next().unwrap();
