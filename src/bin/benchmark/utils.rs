@@ -2,7 +2,6 @@ use simple_sds::bit_vector::BitVector;
 use simple_sds::ops::BitVec;
 use simple_sds::raw_vector::{RawVector, PushRaw};
 use simple_sds::serialize::Serialize;
-use simple_sds::bits;
 
 use std::time::Duration;
 
@@ -38,25 +37,36 @@ pub fn random_vector(len: usize, density: f64) -> BitVector {
     bv
 }
 
-pub fn generate_rank_queries(n: usize, bit_len: usize) -> Vec<usize> {
-    let len = 1usize << bit_len;
-    let mut result: Vec<usize> = Vec::with_capacity(len);
+pub fn generate_rank_queries(n: usize, len: usize) -> Vec<usize> {
+    let mut result: Vec<usize> = Vec::with_capacity(n);
 
     let mut rng = rand::thread_rng();
     for _ in 0..n {
-        let value = rng.gen::<u64>() & bits::low_set(bit_len);
-        result.push(value as usize);
+        let value = rng.gen::<usize>() % len;
+        result.push(value);
     }
 
     result
 }
 
 pub fn generate_select_queries(n: usize, ones: usize) -> Vec<usize> {
-    let mut result: Vec<usize> = Vec::with_capacity(ones);
+    let mut result: Vec<usize> = Vec::with_capacity(n);
 
     let mut rng = rand::thread_rng();
     for _ in 0..n {
         let value = rng.gen::<usize>() % ones;
+        result.push(value);
+    }
+
+    result
+}
+
+pub fn generate_select_zero_queries(n: usize, zeros: usize) -> Vec<usize> {
+    let mut result: Vec<usize> = Vec::with_capacity(n);
+
+    let mut rng = rand::thread_rng();
+    for _ in 0..n {
+        let value = rng.gen::<usize>() % zeros;
         result.push(value);
     }
 

@@ -1,4 +1,4 @@
-use simple_sds::ops::{BitVec, Rank, Select};
+use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
 use simple_sds::bit_vector::BitVector;
 use simple_sds::sparse_vector::SparseVector;
 use simple_sds::serialize;
@@ -12,7 +12,7 @@ mod utils;
 
 //-----------------------------------------------------------------------------
 
-// TODO: More operations: get, select_zero, one_iter (forward/backward)
+// TODO: More operations: get, one_iter (forward/backward)
 
 fn main() {
     let config = Config::new();
@@ -28,6 +28,7 @@ fn main() {
     println!("Ones:     {} (density {:.6})", bv.count_ones(), (bv.count_ones() as f64) / (bv.len() as f64));
     bv.enable_rank();
     bv.enable_select();
+    bv.enable_select_zero();
     println!("Size:     {}", utils::bitvector_size(&bv));
     println!("");
 
@@ -39,17 +40,23 @@ fn main() {
     }
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
-    let rank_queries = utils::generate_rank_queries(config.queries, config.bit_len);
+    let rank_queries = utils::generate_rank_queries(config.queries, bv.len());
     println!("");
 
     println!("Generating {} random select queries over the bitvector", config.queries);
     let select_queries = utils::generate_select_queries(config.queries, bv.count_ones());
     println!("");
 
+    println!("Generating {} random select_zero queries over the bitvector", config.queries);
+    let select_zero_queries = utils::generate_select_zero_queries(config.queries, bv.count_zeros());
+    println!("");
+
     independent_rank(&bv, &rank_queries, "BitVector");
     chained_rank(&bv, &rank_queries, config.chain_mask, "BitVector");
     independent_select(&bv, &select_queries, "BitVector");
     chained_select(&bv, &select_queries, config.chain_mask, "BitVector");
+    independent_select_zero(&bv, &select_zero_queries, "BitVector");
+    chained_select_zero(&bv, &select_zero_queries, config.chain_mask, "BitVector");
 
     let sv: SparseVector = if let Some(basename) = config.infile.as_ref() {
         let sv_file: String = format!("{}.sv", basename);
@@ -66,6 +73,8 @@ fn main() {
     chained_rank(&sv, &rank_queries, config.chain_mask, "SparseVector");
     independent_select(&sv, &select_queries, "SparseVector");
     chained_select(&sv, &select_queries, config.chain_mask, "SparseVector");
+    independent_select_zero(&sv, &select_zero_queries, "SparseVector");
+    chained_select_zero(&sv, &select_zero_queries, config.chain_mask, "SparseVector");
 
     if let Some(basename) = config.outfile.as_ref() {
         let sv_file: String = format!("{}.sv", basename);
@@ -224,6 +233,31 @@ fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize
     for i in 0..queries.len() {
         let query = (queries[i] ^ prev) % bv.count_ones();
         let result = bv.select(query).unwrap();
+        total += result;
+        prev = result & chained_query_mask;
+    }
+    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+}
+
+fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
+    println!("{} with {} independent select_zero queries", vector_type, queries.len());
+    let now = Instant::now();
+    let mut total = 0;
+    for i in 0..queries.len() {
+        let result = bv.select_zero(queries[i]).unwrap();
+        total += result;
+    }
+    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+}
+
+fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
+    println!("{} with {} chained select_zero queries", vector_type, queries.len());
+    let now = Instant::now();
+    let mut total = 0;
+    let mut prev: usize = 0;
+    for i in 0..queries.len() {
+        let query = (queries[i] ^ prev) % bv.count_zeros();
+        let result = bv.select_zero(query).unwrap();
         total += result;
         prev = result & chained_query_mask;
     }

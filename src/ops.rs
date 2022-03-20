@@ -651,6 +651,7 @@ pub trait AccessSub: SubItem {
 /// assert_eq!(bv.len(), 137);
 /// assert!(!bv.is_empty());
 /// assert_eq!(bv.count_ones(), 4);
+/// assert_eq!(bv.count_zeros(), 133);
 /// assert!(bv.get(33));
 /// assert!(!bv.get(34));
 /// for (index, value) in bv.iter().enumerate() {
@@ -701,6 +702,12 @@ pub trait BitVec<'a> {
     ///
     /// Because the vector is immutable, the implementation should cache the value during construction.
     fn count_ones(&self) -> usize;
+
+    /// Returns the number of zeros in the bit array.
+    #[inline]
+    fn count_zeros(&self) -> usize {
+        self.len() - self.count_ones()
+    }
 
     /// Reads a bit from the bit array.
     ///

@@ -21,7 +21,7 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
   * Iterators over set bits, unset bits, and all bits.
   * Implemented on top of `RawVector`.
 * `SparseVector`: An Elias-Fano encoded bitvector.
-  * Supports `rank()`, `rank_zero()`, `select()`, `predecessor()`, and `successor()` queries .
+  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries .
   * Iterators over set bits and all bits.
   * Space-efficient construction with `SparseBuilder`.
 
@@ -34,7 +34,6 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 
 ### Bitvectors
 
-* `select_zero()` for `SparseVector`?
 * Versions of `predecessor()` and `successor()` that return values instead of iterators?
 * Slice-like functionality based on iterators?
 

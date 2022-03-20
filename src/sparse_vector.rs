@@ -25,8 +25,11 @@
 //!
 //! Rank, predecessor, and successor queries use `select_zero` on `high` followed by a linear scan.
 //!
+//! The `select_zero` implementation is based on finding the right run of unset bits using binary search with `select`.
+//! It is not particularly efficient.
+//!
 //! We can also support multisets that contain duplicate values (in the integer array interpretation).
-//! Rank queries for unset bits do not work correctly with multisets.
+//! Rank/select queries for unset bits do not work correctly with multisets.
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
@@ -67,7 +70,7 @@ mod tests;
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{BitVec, Rank, Select, PredSucc};
+/// use simple_sds::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
 /// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
 /// use std::convert::TryFrom;
 ///
@@ -79,6 +82,7 @@ mod tests;
 /// assert_eq!(sv.len(), 137);
 /// assert!(!sv.is_empty());
 /// assert_eq!(sv.count_ones(), 4);
+/// assert_eq!(sv.count_zeros(), 133);
 /// assert!(sv.get(33));
 /// assert!(!sv.get(34));
 /// for (index, value) in sv.iter().enumerate() {
@@ -100,6 +104,13 @@ mod tests;
 /// assert!(iter.next().is_none());
 /// let v: Vec<(usize, usize)> = sv.one_iter().collect();
 /// assert_eq!(v, vec![(0, 1), (1, 33), (2, 95), (3, 123)]);
+///
+/// // SelectZero
+/// assert!(sv.supports_select_zero());
+/// assert_eq!(sv.select_zero(35), Some(37));
+/// let mut iter = sv.select_zero_iter(92);
+/// assert_eq!(iter.next(), Some((92, 94)));
+/// assert_eq!(iter.next(), Some((93, 96)));
 ///
 /// // PredSucc
 /// assert!(sv.supports_pred_succ());
@@ -137,6 +148,9 @@ struct Parts {
 }
 
 impl SparseVector {
+    // Stop binary search in `select_zero` when there are at most this many runs left.
+    const BINARY_SEARCH_THRESHOLD: usize = 16;
+
     /// Returns a copy of the source bitvector as `SparseVector`.
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
@@ -249,6 +263,40 @@ impl SparseVector {
     fn upper_bound(&self, high_part: usize) -> Pos {
         let high_offset = self.high.select_zero(high_part).unwrap();
         Pos { high: high_offset, low: high_offset - high_part, }
+    }
+
+    // Returns (run rank, one_iter past the run) for the run of 0s that contains
+    // unset bit of the given rank.
+    fn find_zero_run(&self, rank: usize) -> (usize, OneIter) {
+        let mut low = 0;
+        let mut high = self.count_ones();
+        let mut result = (0, self.one_iter());
+
+        // Invariant: `self.rank_zero(high) > rank`.
+        while high - low > Self::BINARY_SEARCH_THRESHOLD {
+            let mid = low + (high - low) / 2;
+            let mut iter = self.select_iter(mid);
+            let (_, mid_pos) = iter.next().unwrap();
+            if mid_pos - mid <= rank {
+                result = (mid + 1, iter);
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        // Once we have only a few runs left, a linear scan is faster than
+        // `high.select()`.
+        let mut iter = result.1.clone();
+        while let Some((mid, mid_pos)) = iter.next() {
+            if mid_pos - mid <= rank {
+                result = (mid + 1, iter.clone());
+            } else {
+                break;
+            }
+        }
+
+        result
     }
 }
 
@@ -624,6 +672,16 @@ impl<'a> BitVec<'a> for SparseVector {
         self.low.len()
     }
 
+    // Override the default implementation, because it may underflow with multisets.
+    #[inline]
+    fn count_zeros(&self) -> usize {
+        if self.count_ones() >= self.len() {
+            0
+        } else {
+            self.len() - self.count_ones()
+        }
+    }
+
     fn get(&self, index: usize) -> bool {
         // Find the first value with the same high part, if it exists.
         let parts = self.split(index);
@@ -799,6 +857,102 @@ impl<'a> FusedIterator for OneIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
+/// An iterator over the unset bits in [`SparseVector`].
+///
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
+/// This can be interpreted as:
+///
+/// * `(index, value)` or `(i, select(i))` in the integer array of the complement; or
+/// * `(rank(j), j)` in the bit array with `j` such that `self.get(j) == false`.
+///
+/// Note that `index` is not always the index provided by [`Iterator::enumerate`].
+/// Queries may create iterators in the middle of the bitvector.
+///
+/// This iterator does not work correctly with multisets.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec, SelectZero};
+/// use simple_sds::sparse_vector::{SparseVector, SparseBuilder};
+/// use std::convert::TryFrom;
+///
+/// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+/// let ones = source.iter().filter(|&b| *b).count();
+/// let mut builder = SparseBuilder::new(source.len(), ones).unwrap();
+/// for (index, _) in source.iter().enumerate().filter(|v| *v.1) {
+///     builder.set(index);
+/// }
+/// let sv = SparseVector::try_from(builder).unwrap();
+///
+/// let mut iter = sv.zero_iter();
+/// assert_eq!(iter.len(), source.len() - ones);
+/// assert_eq!(iter.next(), Some((0, 1)));
+/// assert_eq!(iter.next(), Some((1, 4)));
+/// assert_eq!(iter.next(), Some((2, 7)));
+/// assert!(iter.next().is_none());
+/// ```
+#[derive(Clone, Debug)]
+pub struct ZeroIter<'a> {
+    iter: OneIter<'a>,
+    // The position of the next one, or the length of the bitvector.
+    one_pos: usize,
+    // The first position we have not visited.
+    next: (usize, usize),
+    // The first position we should not visit.
+    limit: (usize, usize),
+}
+
+impl<'a> ZeroIter<'a> {
+    // Build an empty iterator for the parent bitvector.
+    fn empty_iter(parent: &'a SparseVector) -> ZeroIter<'a> {
+        ZeroIter {
+            iter: OneIter::empty_iter(parent),
+            one_pos: 0,
+            next: (0, 0),
+            limit: (0, 0),
+        }
+    }
+
+    // Go to the next run of zeros if necessary, assuming that we are not at the end.
+    fn next_run(&mut self) {
+        while self.next.1 >= self.one_pos {
+            self.next.1 = self.one_pos + 1;
+            self.one_pos = if let Some((_, pos)) = self.iter.next() { pos } else { self.limit.1 };
+        }
+    }
+}
+
+impl<'a> Iterator for ZeroIter<'a> {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next.0 >= self.limit.0 {
+            None
+        } else {
+            self.next_run();
+            let result = self.next;
+            self.next.0 += 1;
+            self.next.1 += 1;
+            Some(result)
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.limit.0 - self.next.0;
+        (remaining, Some(remaining))
+    }
+}
+
+// TODO: DoubleEndedIterator?
+
+impl<'a> ExactSizeIterator for ZeroIter<'a> {}
+
+impl<'a> FusedIterator for ZeroIter<'a> {}
+
+//-----------------------------------------------------------------------------
+
 impl<'a> Select<'a> for SparseVector {
     type OneIter = OneIter<'a>;
 
@@ -833,6 +987,51 @@ impl<'a> Select<'a> for SparseVector {
                 next: self.pos(rank),
                 limit: Pos { high: self.high.len(), low: self.low.len(), },
             }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl<'a> SelectZero<'a> for SparseVector {
+    type ZeroIter = ZeroIter<'a>;
+
+    fn supports_select_zero(&self) -> bool {
+        true
+    }
+
+    fn enable_select_zero(&mut self) {}
+
+    fn zero_iter(&'a self) -> Self::ZeroIter {
+        let mut iter = self.one_iter();
+        let one_pos = if let Some((_, pos)) = iter.next() { pos } else { self.len() };
+        ZeroIter {
+            iter,
+            one_pos,
+            next: (0, 0),
+            limit: (self.count_zeros(), self.len()),
+        }
+    }
+
+    fn select_zero(&'a self, rank: usize) -> Option<usize> {
+        if rank >= self.count_zeros() {
+            return None;
+        }
+        let (run_rank, _) = self.find_zero_run(rank);
+        Some(run_rank + rank)
+    }
+
+    fn select_zero_iter(&'a self, rank: usize) -> Self::ZeroIter {
+        if rank >= self.count_zeros() {
+            return Self::ZeroIter::empty_iter(self);
+        }
+        let (run_rank, mut iter) = self.find_zero_run(rank);
+        let one_pos = if let Some((_, pos)) = iter.next() { pos } else { self.len() };
+        ZeroIter {
+            iter,
+            one_pos,
+            next: (rank, run_rank + rank),
+            limit: (self.count_zeros(), self.len()),
         }
     }
 }
