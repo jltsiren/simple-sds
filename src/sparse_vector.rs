@@ -51,7 +51,7 @@ mod tests;
 /// An immutable Elias-Fano encoded bitvector supporting, rank, select, and related queries.
 ///
 /// This structure should be used for sparse bitvectors, where frequency of set bits is low.
-/// For dense bitvectors or when [`SelectZero`] is needed, [`BitVector`] is a better choice.
+/// For dense bitvectors or when [`SelectZero`] is needed, [`BitVector`] is usually a better choice.
 /// Because most queries require support structures for one of the components, the bitvector itself is immutable.
 /// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
@@ -59,12 +59,12 @@ mod tests;
 ///
 /// `SparseVector` supports partial multiset semantics.
 /// A multiset bitvector is one that contains duplicate values in the integer array interpretation.
-/// Queries that operate on present values work correctly with a multiset, while [`Rank::rank_zero`] does not.
+/// Queries that operate on present values work correctly with a multiset, while [`Rank::rank_zero`] and [`SelectZero`] do not.
 /// Multiset vectors can be built with [`SparseBuilder::multiset`] and [`SparseVector::try_from_iter`].
 ///
 /// `SparseVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
-/// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`]
+/// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`] [`PredSucc`]
 /// * Serialization: [`Serialize`]
 ///
 /// # Examples
