@@ -262,24 +262,38 @@ impl SparseVector {
         Pos { high: high_offset, low: high_offset - high_part, }
     }
 
-    // Returns (run rank, run start, 0s before the run) for the run that contains unset bit
-    // of the given rank.
-    fn find_zero_run(&self, rank: usize) -> (usize, usize, usize) {
+    // Returns (run rank, one_iter past the run) for the run of 0s that contains
+    // unset bit of the given rank.
+    fn find_zero_run(&self, rank: usize) -> (usize, OneIter) {
         let mut low = 0;
         let mut high = self.count_ones();
-        let mut result = (0, 0, 0);
-        // FIXME switch to iteration once the range is short enough
+        let mut result = (0, self.one_iter());
+
         // Invariant: `self.rank_zero(high) > rank`.
-        while low < high {
+        // FIXME use a symbolic constant
+        while high - low > 32 {
             let mid = low + (high - low) / 2;
-            let mid_pos = self.select(mid).unwrap();
+            let mut iter = self.select_iter(mid);
+            let (_, mid_pos) = iter.next().unwrap();
             if mid_pos - mid <= rank {
-                result = (mid + 1, mid_pos + 1, mid_pos - mid);
+                result = (mid + 1, iter);
                 low = mid + 1;
             } else {
                 high = mid;
             }
         }
+
+        // Once we have only a few runs left, a linear scan is faster than
+        // `high.select()`.
+        let mut iter = result.1.clone();
+        while let Some((mid, mid_pos)) = iter.next() {
+            if mid_pos - mid <= rank {
+                result = (mid + 1, iter.clone());
+            } else {
+                break;
+            }
+        }
+
         result
     }
 }
@@ -1001,21 +1015,20 @@ impl<'a> SelectZero<'a> for SparseVector {
         if rank >= self.count_zeros() {
             return None;
         }
-        let (_, run_start, zeros) = self.find_zero_run(rank);
-        Some(run_start + rank - zeros)
+        let (run_rank, _) = self.find_zero_run(rank);
+        Some(run_rank + rank)
     }
 
     fn select_zero_iter(&'a self, rank: usize) -> Self::ZeroIter {
         if rank >= self.count_zeros() {
             return Self::ZeroIter::empty_iter(self);
         }
-        let (run_rank, run_start, zeros) = self.find_zero_run(rank);
-        let mut iter = self.select_iter(run_rank);
+        let (run_rank, mut iter) = self.find_zero_run(rank);
         let one_pos = if let Some((_, pos)) = iter.next() { pos } else { self.len() };
         ZeroIter {
             iter,
             one_pos,
-            next: (rank, run_start + rank - zeros),
+            next: (rank, run_rank + rank),
             limit: (self.count_zeros(), self.len()),
         }
     }
