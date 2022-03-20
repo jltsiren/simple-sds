@@ -149,7 +149,7 @@ struct Parts {
 
 impl SparseVector {
     // Stop binary search in `select_zero` when there are at most this many runs left.
-    const BINARY_SEARCH_THRESHOLD: usize = 24;
+    const BINARY_SEARCH_THRESHOLD: usize = 16;
 
     /// Returns a copy of the source bitvector as `SparseVector`.
     ///
