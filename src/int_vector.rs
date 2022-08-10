@@ -719,16 +719,6 @@ impl<'a> Access for IntVectorMapper<'a> {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
     }
-
-    #[inline]
-    fn is_mutable(&self) -> bool {
-        false
-    }
-
-    #[inline]
-    fn set(&mut self, _: usize, _: <Self as Vector>::Item) {
-        panic!("Not implemented");
-    }
 }
 
 impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {

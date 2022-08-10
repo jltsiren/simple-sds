@@ -185,8 +185,9 @@ pub trait Pack: Vector {
 //-----------------------------------------------------------------------------
 
 // FIXME add iterator; implement in IntVector, IntVectorMapper
-// FIXME make immutable by default
 /// A vector that supports random access to its items.
+///
+/// The default implementations of [`Access::is_mutable`] and [`Access::set`] make the vector immutable.
 ///
 /// See [`Vector`] for an example.
 pub trait Access: Vector {
@@ -201,7 +202,10 @@ pub trait Access: Vector {
     /// Returns `true` if the underlying data is mutable.
     ///
     /// This is relevant, for example, with memory-mapped vectors, where the underlying file may be opened as read-only.
-    fn is_mutable(&self) -> bool;
+    #[inline]
+    fn is_mutable(&self) -> bool {
+        false
+    }
 
     /// Sets an item in the vector.
     ///
@@ -216,7 +220,9 @@ pub trait Access: Vector {
     /// May panic if `index` is not a valid index in the vector.
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
-    fn set(&mut self, index: usize, value: <Self as Vector>::Item);
+    fn set(&mut self, _: usize, _: <Self as Vector>::Item) {
+        panic!("The default implementation of Access is immutable");
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -320,12 +326,6 @@ pub trait Pop: Vector {
 /// #[derive(Clone, Debug, PartialEq, Eq)]
 /// struct Example(Vec<char>);
 ///
-/// impl From<Vec<char>> for Example {
-///     fn from(vec: Vec<char>) -> Self {
-///         Example(vec)
-///     }
-/// }
-///
 /// impl Vector for Example {
 ///     type Item = char;
 ///
@@ -334,7 +334,7 @@ pub trait Pop: Vector {
 ///     }
 ///
 ///     fn width(&self) -> usize {
-///         8
+///         32
 ///     }
 ///
 ///     fn max_len(&self) -> usize {
@@ -345,14 +345,6 @@ pub trait Pop: Vector {
 /// impl Access for Example {
 ///     fn get(&self, index: usize) -> Self::Item {
 ///         self.0[index]
-///     }
-///
-///     fn is_mutable(&self) -> bool {
-///         true
-///     }
-///
-///     fn set(&mut self, index: usize, value: Self::Item) {
-///         self.0[index] = value
 ///     }
 /// }
 ///
@@ -428,7 +420,7 @@ pub trait Pop: Vector {
 ///     }
 /// }
 ///
-/// let vec = Example::from(vec!['a', 'b', 'c', 'b', 'a', 'b', 'c', 'c']);
+/// let vec = Example(vec!['a', 'b', 'c', 'b', 'a', 'b', 'c', 'c']);
 ///
 /// // Rank
 /// assert_eq!(vec.rank(5, 'b'), 2);
