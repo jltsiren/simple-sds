@@ -164,27 +164,6 @@ impl IntVector {
     pub fn size_by_params(capacity: usize, width: usize) -> usize {
         2 + RawVector::size_by_params(capacity * width)
     }
-
-    /// Returns an iterator visiting all items of the vector in order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::IntVector;
-    ///
-    /// let source: Vec<u16> = vec![123, 456, 789, 10];
-    /// let mut v: IntVector = source.iter().cloned().collect();
-    /// for (index, value) in v.iter().enumerate() {
-    ///     assert_eq!(source[index] as u64, value);
-    /// }
-    /// ```
-    pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            parent: self,
-            next: 0,
-            limit: self.len(),
-        }
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -258,11 +237,21 @@ impl Pack for IntVector {
     }
 }
 
-impl Access for IntVector {
+impl<'a> Access<'a> for IntVector {
+    type Iter = Iter<'a>;
+
     #[inline]
     fn get(&self, index: usize) -> <Self as Vector>::Item {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
+    }
+
+    fn iter(&'a self) -> Self::Iter {
+        Self::Iter {
+            parent: self,
+            next: 0,
+            limit: self.len(),
+        }
     }
 
     #[inline]
@@ -362,6 +351,7 @@ impl From<IntVector> for RawVector {
 ///
 /// ```
 /// use simple_sds::int_vector::IntVector;
+/// use simple_sds::ops::Access;
 ///
 /// let source: Vec<u64> = vec![123, 456, 789, 10];
 /// let v: IntVector = source.iter().cloned().collect();
@@ -663,37 +653,6 @@ pub struct IntVectorMapper<'a> {
     data: RawVectorMapper<'a>,
 }
 
-impl<'a> IntVectorMapper<'a> {
-    /// Returns an iterator visiting all items of the vector in order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use simple_sds::int_vector::{IntVector, IntVectorMapper};
-    /// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
-    /// use simple_sds::serialize;
-    /// use std::fs;
-    ///
-    /// let filename = serialize::temp_file_name("int-vector-mapper-iter");
-    /// let v = IntVector::from(vec![123u32, 456u32, 789u32, 10u32]);
-    /// serialize::serialize_to(&v, &filename);
-    ///
-    /// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
-    /// let mapper = IntVectorMapper::new(&map, 0).unwrap();
-    /// assert!(mapper.iter().eq(v.iter()));
-    ///
-    /// drop(mapper); drop(map);
-    /// fs::remove_file(&filename).unwrap();
-    /// ```
-    pub fn iter(&self) -> MappedIter<'_> {
-        MappedIter {
-            parent: self,
-            next: 0,
-            limit: self.len(),
-        }
-    }
-}
-
 impl<'a> Vector for IntVectorMapper<'a> {
     type Item = u64;
 
@@ -713,11 +672,21 @@ impl<'a> Vector for IntVectorMapper<'a> {
     }
 }
 
-impl<'a> Access for IntVectorMapper<'a> {
+impl<'a> Access<'a> for IntVectorMapper<'a> {
+    type Iter = MappedIter<'a>;
+
     #[inline]
     fn get(&self, index: usize) -> <Self as Vector>::Item {
         assert!(index < self.len(), "Index is out of bounds");
         unsafe { self.data.int(index * self.width(), self.width()) }
+    }
+
+    fn iter(&'a self) -> Self::Iter {
+        Self::Iter {
+            parent: self,
+            next: 0,
+            limit: self.len(),
+        }
     }
 }
 
@@ -761,6 +730,7 @@ impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
 ///
 /// ```
 /// use simple_sds::int_vector::{IntVector, IntVectorMapper};
+/// use simple_sds::ops::Access;
 /// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
 /// use simple_sds::serialize;
 /// use std::fs;

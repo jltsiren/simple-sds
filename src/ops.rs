@@ -77,9 +77,33 @@
 ///     fn pack(&mut self) {}
 /// }
 ///
-/// impl Access for Example {
+/// struct Iter<'a> {
+///     parent: &'a Example,
+///     index: usize,
+/// }
+///
+/// impl<'a> Iterator for Iter<'a> {
+///     type Item = u8;
+///
+///     fn next(&mut self) -> Option<Self::Item> {
+///         if self.index >= self.parent.len() {
+///             return None;
+///         }
+///         let result = Some(self.parent.get(self.index));
+///         self.index += 1;
+///         result
+///     }
+/// }
+///
+/// impl<'a> Access<'a> for Example {
+///     type Iter = Iter<'a>;
+///
 ///     fn get(&self, index: usize) -> Self::Item {
 ///         self.0[index]
+///     }
+///
+///     fn iter(&'a self) -> Self::Iter {
+///         Self::Iter { parent: self, index: 0, }
 ///     }
 ///
 ///     fn is_mutable(&self) -> bool {
@@ -106,7 +130,7 @@
 /// assert!(v.is_empty());
 ///
 /// // Pack
-/// let mut v = Example(Vec::from([1, 2, 3]));
+/// let mut v = Example(vec![1, 2, 3]);
 /// v.pack();
 /// assert_eq!(v.len(), 3);
 ///
@@ -117,6 +141,8 @@
 ///     v.set(i, i as u8);
 ///     assert_eq!(v.get(i), i as u8);
 /// }
+/// let extracted: Vec<u8> = v.iter().collect();
+/// assert_eq!(extracted, vec![0, 1, 2]);
 /// ```
 pub trait Vector {
     /// The type of the items in the vector.
@@ -184,13 +210,15 @@ pub trait Pack: Vector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME add iterator; implement in IntVector, IntVectorMapper
 /// A vector that supports random access to its items.
 ///
 /// The default implementations of [`Access::is_mutable`] and [`Access::set`] make the vector immutable.
 ///
 /// See [`Vector`] for an example.
-pub trait Access: Vector {
+pub trait Access<'a>: Vector {
+    /// Iterator over the items in the vector.
+    type Iter: Iterator<Item = <Self as Vector>::Item>;
+
     /// Gets an item from the vector.
     ///
     /// # Panics
@@ -198,6 +226,14 @@ pub trait Access: Vector {
     /// May panic if `index` is not a valid index in the vector.
     /// May panic from I/O errors.
     fn get(&self, index: usize) -> <Self as Vector>::Item;
+
+    /// Returns an iterator over the items in the vector.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reason.
+    fn iter(&'a self) -> Self::Iter;
 
     /// Returns `true` if the underlying data is mutable.
     ///
@@ -342,9 +378,33 @@ pub trait Pop: Vector {
 ///     }
 /// }
 ///
-/// impl Access for Example {
+/// struct Iter<'a> {
+///     parent: &'a Example,
+///     index: usize,
+/// }
+///
+/// impl<'a> Iterator for Iter<'a> {
+///     type Item = char;
+///
+///     fn next(&mut self) -> Option<Self::Item> {
+///         if self.index >= self.parent.len() {
+///             return None;
+///         }
+///         let result = Some(self.parent.get(self.index));
+///         self.index += 1;
+///         result
+///     }
+/// }
+///
+/// impl<'a> Access<'a> for Example {
+///     type Iter = Iter<'a>;
+///
 ///     fn get(&self, index: usize) -> Self::Item {
 ///         self.0[index]
+///     }
+///
+///     fn iter(&'a self) -> Self::Iter {
+///         Self::Iter { parent: self, index: 0, }
 ///     }
 /// }
 ///
@@ -445,7 +505,7 @@ pub trait Pop: Vector {
 /// assert_eq!(vec.successor(4, 'a').next(), Some((1, 4)));
 /// assert!(vec.successor(5, 'a').next().is_none());
 /// ```
-pub trait VectorIndex<'a>: Access {
+pub trait VectorIndex<'a>: Access<'a> {
     /// Iterator type over the occurrences of a specific item.
     ///
     /// The `Item` in the iterator is a (rank, index) pair such that index `index` is the occurrence of rank `rank`.
@@ -761,7 +821,7 @@ pub trait BitVec<'a> {
     /// # Panics
     ///
     /// May panic from I/O errors.
-    /// The iterator may also panic for the same reasons.
+    /// The iterator may also panic for the same reason.
     fn iter(&'a self) -> Self::Iter;
 }
 
