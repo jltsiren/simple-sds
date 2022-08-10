@@ -7,6 +7,7 @@
 //! * [`Pack`]: Space-efficiency by e.g. bit packing.
 //! * [`Access`]: Random access.
 //! * [`Push`], [`Pop`]: Stack operations.
+//! * [`VectorIndex`]: Rank, select, predecessor, and successor queries.
 //!
 //! # Bitvectors
 //!
@@ -19,6 +20,8 @@
 //-----------------------------------------------------------------------------
 
 /// A vector that contains items of a fixed type.
+///
+/// The type of the item must implement [`Eq`].
 ///
 /// # Examples
 ///
@@ -117,7 +120,7 @@
 /// ```
 pub trait Vector {
     /// The type of the items in the vector.
-    type Item;
+    type Item: Eq;
 
     /// Returns the number of items in the vector.
     fn len(&self) -> usize;
@@ -181,6 +184,8 @@ pub trait Pack: Vector {
 
 //-----------------------------------------------------------------------------
 
+// FIXME add iterator; implement in IntVector, IntVectorMapper
+// FIXME make immutable by default
 /// A vector that supports random access to its items.
 ///
 /// See [`Vector`] for an example.
@@ -296,6 +301,215 @@ pub trait Pop: Vector {
     ///
     /// Returns [`None`] if there are no more items in the vector.
     fn pop(&mut self) -> Option<<Self as Vector>::Item>;
+}
+
+//-----------------------------------------------------------------------------
+
+/// Rank, select, predecessor, and successor queries on a vector.
+///
+/// Index `index` of the vector is an occurrence of item `value` of rank `rank`, if `self.get(index) == value` and `self.rank(index) == rank`.
+///
+/// This generalizes [`Rank`], [`Select`], [`SelectZero`], and [`PredSucc`] from binary vectors to vectors with arbitrary items.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{Vector, Access, VectorIndex};
+/// use std::cmp;
+///
+/// #[derive(Clone, Debug, PartialEq, Eq)]
+/// struct Example(Vec<char>);
+///
+/// impl From<Vec<char>> for Example {
+///     fn from(vec: Vec<char>) -> Self {
+///         Example(vec)
+///     }
+/// }
+///
+/// impl Vector for Example {
+///     type Item = char;
+///
+///     fn len(&self) -> usize {
+///         self.0.len()
+///     }
+///
+///     fn width(&self) -> usize {
+///         8
+///     }
+///
+///     fn max_len(&self) -> usize {
+///         usize::MAX
+///     }
+/// }
+///
+/// impl Access for Example {
+///     fn get(&self, index: usize) -> Self::Item {
+///         self.0[index]
+///     }
+///
+///     fn is_mutable(&self) -> bool {
+///         true
+///     }
+///
+///     fn set(&mut self, index: usize, value: Self::Item) {
+///         self.0[index] = value
+///     }
+/// }
+///
+/// struct ValueIter<'a> {
+///     parent: &'a Example,
+///     value: char,
+///     rank: usize,
+///     index: usize,
+/// }
+///
+/// impl<'a> Iterator for ValueIter<'a> {
+///     type Item = (usize, usize);
+///
+///     fn next(&mut self) -> Option<Self::Item> {
+///         while self.index < self.parent.len() {
+///             if self.parent.get(self.index) == self.value {
+///                 let result = Some((self.rank, self.index));
+///                 self.rank += 1; self.index += 1;
+///                 return result;
+///             }
+///             self.index += 1;
+///         }
+///         None
+///     }
+/// }
+///
+/// impl<'a> VectorIndex<'a> for Example {
+///     type ValueIter = ValueIter<'a>;
+///
+///     fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize {
+///         let index = cmp::min(index, self.len());
+///         let mut result = 0;
+///         for i in 0..index {
+///             if self.get(i) == value {
+///                 result += 1;
+///             }
+///         }
+///         result
+///     }
+///
+///     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter {
+///         Self::ValueIter { parent: self, value, rank: 0, index: 0, }
+///     }
+///
+///     fn select(&self, rank: usize, value: <Self as Vector>::Item) -> Option<usize> {
+///         let mut found = 0;
+///         for index in 0..self.len() {
+///             if self.get(index) == value {
+///                 if found == rank {
+///                     return Some(index);
+///                 }
+///                 found += 1;
+///             }
+///         }
+///         None
+///     }
+///
+///     fn select_iter(&'a self, rank: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
+///         let index = self.select(rank, value).unwrap_or(self.len());
+///         Self::ValueIter { parent: self, value, rank, index, }
+///     }
+///
+///     fn predecessor(&'a self, index: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
+///         let mut rank = self.rank(index + 1, value);
+///         let index = if rank > 0 { rank = rank - 1; self.select(rank, value).unwrap() } else { self.len() };
+///         Self::ValueIter { parent: self, value, rank: rank, index, }
+///     }
+///
+///     fn successor(&'a self, index: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
+///         let rank = self.rank(index, value);
+///         let index = self.select(rank, value).unwrap_or(self.len());
+///         Self::ValueIter { parent: self, value, rank, index, }
+///     }
+/// }
+///
+/// let vec = Example::from(vec!['a', 'b', 'c', 'b', 'a', 'b', 'c', 'c']);
+///
+/// // Rank
+/// assert_eq!(vec.rank(5, 'b'), 2);
+/// assert_eq!(vec.rank(6, 'b'), 3);
+///
+/// // Iterator
+/// let a: Vec<(usize, usize)> = vec.value_iter('a').collect();
+/// assert_eq!(a, vec![(0, 0), (1, 4)]);
+///
+/// // Select
+/// assert_eq!(vec.select(0, 'c'), Some(2));
+/// let mut iter = vec.select_iter(1, 'c');
+/// assert_eq!(iter.next(), Some((1, 6)));
+/// assert_eq!(iter.next(), Some((2, 7)));
+/// assert!(iter.next().is_none());
+///
+/// // PredSucc
+/// assert!(vec.predecessor(1, 'c').next().is_none());
+/// assert_eq!(vec.predecessor(2, 'c').next(), Some((0, 2)));
+/// assert_eq!(vec.predecessor(3, 'c').next(), Some((0, 2)));
+/// assert_eq!(vec.successor(3, 'a').next(), Some((1, 4)));
+/// assert_eq!(vec.successor(4, 'a').next(), Some((1, 4)));
+/// assert!(vec.successor(5, 'a').next().is_none());
+/// ```
+pub trait VectorIndex<'a>: Access {
+    /// Iterator type over the occurrences of a specific item.
+    ///
+    /// The `Item` in the iterator is a (rank, index) pair such that index `index` is the occurrence of rank `rank`.
+    type ValueIter: Iterator<Item = (usize, usize)>;
+
+    /// Returns the number of indexes `i < index` in vector such that `self.get(i) == value`.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize;
+
+    /// Returns an iterator over the occurrences of item `value`.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reason.
+    fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter;
+
+    /// Returns the index of the vector that contains the occurrence of item `value` of rank `rank`.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn select(&self, rank: usize, value: <Self as Vector>::Item) -> Option<usize>;
+
+    /// Returns an iterator at the occurrence of item `value` of rank `rank`.
+    ///
+    /// The iterator will return [`None`] if the rank is out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reason.
+    fn select_iter(&'a self, rank: usize, value: <Self as Vector>::Item) -> Self::ValueIter;
+
+    /// Returns an iterator at the last occurrence `i <= index` of item `value`.
+    ///
+    /// The iterator will return `None` if no such occurrence exists.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reason.
+    fn predecessor(&'a self, index: usize, value: <Self as Vector>::Item) -> Self::ValueIter;
+
+    /// Returns an iterator at the first occurrence `i >= index` of item `value`.
+    ///
+    /// The iterator will return `None` if no such occurrence exists.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    /// The iterator may also panic for the same reason.
+    fn successor(&'a self, index: usize, value: <Self as Vector>::Item) -> Self::ValueIter;
 }
 
 //-----------------------------------------------------------------------------
@@ -445,22 +659,8 @@ pub trait Pop: Vector {
 ///     }
 ///
 ///     fn select_iter(&'a self, rank: usize) -> Self::OneIter {
-///         let mut found: usize = 0;
-///         let mut index: usize = 0;
-///         while index < self.len() {
-///             if self.get(index) {
-///                 if found == rank {
-///                     break;
-///                 }
-///                 found += 1;
-///             }
-///             index += 1;
-///         }
-///         Self::OneIter {
-///             parent: self,
-///             rank: rank,
-///             index: index,
-///         }
+///         let index = self.select(rank).unwrap_or(self.len());
+///         Self::OneIter { parent: self, rank, index, }
 ///     }
 /// }
 ///
@@ -474,45 +674,15 @@ pub trait Pop: Vector {
 ///     fn enable_pred_succ(&mut self) {}
 ///
 ///     fn predecessor(&'a self, value: usize) -> Self::OneIter {
-///         let mut result = Self::OneIter {
-///             parent: self,
-///             rank: self.count_ones(),
-///             index: self.len(),
-///         };
-///         let mut rank: usize = 0;
-///         let mut index: usize = 0;
-///         while index <= value && index < self.len() {
-///             if self.get(index) {
-///                 result.rank = rank;
-///                 result.index = index;
-///                 rank += 1;
-///             }
-///             index += 1;
-///         }
-///         result
+///         let mut rank = self.rank(value + 1);
+///         let index = if rank > 0 { rank = rank - 1; self.select(rank).unwrap() } else { self.len() };
+///         Self::OneIter { parent: self, rank, index, }
 ///     }
 ///
 ///     fn successor(&'a self, value: usize) -> Self::OneIter {
-///         let mut result = Self::OneIter {
-///             parent: self,
-///             rank: self.count_ones(),
-///             index: self.len(),
-///         };
-///         let mut rank: usize = 0;
-///         let mut index: usize = 0;
-///         while index < value && index < self.len() {
-///             rank += self.get(index) as usize;
-///             index += 1;
-///         }
-///         while index < self.len() {
-///             if self.get(index) {
-///                 result.rank = rank;
-///                 result.index = index;
-///                 return result;
-///             }
-///             index += 1;
-///         }
-///         result
+///         let rank = self.rank(value);
+///         let index = self.select(rank).unwrap_or(self.len());
+///         Self::OneIter { parent: self, rank, index, }
 ///     }
 /// }
 ///
