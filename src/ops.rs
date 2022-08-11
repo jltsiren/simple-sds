@@ -1122,12 +1122,12 @@ mod tests {
         let data: Vec<usize> = vec![0, 12312, 323221, 335, 11111112, 509243579823];
         let naive = NaiveVector::from(data.clone());
 
-        assert!(naive.iter().eq(data.iter().cloned()));
+        assert!(naive.iter().eq(data.iter().cloned()), "Invalid values from iterator");
 
         let mut naive_iter = naive.iter();
         let mut data_iter = data.iter().cloned();
         while let Some(value) = naive_iter.next_back() {
-            assert_eq!(Some(value), data_iter.next_back());
+            assert_eq!(Some(value), data_iter.next_back(), "Invalid values from reverse iterator");
         }
     }
 
@@ -1138,12 +1138,12 @@ mod tests {
 
         // Forward.
         for i in 0..naive.len() {
-            assert_eq!(naive.iter().nth(i), Some(naive.get(i)));
+            assert_eq!(naive.iter().nth(i), Some(naive.get(i)), "Invalid nth({})", i);
         }
 
         // Backward.
         for i in 0..naive.len() {
-            assert_eq!(naive.iter().nth_back(i), Some(naive.get(naive.len() - 1 - i)));
+            assert_eq!(naive.iter().nth_back(i), Some(naive.get(naive.len() - 1 - i)), "Invalid nth_back({})", i);
         }
     }
 }

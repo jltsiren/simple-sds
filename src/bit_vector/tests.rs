@@ -112,12 +112,12 @@ fn try_iter(bv: &BitVector) {
 
     // nth.
     for i in 0..bv.len() {
-        assert_eq!(bv.iter().nth(i), Some(bv.get(i)));
+        assert_eq!(bv.iter().nth(i), Some(bv.get(i)), "Invalid nth({})", i);
     }
 
     // nth_back.
     for i in 0..bv.len() {
-        assert_eq!(bv.iter().nth_back(i), Some(bv.get(bv.len() - 1 - i)));
+        assert_eq!(bv.iter().nth_back(i), Some(bv.get(bv.len() - 1 - i)), "Invalid nth_back({})", i);
     }
 }
 
