@@ -17,6 +17,9 @@
 //! * [`SelectZero`]: Select queries on the complement and iterators over unset bits.
 //! * [`PredSucc`]: Predecessor and successor queries.
 
+use std::iter::FusedIterator;
+use std::cmp;
+
 //-----------------------------------------------------------------------------
 
 /// A vector that contains items of a fixed type.
@@ -26,7 +29,7 @@
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Vector, Resize, Pack, Access};
+/// use simple_sds::ops::{Vector, Resize, Pack, Access, AccessIter};
 /// use simple_sds::bits;
 ///
 /// #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,33 +80,15 @@
 ///     fn pack(&mut self) {}
 /// }
 ///
-/// struct Iter<'a> {
-///     parent: &'a Example,
-///     index: usize,
-/// }
-///
-/// impl<'a> Iterator for Iter<'a> {
-///     type Item = u8;
-///
-///     fn next(&mut self) -> Option<Self::Item> {
-///         if self.index >= self.parent.len() {
-///             return None;
-///         }
-///         let result = Some(self.parent.get(self.index));
-///         self.index += 1;
-///         result
-///     }
-/// }
-///
 /// impl<'a> Access<'a> for Example {
-///     type Iter = Iter<'a>;
+///     type Iter = AccessIter<'a, Self>;
 ///
 ///     fn get(&self, index: usize) -> Self::Item {
 ///         self.0[index]
 ///     }
 ///
 ///     fn iter(&'a self) -> Self::Iter {
-///         Self::Iter { parent: self, index: 0, }
+///         Self::Iter::new(self)
 ///     }
 ///
 ///     fn is_mutable(&self) -> bool {
@@ -214,7 +199,7 @@ pub trait Pack: Vector {
 ///
 /// The default implementations of [`Access::is_mutable`] and [`Access::set`] make the vector immutable.
 ///
-/// See [`Vector`] for an example.
+/// See [`Vector`] for an example and [`AccessIter`] for a possible implementation of the iterator.
 pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
     type Iter: Iterator<Item = <Self as Vector>::Item>;
@@ -260,6 +245,78 @@ pub trait Access<'a>: Vector {
         panic!("The default implementation of Access is immutable");
     }
 }
+
+//-----------------------------------------------------------------------------
+
+/// A read-only iterator over a [`Vector`] that implements [`Access`].
+///
+/// The iterator uses [`Access::get`] and has efficient implementations of [`Iterator::nth`] and [`DoubleEndedIterator::nth_back`].
+///
+/// See [`Vector`] for an example.
+#[derive(Clone, Debug)]
+pub struct AccessIter<'a, VectorType: Access<'a>> {
+    parent: &'a VectorType,
+    // The first index we have not used.
+    next: usize,
+    // The first index we should not use.
+    limit: usize,
+}
+
+impl<'a, VectorType: Access<'a>> AccessIter<'a, VectorType> {
+    // Creates a new iterator over the vector.
+    pub fn new(parent: &'a VectorType) -> Self {
+        AccessIter {
+            parent,
+            next: 0,
+            limit: parent.len(),
+        }
+    }
+}
+
+impl<'a, VectorType: Access<'a>> Iterator for AccessIter<'a, VectorType> {
+    type Item = <VectorType as Vector>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            let result = Some(self.parent.get(self.next));
+            self.next += 1;
+            result
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.next += cmp::min(n, self.limit - self.next);
+        self.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.limit - self.next;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a, VectorType: Access<'a>> DoubleEndedIterator for AccessIter<'a, VectorType> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next >= self.limit {
+            None
+        } else {
+            self.limit -= 1;
+            Some(self.parent.get(self.limit))
+        }
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.limit -= cmp::min(n, self.limit - self.next);
+        self.next_back()
+    }
+}
+
+impl<'a, VectorType: Access<'a>> ExactSizeIterator for AccessIter<'a, VectorType> {}
+
+impl<'a, VectorType: Access<'a>> FusedIterator for AccessIter<'a, VectorType> {}
 
 //-----------------------------------------------------------------------------
 
@@ -356,7 +413,7 @@ pub trait Pop: Vector {
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{Vector, Access, VectorIndex};
+/// use simple_sds::ops::{Vector, Access, AccessIter, VectorIndex};
 /// use std::cmp;
 ///
 /// #[derive(Clone, Debug, PartialEq, Eq)]
@@ -378,33 +435,15 @@ pub trait Pop: Vector {
 ///     }
 /// }
 ///
-/// struct Iter<'a> {
-///     parent: &'a Example,
-///     index: usize,
-/// }
-///
-/// impl<'a> Iterator for Iter<'a> {
-///     type Item = char;
-///
-///     fn next(&mut self) -> Option<Self::Item> {
-///         if self.index >= self.parent.len() {
-///             return None;
-///         }
-///         let result = Some(self.parent.get(self.index));
-///         self.index += 1;
-///         result
-///     }
-/// }
-///
 /// impl<'a> Access<'a> for Example {
-///     type Iter = Iter<'a>;
+///     type Iter = AccessIter<'a, Self>;
 ///
 ///     fn get(&self, index: usize) -> Self::Item {
 ///         self.0[index]
 ///     }
 ///
 ///     fn iter(&'a self) -> Self::Iter {
-///         Self::Iter { parent: self, index: 0, }
+///         Self::Iter::new(self)
 ///     }
 /// }
 ///
@@ -1034,6 +1073,79 @@ pub trait PredSucc<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
+}
+
+//-----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NaiveVector(Vec<usize>);
+
+    impl From<Vec<usize>> for NaiveVector {
+        fn from(source: Vec<usize>) -> Self {
+            NaiveVector(source)
+        }
+    }
+
+    impl Vector for NaiveVector {
+        type Item = usize;
+
+        fn len(&self) -> usize {
+            self.0.len()
+        }
+
+        fn width(&self) -> usize {
+            64
+        }
+
+        fn max_len(&self) -> usize {
+            usize::MAX
+        }
+    }
+
+    impl<'a> Access<'a> for NaiveVector {
+        type Iter = AccessIter<'a, Self>;
+
+        fn get(&self, index: usize) -> <Self as Vector>::Item {
+            self.0[index]
+        }
+
+        fn iter(&'a self) -> Self::Iter {
+            Self::Iter::new(self)
+        }
+    }
+
+    #[test]
+    fn iter() {
+        let data: Vec<usize> = vec![0, 12312, 323221, 335, 11111112, 509243579823];
+        let naive = NaiveVector::from(data.clone());
+
+        assert!(naive.iter().eq(data.iter().cloned()));
+
+        let mut naive_iter = naive.iter();
+        let mut data_iter = data.iter().cloned();
+        while let Some(value) = naive_iter.next_back() {
+            assert_eq!(Some(value), data_iter.next_back());
+        }
+    }
+
+    #[test]
+    fn iter_nth() {
+        let data: Vec<usize> = vec![0, 12312, 323221, 335, 11111112, 509243579823];
+        let naive = NaiveVector::from(data);
+
+        // Forward.
+        for i in 0..naive.len() {
+            assert_eq!(naive.iter().nth(i), Some(naive.get(i)));
+        }
+
+        // Backward.
+        for i in 0..naive.len() {
+            assert_eq!(naive.iter().nth_back(i), Some(naive.get(naive.len() - 1 - i)));
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------

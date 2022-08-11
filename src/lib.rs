@@ -18,3 +18,4 @@ pub mod ops;
 pub mod raw_vector;
 pub mod serialize;
 pub mod sparse_vector;
+// pub mod wavelet_matrix;

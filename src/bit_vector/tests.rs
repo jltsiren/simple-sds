@@ -109,6 +109,16 @@ fn try_iter(bv: &BitVector) {
         assert_eq!(iter.next_back(), Some(bv.get(limit)), "Invalid value {} (backward, bidirectional)", limit);
     }
     assert_eq!(next, limit, "Iterator did not visit all values");
+
+    // nth.
+    for i in 0..bv.len() {
+        assert_eq!(bv.iter().nth(i), Some(bv.get(i)));
+    }
+
+    // nth_back.
+    for i in 0..bv.len() {
+        assert_eq!(bv.iter().nth_back(i), Some(bv.get(bv.len() - 1 - i)));
+    }
 }
 
 #[test]

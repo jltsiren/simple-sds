@@ -1,6 +1,6 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
-use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
+use crate::ops::{Vector, Resize, Pack, Access, AccessIter, Push, Pop};
 use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
 use crate::serialize::{MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
@@ -238,7 +238,7 @@ impl Pack for IntVector {
 }
 
 impl<'a> Access<'a> for IntVector {
-    type Iter = Iter<'a>;
+    type Iter = AccessIter<'a, Self>;
 
     #[inline]
     fn get(&self, index: usize) -> <Self as Vector>::Item {
@@ -247,11 +247,7 @@ impl<'a> Access<'a> for IntVector {
     }
 
     fn iter(&'a self) -> Self::Iter {
-        Self::Iter {
-            parent: self,
-            next: 0,
-            limit: self.len(),
-        }
+        Self::Iter::new(self)
     }
 
     #[inline]
@@ -340,68 +336,6 @@ impl From<IntVector> for RawVector {
         source.data
     }
 }
-
-//-----------------------------------------------------------------------------
-
-/// A read-only iterator over [`IntVector`].
-///
-/// The type of `Item` is [`u64`].
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::int_vector::IntVector;
-/// use simple_sds::ops::Access;
-///
-/// let source: Vec<u64> = vec![123, 456, 789, 10];
-/// let v: IntVector = source.iter().cloned().collect();
-/// for (index, value) in v.iter().enumerate() {
-///     assert_eq!(source[index], value);
-/// }
-/// ```
-#[derive(Clone, Debug)]
-pub struct Iter<'a> {
-    parent: &'a IntVector,
-    // The first index we have not used.
-    next: usize,
-    // The first index we should not use.
-    limit: usize,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = <IntVector as Vector>::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.next >= self.limit {
-            None
-        } else {
-            let result = Some(self.parent.get(self.next));
-            self.next += 1;
-            result
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.limit - self.next;
-        (remaining, Some(remaining))
-    }
-}
-
-impl<'a> DoubleEndedIterator for Iter<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.next >= self.limit {
-            None
-        } else {
-            self.limit -= 1;
-            Some(self.parent.get(self.limit))
-        }
-    }
-}
-
-impl<'a> ExactSizeIterator for Iter<'a> {}
-
-impl<'a> FusedIterator for Iter<'a> {}
 
 //-----------------------------------------------------------------------------
 
@@ -673,7 +607,7 @@ impl<'a> Vector for IntVectorMapper<'a> {
 }
 
 impl<'a> Access<'a> for IntVectorMapper<'a> {
-    type Iter = MappedIter<'a>;
+    type Iter = AccessIter<'a, Self>;
 
     #[inline]
     fn get(&self, index: usize) -> <Self as Vector>::Item {
@@ -682,11 +616,7 @@ impl<'a> Access<'a> for IntVectorMapper<'a> {
     }
 
     fn iter(&'a self) -> Self::Iter {
-        Self::Iter {
-            parent: self,
-            next: 0,
-            limit: self.len(),
-        }
+        Self::Iter::new(self)
     }
 }
 
@@ -719,79 +649,6 @@ impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
         &(self.data)
     }
 }
-
-//-----------------------------------------------------------------------------
-
-/// A read-only iterator over [`IntVectorMapper`].
-///
-/// The type of `Item` is [`u64`].
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::int_vector::{IntVector, IntVectorMapper};
-/// use simple_sds::ops::Access;
-/// use simple_sds::serialize::{MemoryMap, MemoryMapped, MappingMode};
-/// use simple_sds::serialize;
-/// use std::fs;
-///
-/// let filename = serialize::temp_file_name("int-vector-mapped-iter");
-/// let source: Vec<u16> = vec![12, 34, 56, 78, 90, 11, 12, 13];
-/// let v: IntVector = source.iter().cloned().collect();
-/// serialize::serialize_to(&v, &filename);
-///
-/// let map = MemoryMap::new(&filename, MappingMode::ReadOnly).unwrap();
-/// let mapper = IntVectorMapper::new(&map, 0).unwrap();
-/// for (index, value) in mapper.iter().enumerate() {
-///     assert_eq!(value, source[index] as u64);
-/// }
-///
-/// drop(mapper); drop(map);
-/// fs::remove_file(&filename).unwrap();
-/// ```
-#[derive(Clone, Debug)]
-pub struct MappedIter<'a> {
-    parent: &'a IntVectorMapper<'a>,
-    // The first index we have not used.
-    next: usize,
-    // The first index we should not use.
-    limit: usize,
-}
-
-impl<'a> Iterator for MappedIter<'a> {
-    type Item = <IntVectorMapper<'a> as Vector>::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.next >= self.limit {
-            None
-        } else {
-            let result = Some(self.parent.get(self.next));
-            self.next += 1;
-            result
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.limit - self.next;
-        (remaining, Some(remaining))
-    }
-}
-
-impl<'a> DoubleEndedIterator for MappedIter<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.next >= self.limit {
-            None
-        } else {
-            self.limit -= 1;
-            Some(self.parent.get(self.limit))
-        }
-    }
-}
-
-impl<'a> ExactSizeIterator for MappedIter<'a> {}
-
-impl<'a> FusedIterator for MappedIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
