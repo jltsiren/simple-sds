@@ -12,6 +12,7 @@ use crate::serialize::Serialize;
 use crate::bits;
 
 use std::io::{Read, Write};
+use std::iter::FusedIterator;
 use std::io;
 
 // FIXME tests
@@ -103,7 +104,7 @@ impl Vector for WaveletMatrix {
 }
 
 impl<'a> Access<'a> for WaveletMatrix {
-    type Iter = AccessIter<'a, Self>;
+    type Iter = Iter<'a>;
 
     fn get(&self, index: usize) -> <Self as Vector>::Item {
         let mut index = index;
@@ -120,13 +121,19 @@ impl<'a> Access<'a> for WaveletMatrix {
     }
 
     fn iter(&'a self) -> Self::Iter {
-        Self::Iter::new(self)
+        let ones: Vec<usize> = self.data.iter().map(|bv| bv.count_zeros()).collect();
+        Self::Iter {
+            parent: self,
+            next: 0,
+            zeros: vec![0; self.width()],
+            ones,
+        }
     }
 }
 
 // FIXME VectorIndex
 
-// FIXME document serialization format
+// FIXME document the serialization format
 impl Serialize for WaveletMatrix {
     fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)
@@ -171,7 +178,53 @@ impl Serialize for WaveletMatrix {
 
 //-----------------------------------------------------------------------------
 
-// FIXME an iterator based on iterators over each level
+// FIXME document
+pub struct Iter<'a> {
+    parent: &'a WaveletMatrix,
+    next: usize,
+    // The next zero on this level maps to this position on the next level.
+    zeros: Vec<usize>,
+    // The next one on this level maps to this position on the next level.
+    ones: Vec<usize>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = <WaveletMatrix as Vector>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.parent.len() {
+            return None;
+        }
+
+        let mut result = 0;
+        let mut pos = self.next;
+        self.next += 1;
+
+        for level in 0..self.parent.width() {
+            let next_bit = self.parent.data[level].get(pos);
+            if next_bit {
+                result += 1 << (self.parent.width() - 1 - level);
+                pos = self.ones[level];
+                self.ones[level] += 1;
+            } else {
+                pos = self.zeros[level];
+                self.zeros[level] += 1;
+            }
+        }
+
+        Some(result)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.parent.len() - self.next;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 //-----------------------------------------------------------------------------
 
