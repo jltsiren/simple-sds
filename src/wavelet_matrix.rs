@@ -6,7 +6,8 @@
 //! > DOI: [10.1016/j.is.2014.06.002](https://doi.org/10.1016/j.is.2014.06.002)
 
 use crate::bit_vector::BitVector;
-use crate::ops::{Vector, Access, VectorIndex, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::int_vector::IntVector;
+use crate::ops::{Vector, Access, VectorIndex, Pack, BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::raw_vector::{RawVector, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -20,13 +21,13 @@ use std::io;
 //-----------------------------------------------------------------------------
 
 // FIXME document
-// FIXME document construction
+// FIXME document construction, overridden inverse_select
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WaveletMatrix {
     len: usize,
     data: Vec<BitVector>,
     // Starting offset of each value after reordering by the wavelet matrix, or `len` if the value does not exist.
-    start: Vec<usize>,
+    start: IntVector,
 }
 
 impl WaveletMatrix {
@@ -43,8 +44,12 @@ impl WaveletMatrix {
     // FIXME rename, make public?
     // Returns `true` if the vector contains an item with the given value.
     fn has_item(&self, value: <Self as Vector>::Item) -> bool {
-        let val = value as usize;
-        val < self.start.len() && self.start[val] < self.len()
+        (value as usize) < self.start.len() && self.start(value) < self.len()
+    }
+
+    // Returns the starting offset of the value after reordering.
+    fn start(&self, value: <Self as Vector>::Item) -> usize {
+        self.start.get(value as usize) as usize
     }
 
     // Returns the bit value for the given level.
@@ -73,7 +78,7 @@ impl WaveletMatrix {
     }
 
     // Computes `start` from an iterator.
-    fn start_offsets<Iter: Iterator<Item = u64>>(iter: Iter, len: usize, max_value: u64) -> Vec<usize> {
+    fn start_offsets<Iter: Iterator<Item = u64>>(iter: Iter, len: usize, max_value: u64) -> IntVector {
         // Count the number of occurrences of each value.
         let mut counts: Vec<(u64, usize)> = Vec::with_capacity((max_value + 1) as usize);
         for i in 0..=max_value {
@@ -100,7 +105,9 @@ impl WaveletMatrix {
 
         // Sort the prefix sums by symbol to get starting offsets and then return the offsets.
         counts.sort_unstable_by_key(|(value, _)| *value);
-        counts.into_iter().map(|(_, offset)| offset).collect()
+        let mut result: IntVector = counts.into_iter().map(|(_, offset)| offset).collect();
+        result.pack();
+        result
     }
 }
 
@@ -180,17 +187,7 @@ impl<'a> Access<'a> for WaveletMatrix {
     type Iter = Iter<'a>;
 
     fn get(&self, index: usize) -> <Self as Vector>::Item {
-        let mut index = index;
-        let mut result = 0;
-        for level in 0..self.width() {
-            if self.data[level].get(index) {
-                index = self.map_down_one(index, level);
-                result += self.bit_value(level);
-            } else {
-                index = self.map_down_zero(index, level);
-            }
-        }
-        result
+        self.inverse_select(index).unwrap().1
     }
 
     fn iter(&'a self) -> Self::Iter {
@@ -221,7 +218,26 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
             }
         }
 
-        index - self.start[value as usize]
+        index - self.start(value)
+    }
+
+    fn inverse_select(&self, index: usize) -> Option<(usize, <Self as Vector>::Item)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let mut index = index;
+        let mut value = 0;
+        for level in 0..self.width() {
+            if self.data[level].get(index) {
+                index = self.map_down_one(index, level);
+                value += self.bit_value(level);
+            } else {
+                index = self.map_down_zero(index, level);
+            }
+        }
+
+        Some((index - self.start(value), value))
     }
 
     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter {
@@ -287,7 +303,7 @@ impl Serialize for WaveletMatrix {
             let bv = BitVector::load(reader)?;
             data.push(bv);
         }
-        let start: Vec<usize> = Vec::load(reader)?;
+        let start = IntVector::load(reader)?;
         let mut result = WaveletMatrix { len, data, start, };
         result.init_support();
         Ok(result)

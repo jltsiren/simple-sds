@@ -520,7 +520,7 @@ pub trait Pop: Vector {
 /// // Iterator
 /// let a: Vec<(usize, usize)> = vec.value_iter('a').collect();
 /// assert_eq!(a, vec![(0, 0), (1, 4)]);
-/// assert_eq!(Example::value_of(vec.value_iter('c')), 'c');
+/// assert_eq!(Example::value_of(&vec.value_iter('c')), 'c');
 ///
 /// // Select
 /// assert_eq!(vec.select(0, 'c'), Some(2));
@@ -528,6 +528,12 @@ pub trait Pop: Vector {
 /// assert_eq!(iter.next(), Some((1, 6)));
 /// assert_eq!(iter.next(), Some((2, 7)));
 /// assert!(iter.next().is_none());
+///
+/// // Inverse select
+/// let offset = 3;
+/// let inverse = vec.inverse_select(offset).unwrap();
+/// assert_eq!(inverse, (1, 'b'));
+/// assert_eq!(vec.select(inverse.0, inverse.1), Some(offset));
 ///
 /// // PredSucc
 /// assert!(vec.predecessor(1, 'c').next().is_none());
@@ -543,13 +549,28 @@ pub trait VectorIndex<'a>: Access<'a> {
     /// The `Item` in the iterator is a (rank, index) pair such that index `index` is the occurrence of rank `rank`.
     type ValueIter: Iterator<Item = (usize, usize)>;
 
-    // FIXME document arguments for this trait
     /// Returns the number of indexes `i < index` in vector such that `self.get(i) == value`.
     ///
     /// # Panics
     ///
     /// May panic from I/O errors.
     fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize;
+
+    /// Computes the inverse of [`VectorIndex::select`], or returns [`None`] if `index` is invalid.
+    ///
+    /// Returns `(rank, value)` such that [`VectorIndex::select`]`(rank, value) == index`.
+    /// The default implementation computes [`VectorIndex::rank`]`(index, `[`Access::get`]`(index))`.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn inverse_select(&self, index: usize) -> Option<(usize, <Self as Vector>::Item)> {
+        if index >= self.len() {
+            return None;
+        }
+        let value = self.get(index);
+        Some((self.rank(index, value), value))
+    }
 
     /// Returns an iterator over the occurrences of item `value`.
     ///
