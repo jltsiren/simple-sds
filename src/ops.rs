@@ -406,7 +406,7 @@ pub trait Pop: Vector {
 
 /// Rank, select, predecessor, and successor queries on a vector.
 ///
-/// Index `index` of the vector is an occurrence of item `value` of rank `rank`, if `self.get(index) == value` and `self.rank(index) == rank`.
+/// Position `index` of the vector is an occurrence of item `value` of rank `rank`, if `self.get(index) == value` and `self.rank(index) == rank`.
 ///
 /// This generalizes [`Rank`], [`Select`], [`SelectZero`], and [`PredSucc`] from binary vectors to vectors with arbitrary items.
 ///
@@ -513,6 +513,10 @@ pub trait Pop: Vector {
 ///
 /// let vec = Example(vec!['a', 'b', 'c', 'b', 'a', 'b', 'c', 'c']);
 ///
+/// // Has item
+/// assert!(vec.has_item('b'));
+/// assert!(!vec.has_item('d'));
+///
 /// // Rank
 /// assert_eq!(vec.rank(5, 'b'), 2);
 /// assert_eq!(vec.rank(6, 'b'), 3);
@@ -546,8 +550,19 @@ pub trait Pop: Vector {
 pub trait VectorIndex<'a>: Access<'a> {
     /// Iterator type over the occurrences of a specific item.
     ///
-    /// The `Item` in the iterator is a (rank, index) pair such that index `index` is the occurrence of rank `rank`.
+    /// The `Item` in the iterator is a (rank, index) pair such that the value at position `index` is the occurrence of rank `rank`.
     type ValueIter: Iterator<Item = (usize, usize)>;
+
+    /// Returns `true` if the vector contains an item with the given value.
+    ///
+    /// The default implementation uses [`VectorIndex::rank`].
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn has_item(&self, value: <Self as Vector>::Item) -> bool {
+        self.rank(self.len(), value) > 0
+    }
 
     /// Returns the number of indexes `i < index` in vector such that `self.get(i) == value`.
     ///
@@ -1243,7 +1258,7 @@ mod tests {
         }
     }
 
-    // FIXME add tests for VectorIndex
+    // FIXME add tests for VectorIndex, default implementations
 }
 
 //-----------------------------------------------------------------------------

@@ -15,7 +15,7 @@ mod tests;
 
 //-----------------------------------------------------------------------------
 
-/// A contiguous growable bit-packed array of fixed-width integers.
+/// A contiguous growable and mutable bit-packed array of fixed-width integers.
 ///
 /// This structure contains [`RawVector`], which is in turn contains [`Vec`].
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by parameter `width`.

@@ -1,9 +1,27 @@
-// FIXME documentation
-//! Wavelet matrix from:
+//! An immutable integer vector supporting rank/select-type queries.
+//!
+//! The wavelet matrix was first described in:
 //!
 //! > Claude, Navarro, Ordóñez: The wavelet matrix: An efficient wavelet tree for large alphabets.  
 //! > Information Systems, 2015.  
 //! > DOI: [10.1016/j.is.2014.06.002](https://doi.org/10.1016/j.is.2014.06.002)
+//!
+//! The structure can be understood as the positional BWT (PBWT) of the binary sequences corresponding to the integers.
+//! Each level in the wavelet matrix corresponds to a column in the PBWT.
+//! Bitvector `bv[level]` on level `level` represent bit values
+//!
+//! > `1 << (width - 1 - level)`.
+//!
+//! If `bv[level][i] == 0`, position `i` on level `level` it maps to position
+//!
+//! > `bv[level].rank_zero(i)`
+//!
+//! on level `level + 1`.
+//! Otherwise it maps to position
+//!
+//! > `bv[level].count_zeros() + bv[level].rank(i)`.
+//!
+//! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
@@ -20,8 +38,32 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
-// FIXME document
-// FIXME document construction, overridden inverse_select
+// FIXME example
+/// An immutable integer vector supporting rank/select-type queries.
+///
+/// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
+/// The width determines the number of levels in the `WaveletMatrix`.
+/// Each level is represented using a [`BitVector`].
+/// There is also an [`IntVector`] storing the starting position of each possible item value after the reordering done by the wavelet matrix.
+/// Hence a `WaveletMatrix` should only be used when most values in `0..(1 << width)` are in use.
+/// The maximum length of the vector is approximately [`usize::MAX`] items.
+///
+/// A `WaveletMatrix` can be built from a [`Vec`] of unsigned integers using the [`From`] trait.
+/// The construction requires several passes over the input and uses the input vector as working space.
+/// Using smaller integer types helps reducing the space overhead during construction.
+///
+/// `WaveletMatrix` implements the following `simple_sds` traits:
+/// * Basic functionality: [`Vector`], [`Access`]
+/// * Queries and operations: [`VectorIndex`]
+/// * Serialization: [`Serialize`]
+///
+/// Overridden default implementations:
+/// * [`VectorIndex::has_item`] has a simple constant-time implementation.
+/// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
+///
+/// # Notes
+///
+/// * `WaveletMatrix` never panics from I/O errors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WaveletMatrix {
     len: usize,
@@ -31,22 +73,6 @@ pub struct WaveletMatrix {
 }
 
 impl WaveletMatrix {
-    // Initializes the support structures for the bitvectors.
-    fn init_support(&mut self) {
-        for bv in self.data.iter_mut() {
-            bv.enable_rank();
-            bv.enable_select();
-            bv.enable_select_zero();
-            bv.enable_pred_succ();
-        }
-    }
-
-    // FIXME rename, make public?
-    // Returns `true` if the vector contains an item with the given value.
-    fn has_item(&self, value: <Self as Vector>::Item) -> bool {
-        (value as usize) < self.start.len() && self.start(value) < self.len()
-    }
-
     // Returns the starting offset of the value after reordering.
     fn start(&self, value: <Self as Vector>::Item) -> usize {
         self.start.get(value as usize) as usize
@@ -75,6 +101,16 @@ impl WaveletMatrix {
     // Maps the index from the next level with an unset bit.
     fn map_up_zero(&self, index: usize, level: usize) -> Option<usize> {
         self.data[level].select_zero(index)
+    }
+
+    // Initializes the support structures for the bitvectors.
+    fn init_support(&mut self) {
+        for bv in self.data.iter_mut() {
+            bv.enable_rank();
+            bv.enable_select();
+            bv.enable_select_zero();
+            bv.enable_pred_succ();
+        }
     }
 
     // Computes `start` from an iterator.
@@ -204,6 +240,10 @@ impl<'a> Access<'a> for WaveletMatrix {
 impl<'a> VectorIndex<'a> for WaveletMatrix {
     type ValueIter = ValueIter<'a>;
 
+    fn has_item(&self, value: <Self as Vector>::Item) -> bool {
+        (value as usize) < self.start.len() && self.start(value) < self.len()
+    }
+
     fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize {
         if !self.has_item(value) {
             return 0;
@@ -321,7 +361,10 @@ impl Serialize for WaveletMatrix {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document
+// FIXME example
+/// A read-only iterator over [`WaveletMatrix`].
+///
+/// The type of `Item` is [`u64`].
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
     parent: &'a WaveletMatrix,
@@ -372,7 +415,11 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME document
+// FIXME example, include using `value_of`.
+/// A read-only iterator over the occurrences of a specific value in [`WaveletMatrix`].
+///
+/// The type of `Item` is [`(usize, usize)`] representing a pair (rank, index).
+/// The item at position `index` has the given value, and the rank of that value at that position is `rank`.
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
     parent: &'a WaveletMatrix,
