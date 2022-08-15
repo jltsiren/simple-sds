@@ -13,6 +13,7 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 * `IntVector`: A bit-packed vector of fixed-width integers implemented on top of `RawVector`. Like `sdsl::int_vector` but also supports stack functionality.
   * `IntVectorWriter`: An append-only version of `IntVector` that writes the structure directly to a file. Like a subset of `sdsl::int_vector_buffer`.
   * `IntVectorMapper`: An immutable memory-mapped `IntVector`.
+* `WaveletMatrix`: An immutable vector of fixed-width integers with rank/select support implemented using `BitVector`s. Like `sdsl::wm_int`.
 
 ### Bitvectors
 
@@ -29,7 +30,6 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
 
 ### Integer vectors
 
-* `TupleVector`: A bit-packed vector of tuples of unsigned integers, with a fixed width for each field in the tuple. Implemented on top of `RawVector`.
 * Mutable memory-mapped vectors.
 
 ### Bitvectors

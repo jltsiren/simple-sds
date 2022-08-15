@@ -1,6 +1,8 @@
 # Serialization formats
 
-For version 0.2.0. Updated 2021-05-10.
+For version 0.4.0. Updated 2022-08-15.
+
+Changes since version 0.2.0 are mentioned in the relevant location.
 
 ## Basics
 
@@ -119,3 +121,36 @@ Serialization format for sparse bitvectors:
 3. Integer vector storing the low parts.
 
 **Note:** The encoding also supports multisets / duplicate items, but the semantics are not fully clear yet.
+
+## Wavelet matrix (version 0.4.0)
+
+A **wavelet matrix** is an immutable integer vector that supports rank/select-like queries.
+It is effectively the positional BWT of the binary sequences encoding the integers, operating on **levels** (rows) instead of columns.
+If `value` is the largest item present in the vector, the **alphabet** of the vector is `0..=value`.
+
+Bitvector `bv[level]` on level `level` represent bit values
+
+> `1 << (width - 1 - level)`.
+
+If `bv[level][i] == 0`, position `i` on level `level` it maps to position
+
+> `bv[level].rank_zero(i)`
+
+on level `level + 1`.
+Otherwise it maps to position
+
+> `bv[level].count_zeros() + bv[level].rank(i)`.
+
+The value of the item at offset `i` can be determined by starting from level `0` offset `i`, proceeding down in the matrix, and calculating the sum of values corresponding to set bits.
+This process **reorders** the items in the vector by sorting them according to their reverse binary representations.
+
+Serialization format for wavelet matrices:
+
+1. `len`: Length of the vector as an element.
+2. `width`: Width of the items as an element.
+3. `data`: A `BitVector` for each level in `0..width`.
+4. `first`: An `IntVector` storing the position of the first occurrence of each value in the reordered vector.
+
+**Note:** `first` is only defined over the values in the alphabet. If a value is not present in the vector, the corresponding position is `len`.
+
+**Note:** `first` must be bit-packed to minimize its width.

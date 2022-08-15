@@ -25,7 +25,7 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, VectorIndex, Pack, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack, BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::raw_vector::{RawVector, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -38,7 +38,6 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// An immutable integer vector supporting rank/select-type queries.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
@@ -61,6 +60,46 @@ use std::io;
 /// * [`VectorIndex::has_item`] has a simple constant-time implementation.
 /// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
 ///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{Vector, Access, VectorIndex};
+/// use simple_sds::wavelet_matrix::WaveletMatrix;
+///
+/// // Construction
+/// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
+/// let wm = WaveletMatrix::from(source.clone());
+///
+/// // Access
+/// assert_eq!(wm.len(), source.len());
+/// assert_eq!(wm.width(), 3);
+/// for i in 0..wm.len() {
+///     assert_eq!(wm.get(i), source[i]);
+/// }
+/// assert!(wm.iter().eq(source.iter().cloned()));
+///
+/// // Rank
+/// assert_eq!(wm.rank(5, 3), 1);
+/// assert_eq!(wm.rank(10, 2), 2);
+///
+/// // Select
+/// assert_eq!(wm.select(2, 1), Some(4));
+/// assert!(wm.select(1, 7).is_none());
+/// assert_eq!(wm.select_iter(1, 2).next(), Some((1, 9)));
+///
+/// // Inverse select
+/// let index = 7;
+/// let inverse = wm.inverse_select(index).unwrap();
+/// assert_eq!(inverse, (0, 5));
+/// assert_eq!(wm.select(inverse.0, inverse.1), Some(index));
+///
+/// // Predecessor / successor
+/// assert!(wm.predecessor(1, 3).next().is_none());
+/// assert_eq!(wm.predecessor(2, 3).next(), Some((0, 2)));
+/// assert_eq!(wm.successor(12, 0).next(), Some((1, 12)));
+/// assert!(wm.successor(13, 0).next().is_none());
+/// ```
+///
 /// # Notes
 ///
 /// * `WaveletMatrix` never panics from I/O errors.
@@ -69,13 +108,13 @@ pub struct WaveletMatrix {
     len: usize,
     data: Vec<BitVector>,
     // Starting offset of each value after reordering by the wavelet matrix, or `len` if the value does not exist.
-    start: IntVector,
+    first: IntVector,
 }
 
 impl WaveletMatrix {
     // Returns the starting offset of the value after reordering.
     fn start(&self, value: <Self as Vector>::Item) -> usize {
-        self.start.get(value as usize) as usize
+        self.first.get(value as usize) as usize
     }
 
     // Returns the bit value for the given level.
@@ -155,7 +194,7 @@ macro_rules! wavelet_matrix_from {
                 let max_value = source.iter().cloned().max().unwrap_or(0);
                 let width = bits::bit_len(max_value as u64);
 
-                let start = Self::start_offsets(source.iter().map(|x| *x as u64), source.len(), max_value as u64);
+                let first = Self::start_offsets(source.iter().map(|x| *x as u64), source.len(), max_value as u64);
 
                 let mut data: Vec<BitVector> = Vec::new();
                 for level in 0..width {
@@ -184,7 +223,7 @@ macro_rules! wavelet_matrix_from {
                     data.push(BitVector::from(raw_data));
                 }
 
-                let mut result = WaveletMatrix { len: source.len(), data, start, };
+                let mut result = WaveletMatrix { len: source.len(), data, first, };
                 result.init_support();
                 result
             }
@@ -220,20 +259,14 @@ impl Vector for WaveletMatrix {
 }
 
 impl<'a> Access<'a> for WaveletMatrix {
-    type Iter = Iter<'a>;
+    type Iter = AccessIter<'a, Self>;
 
     fn get(&self, index: usize) -> <Self as Vector>::Item {
         self.inverse_select(index).unwrap().1
     }
 
     fn iter(&'a self) -> Self::Iter {
-        let ones: Vec<usize> = self.data.iter().map(|bv| bv.count_zeros()).collect();
-        Self::Iter {
-            parent: self,
-            next: 0,
-            zeros: vec![0; self.width()],
-            ones,
-        }
+        Self::Iter::new(self)
     }
 }
 
@@ -241,7 +274,7 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
     type ValueIter = ValueIter<'a>;
 
     fn has_item(&self, value: <Self as Vector>::Item) -> bool {
-        (value as usize) < self.start.len() && self.start(value) < self.len()
+        (value as usize) < self.first.len() && self.start(value) < self.len()
     }
 
     fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize {
@@ -292,13 +325,12 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
         iter.value
     }
 
-    // FIXME what happens when the occurrence does not exist?
     fn select(&self, rank: usize, value: <Self as Vector>::Item) -> Option<usize> {
         if !self.has_item(value) {
             return None;
         }
 
-        let mut index = rank;
+        let mut index = self.start(value) + rank;
         for level in (0..self.width()).rev() {
             if value & self.bit_value(level) != 0 {
                 index = self.map_up_one(index, level)?;
@@ -319,7 +351,6 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
     }
 }
 
-// FIXME document the serialization format
 impl Serialize for WaveletMatrix {
     fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)
@@ -331,7 +362,7 @@ impl Serialize for WaveletMatrix {
         for bv in self.data.iter() {
             bv.serialize(writer)?;
         }
-        self.start.serialize(writer)?;
+        self.first.serialize(writer)?;
         Ok(())
     }
 
@@ -343,8 +374,8 @@ impl Serialize for WaveletMatrix {
             let bv = BitVector::load(reader)?;
             data.push(bv);
         }
-        let start = IntVector::load(reader)?;
-        let mut result = WaveletMatrix { len, data, start, };
+        let first = IntVector::load(reader)?;
+        let mut result = WaveletMatrix { len, data, first, };
         result.init_support();
         Ok(result)
     }
@@ -355,71 +386,35 @@ impl Serialize for WaveletMatrix {
         for bv in self.data.iter() {
             result += bv.size_in_elements();
         }
+        result += self.first.size_in_elements();
         result
     }
 }
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
-/// A read-only iterator over [`WaveletMatrix`].
-///
-/// The type of `Item` is [`u64`].
-#[derive(Clone, Debug)]
-pub struct Iter<'a> {
-    parent: &'a WaveletMatrix,
-    next: usize,
-    // The next zero on this level maps to this position on the next level.
-    zeros: Vec<usize>,
-    // The next one on this level maps to this position on the next level.
-    ones: Vec<usize>,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = <WaveletMatrix as Vector>::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.next >= self.parent.len() {
-            return None;
-        }
-
-        let mut result = 0;
-        let mut pos = self.next;
-        self.next += 1;
-
-        for level in 0..self.parent.width() {
-            let next_bit = self.parent.data[level].get(pos);
-            if next_bit {
-                result += 1 << (self.parent.width() - 1 - level);
-                pos = self.ones[level];
-                self.ones[level] += 1;
-            } else {
-                pos = self.zeros[level];
-                self.zeros[level] += 1;
-            }
-        }
-
-        Some(result)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.parent.len() - self.next;
-        (remaining, Some(remaining))
-    }
-}
-
-impl<'a> ExactSizeIterator for Iter<'a> {}
-
-impl<'a> FusedIterator for Iter<'a> {}
-
-//-----------------------------------------------------------------------------
-
-// FIXME example, include using `value_of`.
 /// A read-only iterator over the occurrences of a specific value in [`WaveletMatrix`].
 ///
 /// The type of `Item` is [`(usize, usize)`] representing a pair (rank, index).
 /// The item at position `index` has the given value, and the rank of that value at that position is `rank`.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::VectorIndex;
+/// use simple_sds::wavelet_matrix::WaveletMatrix;
+///
+/// // Construction
+/// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
+/// let wm = WaveletMatrix::from(source.clone());
+///
+/// // Iteration over values
+/// let mut iter = wm.value_iter(2);
+/// assert_eq!(WaveletMatrix::value_of(&iter), 2);
+/// assert_eq!(iter.next(), Some((0, 5)));
+/// assert_eq!(iter.next(), Some((1, 9)));
+/// assert!(iter.next().is_none());
+/// ```
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
     parent: &'a WaveletMatrix,
