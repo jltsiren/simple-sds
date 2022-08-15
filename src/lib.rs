@@ -19,3 +19,6 @@ pub mod raw_vector;
 pub mod serialize;
 pub mod sparse_vector;
 pub mod wavelet_matrix;
+
+#[cfg(test)]
+mod test_utils;

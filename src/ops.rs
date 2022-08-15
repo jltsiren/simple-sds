@@ -20,6 +20,9 @@
 use std::iter::FusedIterator;
 use std::cmp;
 
+#[cfg(test)]
+mod tests;
+
 //-----------------------------------------------------------------------------
 
 /// A vector that contains items of a fixed type.
@@ -1115,150 +1118,6 @@ pub trait PredSucc<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
-}
-
-//-----------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct NaiveVector(Vec<usize>);
-
-    impl From<Vec<usize>> for NaiveVector {
-        fn from(source: Vec<usize>) -> Self {
-            NaiveVector(source)
-        }
-    }
-
-    impl Vector for NaiveVector {
-        type Item = usize;
-
-        fn len(&self) -> usize {
-            self.0.len()
-        }
-
-        fn width(&self) -> usize {
-            64
-        }
-
-        fn max_len(&self) -> usize {
-            usize::MAX
-        }
-    }
-
-    impl<'a> Access<'a> for NaiveVector {
-        type Iter = AccessIter<'a, Self>;
-
-        fn get(&self, index: usize) -> <Self as Vector>::Item {
-            self.0[index]
-        }
-
-        fn iter(&'a self) -> Self::Iter {
-            Self::Iter::new(self)
-        }
-    }
-
-    struct ValueIter<'a> {
-        parent: &'a NaiveVector,
-        value: usize,
-        rank: usize,
-        index: usize,
-    }
-
-    impl<'a> Iterator for ValueIter<'a> {
-        type Item = (usize, usize);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            while self.index < self.parent.len() {
-                if self.parent.get(self.index) == self.value {
-                    let result = Some((self.rank, self.index));
-                    self.rank += 1; self.index += 1;
-                    return result;
-                }
-                self.index += 1;
-            }
-            None
-        }
-    }
-
-    impl<'a> VectorIndex<'a> for NaiveVector {
-        type ValueIter = ValueIter<'a>;
-
-        fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize {
-            let index = cmp::min(index, self.len());
-            let mut result = 0;
-            for i in 0..index {
-                if self.get(i) == value {
-                    result += 1;
-                }
-            }
-            result
-        }
-
-        fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter {
-            Self::ValueIter {
-                parent: self,
-                value,
-                rank: 0,
-                index: 0,
-            }
-        }
-
-        fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
-            iter.value
-        }
-
-        fn select(&self, rank: usize, value: <Self as Vector>::Item) -> Option<usize> {
-            let mut found = 0;
-            for index in 0..self.len() {
-                if self.get(index) == value {
-                    if found == rank {
-                        return Some(index);
-                    }
-                    found += 1;
-                }
-            }
-            None
-        }
-
-        fn select_iter(&'a self, rank: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
-            let index = self.select(rank, value).unwrap_or(self.len());
-            Self::ValueIter { parent: self, value, rank, index, }
-        }
-    }
-
-    #[test]
-    fn iter() {
-        let data: Vec<usize> = vec![0, 12312, 323221, 335, 11111112, 509243579823];
-        let naive = NaiveVector::from(data.clone());
-
-        assert!(naive.iter().eq(data.iter().cloned()), "Invalid values from iterator");
-
-        let mut naive_iter = naive.iter();
-        let mut data_iter = data.iter().cloned();
-        while let Some(value) = naive_iter.next_back() {
-            assert_eq!(Some(value), data_iter.next_back(), "Invalid values from reverse iterator");
-        }
-    }
-
-    #[test]
-    fn iter_nth() {
-        let data: Vec<usize> = vec![0, 12312, 323221, 335, 11111112, 509243579823];
-        let naive = NaiveVector::from(data);
-
-        // Forward.
-        for i in 0..naive.len() {
-            assert_eq!(naive.iter().nth(i), Some(naive.get(i)), "Invalid nth({})", i);
-        }
-
-        // Backward.
-        for i in 0..naive.len() {
-            assert_eq!(naive.iter().nth_back(i), Some(naive.get(naive.len() - 1 - i)), "Invalid nth_back({})", i);
-        }
-    }
-
-    // FIXME add tests for VectorIndex, default implementations
 }
 
 //-----------------------------------------------------------------------------

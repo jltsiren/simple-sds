@@ -2,27 +2,15 @@ use super::*;
 
 use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::serialize::{Serialize, MappingMode};
-use crate::serialize;
+use crate::{serialize, test_utils};
 
 use std::fs::OpenOptions;
 use std::fs;
 
-use rand::Rng;
-
 //-----------------------------------------------------------------------------
 
-fn random_vector(n: usize, width: usize) -> Vec<u64> {
-    let mut result: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
-    for _ in 0..n {
-        let value: u64 = rng.gen();
-        result.push(value & bits::low_set(width));
-    }
-    result
-}
-
 fn random_int_vector(n: usize, width: usize) -> IntVector {
-    let values = random_vector(n, width);
+    let values = test_utils::random_vector(n, width);
     let mut result = IntVector::new(width).unwrap();
     result.extend(values);
     result
@@ -281,7 +269,7 @@ fn push_to_writer() {
     let filename = serialize::temp_file_name("push-to-int-vector-writer");
 
     let width = 31;
-    let correct = random_vector(71, width);
+    let correct = test_utils::random_vector(71, width);
 
     let mut v = IntVectorWriter::with_buf_len(&filename, width, 32).unwrap();
     for value in correct.iter() {
@@ -327,7 +315,7 @@ fn large_writer() {
     let filename = serialize::temp_file_name("large-int-vector-writer");
 
     let width = 31;
-    let correct: Vec<u64> = random_vector(620001, width);
+    let correct: Vec<u64> = test_utils::random_vector(620001, width);
 
     let mut v = IntVectorWriter::new(&filename, width).unwrap();
     for value in correct.iter() {
