@@ -445,6 +445,60 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME IntoIter
+/// [`WaveletMatrix`] transformed into an iterator.
+///
+/// The type of `Item` is [`u64`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::wavelet_matrix::WaveletMatrix;
+///
+/// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
+/// let wm = WaveletMatrix::from(source.clone());
+/// let target: Vec<u64> = wm.into_iter().collect();
+/// assert_eq!(target, source);
+/// ```
+#[derive(Clone, Debug)]
+pub struct IntoIter {
+    parent: WaveletMatrix,
+    index: usize,
+}
+
+impl Iterator for IntoIter {
+    type Item = <WaveletMatrix as Vector>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.parent.len() {
+            None
+        } else {
+            let result = Some(self.parent.get(self.index));
+            self.index += 1;
+            result
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.parent.len() - self.index;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for IntoIter {}
+
+impl FusedIterator for IntoIter {}
+
+impl IntoIterator for WaveletMatrix {
+    type Item = <Self as Vector>::Item;
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            parent: self,
+            index: 0,
+        }
+    }
+}
 
 //-----------------------------------------------------------------------------
