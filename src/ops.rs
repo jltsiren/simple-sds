@@ -517,8 +517,8 @@ pub trait Pop: Vector {
 /// let vec = Example(vec!['a', 'b', 'c', 'b', 'a', 'b', 'c', 'c']);
 ///
 /// // Has item
-/// assert!(vec.has_item('b'));
-/// assert!(!vec.has_item('d'));
+/// assert!(vec.contains('b'));
+/// assert!(!vec.contains('d'));
 ///
 /// // Rank
 /// assert_eq!(vec.rank(5, 'b'), 2);
@@ -563,7 +563,7 @@ pub trait VectorIndex<'a>: Access<'a> {
     /// # Panics
     ///
     /// May panic from I/O errors.
-    fn has_item(&self, value: <Self as Vector>::Item) -> bool {
+    fn contains(&self, value: <Self as Vector>::Item) -> bool {
         self.rank(self.len(), value) > 0
     }
 

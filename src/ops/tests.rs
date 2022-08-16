@@ -144,29 +144,19 @@ fn access_iter_nth() {
 }
 
 #[test]
-fn has_item() {
+fn contains() {
     let width = 8;
     let data = test_utils::random_vector(198, width);
     let naive = NaiveVector::from(data);
-
-    for value in 0..(1 << width) {
-        let should_have = naive.iter().any(|x| x == value);
-        assert_eq!(naive.has_item(value), should_have, "Invalid has_item({})", value);
-    }
+    test_utils::check_contains(&naive, width);
 }
 
 #[test]
 fn inverse_select() {
-    let data = test_utils::random_vector(322, 6);
+    let width = 6;
+    let data = test_utils::random_vector(322, width);
     let naive = NaiveVector::from(data);
-
-    for i in 0..naive.len() {
-        let result = naive.inverse_select(i);
-        assert!(result.is_some(), "No result for inverse_select({})", i);
-        let result = result.unwrap();
-        assert_eq!(naive.select(result.0, result.1), Some(i), "Invalid inverse_select({})", i);
-    }
-    assert!(naive.inverse_select(naive.len()).is_none(), "Got an inverse_select() result past the end");
+    test_utils::check_inverse_select(&naive);
 }
 
 #[test]
@@ -174,35 +164,7 @@ fn pred_succ() {
     let width = 7;
     let data = test_utils::random_vector(179, width);
     let naive = NaiveVector::from(data);
-
-    for value in 0..(1 << width) {
-        // Try also querying at past-the-end position.
-        for index in 0..=naive.len() {
-            let mut expected: Option<(usize, usize)> = None;
-            let limit = cmp::min(index + 1, naive.len());
-            for i in 0..limit {
-                if naive.get(i) == value {
-                    expected = match expected {
-                        Some((rank, _)) => Some((rank + 1, i)),
-                        None => Some((0, i)),
-                    };
-                }
-            }
-            assert_eq!(naive.predecessor(index, value).next(), expected, "Invalid predecessor({}, {})", index, value);
-
-            let rank = if expected.is_some() { expected.unwrap().0 + 1 } else { 0 };
-            if expected.is_none() || expected.unwrap().1 < index {
-                expected = None;
-                for i in limit..naive.len() {
-                    if naive.get(i) == value {
-                        expected = Some((rank, i));
-                        break;
-                    }
-                }
-            }
-            assert_eq!(naive.successor(index, value).next(), expected, "Invalid successor({}, {})", index, value);
-        }
-    }
+    test_utils::check_pred_succ(&naive, width);
 }
 
 //-----------------------------------------------------------------------------

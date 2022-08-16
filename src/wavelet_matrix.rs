@@ -32,9 +32,10 @@ use crate::bits;
 
 use std::io::{Read, Write};
 use std::iter::FusedIterator;
-use std::io;
+use std::{cmp, io};
 
-// FIXME tests
+#[cfg(test)]
+mod tests;
 
 //-----------------------------------------------------------------------------
 
@@ -57,7 +58,7 @@ use std::io;
 /// * Serialization: [`Serialize`]
 ///
 /// Overridden default implementations:
-/// * [`VectorIndex::has_item`] has a simple constant-time implementation.
+/// * [`VectorIndex::contains`] has a simple constant-time implementation.
 /// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
 ///
 /// # Examples
@@ -273,16 +274,16 @@ impl<'a> Access<'a> for WaveletMatrix {
 impl<'a> VectorIndex<'a> for WaveletMatrix {
     type ValueIter = ValueIter<'a>;
 
-    fn has_item(&self, value: <Self as Vector>::Item) -> bool {
+    fn contains(&self, value: <Self as Vector>::Item) -> bool {
         (value as usize) < self.first.len() && self.start(value) < self.len()
     }
 
     fn rank(&self, index: usize, value: <Self as Vector>::Item) -> usize {
-        if !self.has_item(value) {
+        if !self.contains(value) {
             return 0;
         }
 
-        let mut index = index;
+        let mut index = cmp::min(index, self.len());
         for level in 0..self.width() {
             if value & self.bit_value(level) != 0 {
                 index = self.map_down_one(index, level);
@@ -326,7 +327,7 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
     }
 
     fn select(&self, rank: usize, value: <Self as Vector>::Item) -> Option<usize> {
-        if !self.has_item(value) {
+        if !self.contains(value) {
             return None;
         }
 
