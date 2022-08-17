@@ -1,7 +1,7 @@
 use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
 use simple_sds::bit_vector::BitVector;
 use simple_sds::sparse_vector::SparseVector;
-use simple_sds::serialize;
+use simple_sds::{internal, serialize};
 
 use std::time::Instant;
 use std::{env, process};
@@ -40,15 +40,15 @@ fn main() {
     }
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
-    let rank_queries = utils::generate_rank_queries(config.queries, bv.len());
+    let rank_queries = internal::random_queries(config.queries, bv.len());
     println!("");
 
     println!("Generating {} random select queries over the bitvector", config.queries);
-    let select_queries = utils::generate_select_queries(config.queries, bv.count_ones());
+    let select_queries = internal::random_queries(config.queries, bv.count_ones());
     println!("");
 
     println!("Generating {} random select_zero queries over the bitvector", config.queries);
-    let select_zero_queries = utils::generate_select_zero_queries(config.queries, bv.count_zeros());
+    let select_zero_queries = internal::random_queries(config.queries, bv.count_zeros());
     println!("");
 
     independent_rank(&bv, &rank_queries, "BitVector");
@@ -83,7 +83,7 @@ fn main() {
         println!("");
     }
 
-    utils::report_memory_usage();
+    internal::report_memory_usage();
 }
 
 //-----------------------------------------------------------------------------
@@ -197,7 +197,7 @@ fn independent_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize
         let result = bv.rank(queries[i]);
         total += result;
     }
-    utils::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
 }
 
 fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
@@ -211,7 +211,7 @@ fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize>, c
         total += result;
         prev = result & chained_query_mask;
     }
-    utils::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
 }
 
 fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
@@ -222,7 +222,7 @@ fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<u
         let result = bv.select(queries[i]).unwrap();
         total += result;
     }
-    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
 fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
@@ -236,7 +236,7 @@ fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize
         total += result;
         prev = result & chained_query_mask;
     }
-    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
 fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
@@ -247,7 +247,7 @@ fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, querie
         let result = bv.select_zero(queries[i]).unwrap();
         total += result;
     }
-    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
 fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
@@ -261,7 +261,7 @@ fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &
         total += result;
         prev = result & chained_query_mask;
     }
-    utils::report_results(queries.len(), total, bv.len(), now.elapsed());
+    internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
 //-----------------------------------------------------------------------------

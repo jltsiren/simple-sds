@@ -2,51 +2,18 @@ use super::*;
 
 use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::serialize::{Serialize, MappingMode};
-use crate::serialize;
+use crate::{serialize, internal};
 
 use std::fs::OpenOptions;
 use std::fs;
 
-use rand::Rng;
-
 //-----------------------------------------------------------------------------
 
-fn random_vector(n: usize, width: usize) -> Vec<u64> {
-    let mut result: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
-    for _ in 0..n {
-        let value: u64 = rng.gen();
-        result.push(value & bits::low_set(width));
-    }
-    result
-}
-
 fn random_int_vector(n: usize, width: usize) -> IntVector {
-    let values = random_vector(n, width);
+    let values = internal::random_vector(n, width);
     let mut result = IntVector::new(width).unwrap();
     result.extend(values);
     result
-}
-
-fn check_vector(v: &IntVector, truth: &Vec<u64>, width: usize) {
-    assert_eq!(v.len(), truth.len(), "Invalid vector length");
-    assert_eq!(v.is_empty(), truth.is_empty(), "Invalid vector emptiness");
-    assert_eq!(v.width(), width, "Invalid vector width");
-
-    for i in 0..v.len() {
-        assert_eq!(v.get(i), truth[i], "Invalid value {}", i);
-    }
-    assert!(v.iter().eq(truth.iter().cloned()), "Invalid iterator (forward)");
-
-    let mut index = v.len();
-    let mut iter = v.iter();
-    while let Some(value) = iter.next_back() {
-        index -= 1;
-        assert_eq!(value, truth[index], "Invalid value {} when iterating backwards", index);
-    }
-
-    let copy: Vec<u64> = v.clone().into_iter().collect();
-    assert_eq!(copy, *truth, "Invalid vector from into_iter()");
 }
 
 //-----------------------------------------------------------------------------
@@ -172,7 +139,7 @@ fn set_get() {
 fn from_vec() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
     let int_vec = IntVector::from(correct.clone());
-    check_vector(&int_vec, &correct, 64);
+    internal::check_vector(&int_vec, &correct, 64);
 }
 
 #[test]
@@ -184,7 +151,7 @@ fn extend() {
 
     let mut int_vec = IntVector::new(8).unwrap();
     int_vec.extend(first); int_vec.extend(second);
-    check_vector(&int_vec, &correct, 8);
+    internal::check_vector(&int_vec, &correct, 8);
 }
 
 #[test]
@@ -193,34 +160,7 @@ fn pack() {
 
     let mut packed: IntVector = correct.iter().cloned().collect();
     packed.pack();
-    check_vector(&packed, &correct, 7);
-}
-
-#[test]
-fn double_ended_iterator() {
-    let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-
-    let v: IntVector = correct.iter().cloned().collect();
-    let mut index = correct.len();
-    let mut iter = v.iter();
-    while let Some(value) = iter.next_back() {
-        index -= 1;
-        assert_eq!(value, correct[index], "Invalid value {} when iterating backwards", index);
-    }
-
-    let mut next = 0;
-    let mut limit = correct.len();
-    let mut iter = v.iter();
-    while iter.len() > 0 {
-        assert_eq!(iter.next(), Some(correct[next]), "Invalid value {} (forward)", next);
-        next += 1;
-        if iter.len() == 0 {
-            break;
-        }
-        limit -= 1;
-        assert_eq!(iter.next_back(), Some(correct[limit]), "Invalid value {} (backward)", limit);
-    }
-    assert_eq!(next, limit, "Iterator did not visit all values");
+    internal::check_vector(&packed, &correct, 7);
 }
 
 #[test]
@@ -281,7 +221,7 @@ fn push_to_writer() {
     let filename = serialize::temp_file_name("push-to-int-vector-writer");
 
     let width = 31;
-    let correct = random_vector(71, width);
+    let correct = internal::random_vector(71, width);
 
     let mut v = IntVectorWriter::with_buf_len(&filename, width, 32).unwrap();
     for value in correct.iter() {
@@ -327,7 +267,7 @@ fn large_writer() {
     let filename = serialize::temp_file_name("large-int-vector-writer");
 
     let width = 31;
-    let correct: Vec<u64> = random_vector(620001, width);
+    let correct: Vec<u64> = internal::random_vector(620001, width);
 
     let mut v = IntVectorWriter::new(&filename, width).unwrap();
     for value in correct.iter() {

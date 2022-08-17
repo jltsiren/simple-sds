@@ -1,5 +1,20 @@
 # Simple-SDS releases
 
+## Current version
+
+### Wavelet matrices
+
+* Trait `VectorIndex` for rank/select-type queries over integer vectors.
+* Implementations of `VectorIndex`:
+  * `WaveletMatrix`: Plain balanced wavelet matrix.
+
+### Other
+
+* Better `Access` trait.
+  * The default implementation is immutable.
+  * The trait includes an iterator over the values.
+  * `AccessIter` is a trivial implementation of the iterator using `Access::get`.
+
 ## Simple-SDS 0.3.1 (2022-02-17)
 
 * Minor patch release for the GBZ paper.

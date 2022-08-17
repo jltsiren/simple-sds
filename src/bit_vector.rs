@@ -9,7 +9,7 @@ use crate::bits;
 
 use std::io::{Error, ErrorKind};
 use std::iter::{FusedIterator, FromIterator};
-use std::{io, marker};
+use std::{cmp, io, marker};
 
 pub mod rank_support;
 pub mod select_support;
@@ -113,6 +113,7 @@ pub struct BitVector {
 /// A read-only iterator over [`BitVector`].
 ///
 /// The type of `Item` is [`bool`].
+/// There are efficient implementations of [`Iterator::nth`] and [`DoubleEndedIterator::nth_back`].
 ///
 /// # Examples
 ///
@@ -149,6 +150,11 @@ impl<'a> Iterator for Iter<'a> {
         }
     }
 
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.next += cmp::min(n, self.limit - self.next);
+        self.next()
+    }
+
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.limit - self.next;
@@ -164,6 +170,11 @@ impl<'a> DoubleEndedIterator for Iter<'a> {
             self.limit -= 1;
             Some(self.parent.get(self.limit))
         }
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.limit -= cmp::min(n, self.limit - self.next);
+        self.next_back()
     }
 }
 
