@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::test_utils;
+use crate::internal;
 
 //-----------------------------------------------------------------------------
 
@@ -114,7 +114,7 @@ impl<'a> VectorIndex<'a> for NaiveVector {
 
 #[test]
 fn access_iter() {
-    let data = test_utils::random_vector(322, 7);
+    let data = internal::random_vector(322, 7);
     let naive = NaiveVector::from(data.clone());
 
     assert!(naive.iter().eq(data.iter().cloned()), "Invalid values from iterator");
@@ -129,7 +129,7 @@ fn access_iter() {
 
 #[test]
 fn access_iter_nth() {
-    let data = test_utils::random_vector(271, 6);
+    let data = internal::random_vector(271, 6);
     let naive = NaiveVector::from(data);
 
     // Forward.
@@ -146,25 +146,25 @@ fn access_iter_nth() {
 #[test]
 fn contains() {
     let width = 8;
-    let data = test_utils::random_vector(198, width);
+    let data = internal::random_vector(198, width);
     let naive = NaiveVector::from(data);
-    test_utils::check_contains(&naive, width);
+    internal::check_contains(&naive, width);
 }
 
 #[test]
 fn inverse_select() {
     let width = 6;
-    let data = test_utils::random_vector(322, width);
+    let data = internal::random_vector(322, width);
     let naive = NaiveVector::from(data);
-    test_utils::check_inverse_select(&naive);
+    internal::check_inverse_select(&naive);
 }
 
 #[test]
 fn pred_succ() {
     let width = 7;
-    let data = test_utils::random_vector(179, width);
+    let data = internal::random_vector(179, width);
     let naive = NaiveVector::from(data);
-    test_utils::check_pred_succ(&naive, width);
+    internal::check_pred_succ(&naive, width);
 }
 
 //-----------------------------------------------------------------------------

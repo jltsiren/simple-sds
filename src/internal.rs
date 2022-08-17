@@ -1,7 +1,10 @@
 // Utility functions for tests.
 
 use crate::ops::{Vector, Access, VectorIndex};
+use crate::serialize::Serialize;
 use crate::bits;
+
+use std::time::Duration;
 
 use rand::Rng;
 
@@ -9,13 +12,125 @@ use rand::Rng;
 
 // Returns a vector of `len` random `width`-bit integers.
 pub fn random_vector(len: usize, width: usize) -> Vec<u64> {
-    let mut result: Vec<u64> = Vec::new();
+    let mut result: Vec<u64> = Vec::with_capacity(len);
     let mut rng = rand::thread_rng();
     for _ in 0..len {
         let value: u64 = rng.gen();
         result.push(value & bits::low_set(width));
     }
     result
+}
+
+// Returns `n` random values in `0..universe`.
+pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
+    let mut result: Vec<usize> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    for _ in 0..n {
+        let value: usize = rng.gen();
+        result.push(value % universe);
+    }
+    result
+} 
+
+//-----------------------------------------------------------------------------
+
+// Returns a human-readable representation of a size in bytes.
+pub fn readable_size(bytes: usize) -> (f64, &'static str) {
+    let units: Vec<(f64, &'static str)> = vec![
+        (1.0, "B"),
+        (1024.0, "KiB"),
+        (1024.0 * 1024.0, "MiB"),
+        (1024.0 * 1024.0 * 1024.0, "GiB"),
+        (1024.0 * 1024.0 * 1024.0 * 1024.0, "TiB"),
+    ];
+
+    let value = bytes as f64;
+    let mut unit = 0;
+    for i in 1..units.len() {
+        if value >= units[i].0 {
+            unit = i;
+        } else {
+            break;
+        }
+    }
+
+    (value / units[unit].0, units[unit].1)
+}
+
+// Prints a summary report for construction.
+//
+// * `object`: The structure that was built.
+// * `len`: Length of the object.
+// * `duration`: Time used for construction.
+pub fn report_construction<T: Serialize>(object: &T, len: usize, duration: Duration) {
+    let ns = (duration.as_nanos() as f64) / (len as f64);
+    let (size, unit) = readable_size(object.size_in_bytes());
+    println!("Time:     {:.3} seconds ({:.1} ns/symbol)", duration.as_secs_f64(), ns);
+    println!("Size:     {:.3} {}", size, unit);
+    println!("");
+}
+
+// Prints a summary report for query results.
+//
+// * `queries`: Number of queries.
+// * `total`: Sum of query results.
+// * `len`: Codomain size (size of the range of query results).
+// * `duration`: Time used for executing the queries.
+pub fn report_results(queries: usize, total: usize, len: usize, duration: Duration) {
+    let average = (total as f64) / (queries as f64);
+    let normalized = average / (len as f64);
+    let ns = (duration.as_nanos() as f64) / (queries as f64);
+    println!("Time:     {:.3} seconds ({:.1} ns/query)", duration.as_secs_f64(), ns);
+    println!("Average:  {:.0} absolute, {:.6} normalized", average, normalized);
+    println!("");
+}
+
+//-----------------------------------------------------------------------------
+
+// Returns peak RSS size so far; Linux version.
+#[cfg(target_os = "linux")]
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
+    unsafe {
+        let mut rusage: libc::rusage = std::mem::zeroed();
+        let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
+        match retval {
+            0 => Ok(rusage.ru_maxrss as usize * 1024),
+            _ => Err("libc::getrusage call failed"),
+        }
+    }
+}
+
+// Returns peak RSS size so far; macOS version.
+#[cfg(target_os = "macos")]
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
+    unsafe {
+        let mut rusage: libc::rusage = std::mem::zeroed();
+        let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
+        match retval {
+            0 => Ok(rusage.ru_maxrss as usize),
+            _ => Err("libc::getrusage call failed"),
+        }
+    }
+}
+
+// Returns peak RSS size so far; generic version.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub fn peak_memory_usage() -> Result<usize, &'static str> {
+    Err("No peak_memory_usage implementation for this OS")
+}
+
+// Prints a memory usage report.
+pub fn report_memory_usage() {
+    match peak_memory_usage() {
+        Ok(bytes) => {
+            let (size, unit) = readable_size(bytes);
+            println!("Peak memory usage: {:.3} {}", size, unit);
+        },
+        Err(f) => {
+            println!("{}", f);
+        },
+    }
+    println!("");
 }
 
 //-----------------------------------------------------------------------------

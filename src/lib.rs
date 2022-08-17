@@ -20,5 +20,6 @@ pub mod serialize;
 pub mod sparse_vector;
 pub mod wavelet_matrix;
 
-#[cfg(test)]
-mod test_utils;
+#[cfg(any(test, feature = "binaries"))]
+#[doc(hidden)]
+pub mod internal;

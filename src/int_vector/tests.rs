@@ -2,7 +2,7 @@ use super::*;
 
 use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
 use crate::serialize::{Serialize, MappingMode};
-use crate::{serialize, test_utils};
+use crate::{serialize, internal};
 
 use std::fs::OpenOptions;
 use std::fs;
@@ -10,7 +10,7 @@ use std::fs;
 //-----------------------------------------------------------------------------
 
 fn random_int_vector(n: usize, width: usize) -> IntVector {
-    let values = test_utils::random_vector(n, width);
+    let values = internal::random_vector(n, width);
     let mut result = IntVector::new(width).unwrap();
     result.extend(values);
     result
@@ -139,7 +139,7 @@ fn set_get() {
 fn from_vec() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
     let int_vec = IntVector::from(correct.clone());
-    test_utils::check_vector(&int_vec, &correct, 64);
+    internal::check_vector(&int_vec, &correct, 64);
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn extend() {
 
     let mut int_vec = IntVector::new(8).unwrap();
     int_vec.extend(first); int_vec.extend(second);
-    test_utils::check_vector(&int_vec, &correct, 8);
+    internal::check_vector(&int_vec, &correct, 8);
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn pack() {
 
     let mut packed: IntVector = correct.iter().cloned().collect();
     packed.pack();
-    test_utils::check_vector(&packed, &correct, 7);
+    internal::check_vector(&packed, &correct, 7);
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn push_to_writer() {
     let filename = serialize::temp_file_name("push-to-int-vector-writer");
 
     let width = 31;
-    let correct = test_utils::random_vector(71, width);
+    let correct = internal::random_vector(71, width);
 
     let mut v = IntVectorWriter::with_buf_len(&filename, width, 32).unwrap();
     for value in correct.iter() {
@@ -267,7 +267,7 @@ fn large_writer() {
     let filename = serialize::temp_file_name("large-int-vector-writer");
 
     let width = 31;
-    let correct: Vec<u64> = test_utils::random_vector(620001, width);
+    let correct: Vec<u64> = internal::random_vector(620001, width);
 
     let mut v = IntVectorWriter::new(&filename, width).unwrap();
     for value in correct.iter() {

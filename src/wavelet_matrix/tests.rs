@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::{serialize, test_utils};
+use crate::{serialize, internal};
 
 //-----------------------------------------------------------------------------
 
@@ -8,7 +8,7 @@ use crate::{serialize, test_utils};
 fn empty_wm() {
     let truth: Vec<u64> = Vec::new();
     let wm = WaveletMatrix::from(truth.clone());
-    test_utils::check_vector(&wm, &truth, 1);
+    internal::check_vector(&wm, &truth, 1);
 
 }
 
@@ -17,11 +17,11 @@ macro_rules! test_wm_from {
         #[test]
         fn $name() {
             let width = 6;
-            let truth = test_utils::random_vector(289, width);
+            let truth = internal::random_vector(289, width);
         
             let source: Vec<$t> = truth.iter().map(|x| *x as $t).collect();
             let wm = WaveletMatrix::from(source);
-            test_utils::check_vector(&wm, &truth, width);
+            internal::check_vector(&wm, &truth, width);
         }
     }
 }
@@ -36,9 +36,9 @@ test_wm_from!(wm_from_usize, usize);
 #[ignore]
 fn large_wm() {
     let width = 11;
-    let truth = test_utils::random_vector(213951, width);
+    let truth = internal::random_vector(213951, width);
     let wm = WaveletMatrix::from(truth.clone());
-    test_utils::check_vector(&wm, &truth, width);
+    internal::check_vector(&wm, &truth, width);
 }
 
 //-----------------------------------------------------------------------------
@@ -52,7 +52,7 @@ fn serialize_empty_wm() {
 
 #[test]
 fn serialize_wm() {
-    let source = test_utils::random_vector(313, 7);
+    let source = internal::random_vector(313, 7);
     let wm = WaveletMatrix::from(source);
     serialize::test(&wm, "wavelet-matrix", None, true);
 }
@@ -61,7 +61,7 @@ fn serialize_wm() {
 #[ignore]
 fn serialize_large_wm() {
     let width = 12;
-    let source = test_utils::random_vector(197466, width);
+    let source = internal::random_vector(197466, width);
     let wm = WaveletMatrix::from(source);
     serialize::test(&wm, "wavelet-matrix", None, true);
 }
@@ -73,32 +73,32 @@ fn empty_wm_index() {
     let width = 1;
     let source: Vec<u64> = Vec::new();
     let wm = WaveletMatrix::from(source);
-    test_utils::check_vector_index(&wm, width);
+    internal::check_vector_index(&wm, width);
 }
 
 #[test]
 fn wm_index() {
     let width = 6;
-    let source = test_utils::random_vector(288, width);
+    let source = internal::random_vector(288, width);
     let wm = WaveletMatrix::from(source);
-    test_utils::check_vector_index(&wm, width);
+    internal::check_vector_index(&wm, width);
 }
 
 #[test]
 fn wm_index_missing_values() {
     let width = 9;
-    let source = test_utils::random_vector(244, width);
+    let source = internal::random_vector(244, width);
     let wm = WaveletMatrix::from(source);
-    test_utils::check_vector_index(&wm, width);
+    internal::check_vector_index(&wm, width);
 }
 
 #[test]
 #[ignore]
 fn large_wm_index() {
     let width = 7;
-    let source = test_utils::random_vector(26451, width);
+    let source = internal::random_vector(26451, width);
     let wm = WaveletMatrix::from(source);
-    test_utils::check_vector_index(&wm, width);
+    internal::check_vector_index(&wm, width);
 }
 
 //-----------------------------------------------------------------------------
