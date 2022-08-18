@@ -1,6 +1,24 @@
 //! The core wavelet matrix structure.
-
-// FIXME document
+//!
+//! A wavelet matrix core is a vector of [`u64`] items.
+//! It represents a bidirectional mapping between the items in the original vector and the same items in the reordered vector.
+//! The reordered vector is based on sorting the items stably by their reverse binary representations.
+//! Mapping down means mapping from the original vector to the reordered vector, while mapping up means the reverse.
+//!
+//! This structure can be understood as the positional BWT (PBWT) of the binary sequences corresponding to the integers.
+//! Each level in the core wavelet matrix corresponds to a column in the PBWT.
+//! Bitvector `bv[level]` on level `level` represent bit values
+//!
+//! > `1 << (width - 1 - level)`.
+//!
+//! If `bv[level][i] == 0`, position `i` on level `level` it maps to position
+//!
+//! > `bv[level].rank_zero(i)`
+//!
+//! on level `level + 1`.
+//! Otherwise it maps to position
+//!
+//! > `bv[level].count_zeros() + bv[level].rank(i)`.
 
 use crate::bit_vector::BitVector;
 use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
@@ -8,18 +26,55 @@ use crate::raw_vector::{RawVector, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
 
-use std::io::{Read, Write};
+use std::io::{Error, ErrorKind};
 use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example
+/// A bidirectional mapping between the original vector and a stably sorted vector of the same items.
+///
+/// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
+/// The width determines the number of levels in the `WMCore`.
+///
+/// A `WMCore` can be built from a [`Vec`] of unsigned integers using the [`From`] trait.
+/// The construction requires several passes over the input and uses the input vector as working space.
+/// Using smaller integer types helps reducing the space overhead during construction.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::wavelet_matrix::wm_core::WMCore;
+///
+/// // Construction
+/// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
+/// let mut reordered: Vec<u64> = source.iter().map(|x| x.reverse_bits()).collect();
+/// reordered.sort();
+/// reordered.iter_mut().for_each(|x| *x = x.reverse_bits());
+///
+/// // Construction
+/// let core = WMCore::from(source.clone());
+/// assert_eq!(core.len(), source.len());
+/// assert_eq!(core.width(), 3);
+///
+/// // Map down
+/// for i in 0..core.len() {
+///     let mapped = core.map_down_with(i, source[i]);
+///     assert_eq!(reordered[mapped], source[i]);
+///     assert_eq!(core.map_down(i), Some((mapped, source[i])));
+/// }
+///
+/// // Map up
+/// for i in 0..core.len() {
+///     let mapped = core.map_up_with(i, reordered[i]).unwrap();
+///     assert_eq!(source[mapped], reordered[i]);
+///     assert_eq!(core.map_down_with(mapped, source[mapped]), i);
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WMCore {
     levels: Vec<BitVector>,
 }
 
-// FIXME impl
 impl WMCore {
     /// Returns the length of each level in the structure.
     pub fn len(&self) -> usize {
@@ -187,11 +242,11 @@ wm_core_from!(usize);
 //-----------------------------------------------------------------------------
 
 impl Serialize for WMCore {
-    fn serialize_header<T: Write>(&self, _: &mut T) -> io::Result<()> {
+    fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
         Ok(())
     }
 
-    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         let width = self.width();
         width.serialize(writer)?;
         for bv in self.levels.iter() {
@@ -200,12 +255,26 @@ impl Serialize for WMCore {
         Ok(())
     }
 
-    // FIXME sanity check: each len is same
-    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let width = usize::load(reader)?;
+        if width == 0 || width > bits::WORD_BITS {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid width"));
+        }
+
+        let mut len: Option<usize> = None;
         let mut levels: Vec<BitVector> = Vec::with_capacity(width);
         for _ in 0..width {
             let bv = BitVector::load(reader)?;
+            match len {
+                Some(len) => {
+                    if bv.len() != len {
+                        return Err(Error::new(ErrorKind::InvalidData, "Invalid bitvector length"));
+                    }
+                },
+                None => {
+                    len = Some(bv.len());
+                },
+            }
             levels.push(bv);
         }
         let mut result = WMCore { levels, };

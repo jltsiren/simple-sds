@@ -6,21 +6,7 @@
 //! > Information Systems, 2015.  
 //! > DOI: [10.1016/j.is.2014.06.002](https://doi.org/10.1016/j.is.2014.06.002)
 //!
-//! The structure can be understood as the positional BWT (PBWT) of the binary sequences corresponding to the integers.
-//! Each level in the wavelet matrix corresponds to a column in the PBWT.
-//! Bitvector `bv[level]` on level `level` represent bit values
-//!
-//! > `1 << (width - 1 - level)`.
-//!
-//! If `bv[level][i] == 0`, position `i` on level `level` it maps to position
-//!
-//! > `bv[level].rank_zero(i)`
-//!
-//! on level `level + 1`.
-//! Otherwise it maps to position
-//!
-//! > `bv[level].count_zeros() + bv[level].rank(i)`.
-//!
+//! See [`wm_core`] for a low-level description.
 //! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
 use crate::int_vector::IntVector;
@@ -28,7 +14,7 @@ use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack};
 use crate::serialize::Serialize;
 use crate::wavelet_matrix::wm_core::WMCore;
 
-use std::io::{Read, Write};
+use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
 use std::io;
 
@@ -42,9 +28,8 @@ mod tests;
 /// An immutable integer vector supporting rank/select-type queries.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
-/// The width determines the number of levels in the `WaveletMatrix`.
-/// Each level is represented using a [`BitVector`].
-/// There is also an [`IntVector`] storing the starting position of each possible item value after the reordering done by the wavelet matrix.
+/// The vector is represented using [`WMCore`].
+/// There is also an [`IntVector`] storing the starting position of each possible item value after the reordering done by the core.
 /// Hence a `WaveletMatrix` should only be used when most values in `0..(1 << width)` are in use.
 /// The maximum length of the vector is approximately [`usize::MAX`] items.
 ///
@@ -252,20 +237,23 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
 }
 
 impl Serialize for WaveletMatrix {
-    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)
     }
 
-    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.data.serialize(writer)?;
         self.first.serialize(writer)?;
         Ok(())
     }
 
-    // FIXME sanity checks: len equals core len
-    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
         let data = WMCore::load(reader)?;
+        if data.len() != len {
+            return Err(Error::new(ErrorKind::InvalidData, "Core length does not match wavelet matrix length"));
+        }
+
         let first = IntVector::load(reader)?;
         Ok(WaveletMatrix { len, data, first, })
     }
