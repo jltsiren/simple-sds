@@ -23,16 +23,16 @@
 //!
 //! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
-use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack, BitVec, Rank, Select, SelectZero, PredSucc};
-use crate::raw_vector::{RawVector, PushRaw};
+use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack};
 use crate::serialize::Serialize;
-use crate::bits;
+use crate::wavelet_matrix::wm_core::WMCore;
 
 use std::io::{Read, Write};
 use std::iter::FusedIterator;
-use std::{cmp, io};
+use std::io;
+
+pub mod wm_core;
 
 #[cfg(test)]
 mod tests;
@@ -107,7 +107,7 @@ mod tests;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WaveletMatrix {
     len: usize,
-    data: Vec<BitVector>,
+    data: WMCore,
     // Starting offset of each value after reordering by the wavelet matrix, or `len` if the value does not exist.
     first: IntVector,
 }
@@ -118,42 +118,7 @@ impl WaveletMatrix {
         self.first.get(value as usize) as usize
     }
 
-    // Returns the bit value for the given level.
-    fn bit_value(&self, level: usize) -> u64 {
-        1 << (self.width() - 1 - level)
-    }
-
-    // Maps the index to the next level with a set bit.
-    fn map_down_one(&self, index: usize, level: usize) -> usize {
-        self.data[level].count_zeros() + self.data[level].rank(index)
-    }
-
-    // Maps the index to the next level with an unset bit.
-    fn map_down_zero(&self, index: usize, level: usize) -> usize {
-        self.data[level].rank_zero(index)
-    }
-
-    // Maps the index from the next level with a set bit.
-    fn map_up_one(&self, index: usize, level: usize) -> Option<usize> {
-        self.data[level].select(index - self.data[level].count_zeros())
-    }
-
-    // Maps the index from the next level with an unset bit.
-    fn map_up_zero(&self, index: usize, level: usize) -> Option<usize> {
-        self.data[level].select_zero(index)
-    }
-
-    // Initializes the support structures for the bitvectors.
-    fn init_support(&mut self) {
-        for bv in self.data.iter_mut() {
-            bv.enable_rank();
-            bv.enable_select();
-            bv.enable_select_zero();
-            bv.enable_pred_succ();
-        }
-    }
-
-    // Computes `start` from an iterator.
+    // Computes `first` from an iterator.
     fn start_offsets<Iter: Iterator<Item = u64>>(iter: Iter, len: usize, max_value: u64) -> IntVector {
         // Count the number of occurrences of each value.
         let mut counts: Vec<(u64, usize)> = Vec::with_capacity((max_value + 1) as usize);
@@ -191,42 +156,11 @@ macro_rules! wavelet_matrix_from {
     ($t:ident) => {
         impl From<Vec<$t>> for WaveletMatrix {
             fn from(source: Vec<$t>) -> Self {
-                let mut source = source;
+                let len = source.len();
                 let max_value = source.iter().cloned().max().unwrap_or(0);
-                let width = bits::bit_len(max_value as u64);
-
                 let first = Self::start_offsets(source.iter().map(|x| *x as u64), source.len(), max_value as u64);
-
-                let mut data: Vec<BitVector> = Vec::new();
-                for level in 0..width {
-                    let bit_value: $t = 1 << (width - 1 - level);
-                    let mut zeros: Vec<$t> = Vec::new();
-                    let mut ones: Vec<$t> = Vec::new();
-                    let mut raw_data = RawVector::with_capacity(source.len());
-
-                    // Determine if the current bit is set in each value.
-                    for value in source.iter() {
-                        if value & bit_value != 0 {
-                            ones.push(*value);
-                            raw_data.push_bit(true);
-                        } else {
-                            zeros.push(*value);
-                            raw_data.push_bit(false);
-                        }
-                    }
-
-                    // Sort the values stably by the current bit.
-                    source.clear();
-                    source.extend(zeros);
-                    source.extend(ones);
-        
-                    // Create the bitvector for the current level.
-                    data.push(BitVector::from(raw_data));
-                }
-
-                let mut result = WaveletMatrix { len: source.len(), data, first, };
-                result.init_support();
-                result
+                let data = WMCore::from(source);
+                WaveletMatrix { len, data, first, }
             }
         }
     }
@@ -250,7 +184,7 @@ impl Vector for WaveletMatrix {
 
     #[inline]
     fn width(&self) -> usize {
-        self.data.len()
+        self.data.width()
     }
 
     #[inline]
@@ -282,36 +216,11 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
         if !self.contains(value) {
             return 0;
         }
-
-        let mut index = cmp::min(index, self.len());
-        for level in 0..self.width() {
-            if value & self.bit_value(level) != 0 {
-                index = self.map_down_one(index, level);
-            } else {
-                index = self.map_down_zero(index, level);
-            }
-        }
-
-        index - self.start(value)
+        self.data.map_down_with(index, value) - self.start(value)
     }
 
     fn inverse_select(&self, index: usize) -> Option<(usize, <Self as Vector>::Item)> {
-        if index >= self.len() {
-            return None;
-        }
-
-        let mut index = index;
-        let mut value = 0;
-        for level in 0..self.width() {
-            if self.data[level].get(index) {
-                index = self.map_down_one(index, level);
-                value += self.bit_value(level);
-            } else {
-                index = self.map_down_zero(index, level);
-            }
-        }
-
-        Some((index - self.start(value), value))
+        self.data.map_down(index).map(|(index, value)| (index - self.start(value), value))
     }
 
     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter {
@@ -330,17 +239,7 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
         if !self.contains(value) {
             return None;
         }
-
-        let mut index = self.start(value) + rank;
-        for level in (0..self.width()).rev() {
-            if value & self.bit_value(level) != 0 {
-                index = self.map_up_one(index, level)?;
-            } else {
-                index = self.map_up_zero(index, level)?;
-            }
-        }
-
-        Some(index)
+        self.data.map_up_with(self.start(value) + rank, value)
     }
 
     fn select_iter(&'a self, rank: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
@@ -358,35 +257,22 @@ impl Serialize for WaveletMatrix {
     }
 
     fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
-        let width = self.data.len();
-        width.serialize(writer)?;
-        for bv in self.data.iter() {
-            bv.serialize(writer)?;
-        }
+        self.data.serialize(writer)?;
         self.first.serialize(writer)?;
         Ok(())
     }
 
+    // FIXME sanity checks: len equals core len
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
-        let width = usize::load(reader)?;
-        let mut data: Vec<BitVector> = Vec::new();
-        for _ in 0..width {
-            let bv = BitVector::load(reader)?;
-            data.push(bv);
-        }
+        let data = WMCore::load(reader)?;
         let first = IntVector::load(reader)?;
-        let mut result = WaveletMatrix { len, data, first, };
-        result.init_support();
-        Ok(result)
+        Ok(WaveletMatrix { len, data, first, })
     }
 
     fn size_in_elements(&self) -> usize {
         let mut result = self.len.size_in_elements();
-        result += 1; // Width.
-        for bv in self.data.iter() {
-            result += bv.size_in_elements();
-        }
+        result += self.data.size_in_elements();
         result += self.first.size_in_elements();
         result
     }
