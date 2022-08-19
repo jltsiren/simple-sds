@@ -1,10 +1,10 @@
 # Serialization formats
 
-For version 0.4.0. Updated 2022-08-15.
+For version 0.4.0. Updated 2022-08-18.
 
 Changes since version 0.2.0 are mentioned in the relevant location.
 
-## Basics
+## Basic structures
 
 The simple-sds serialization format is intended as an interchange format for succinct data structures.
 It should be easy to reimplement.
@@ -18,7 +18,7 @@ The reader is always assumed to know the type of the object they are reading.
 A fixed-length type is **serializable** if its size is a multiple of 8 bytes.
 A serializable object can be serialized by copying the bytes.
 
-## Vectors
+### Vectors
 
 A **vector** is an array of objects of the same type.
 Each object in a vector is called an **item**.
@@ -37,7 +37,7 @@ Serialization format for vectors of **bytes**:
 
 **Strings** are serialized as vectors of bytes using the UTF-8 encoding.
 
-## Optional structures
+### Optional structures
 
 An **optional** structure may be present in the file or absent from it.
 If a structure is needed in some but not all applications of the parent structure, it can be made optional.
@@ -55,9 +55,11 @@ If the reader needs to pass through an optional structure without understanding 
 **Note:** Making a structure optional implies that the content of the structure optional.
 An empty structure may often be a better way of representing core data that is not always present.
 
-## Raw bitvector
+## Core data structures
 
-A **raw bitvector** is a vector of bits.
+### Raw bitvector
+
+A **raw bitvector** (`RawVector`) is a vector of bits.
 The items of a raw bitvector are concatenated and stored in a vector of elements in little-endian order.
 Bit `i` of the raw bitvector is stored as bit `i % 64` of element `floor(i / 64)`.
 A raw bitvector of length `n` requires a vector of `floor((n + 63) / 64)` elements.
@@ -68,9 +70,9 @@ Serialization format for raw bitvectors:
 1. Length of the vector as an element.
 2. Vector of elements storing the items.
 
-## Integer vector
+### Integer vector
 
-An **integer vector** is a bit-packed vector of integers.
+An **integer vector** (`IntVector`) is a bit-packed vector of integers.
 The **width** of the items can be from 1 to 64 bits.
 The items of an integer vector are concatenated and stored in a raw bitvector.
 An integer vector of `n` items of width `w` bits requires a raw bitvector of of length `n * w`.
@@ -81,9 +83,9 @@ Serialization format for integer vectors:
 2. Width of the items as an element.
 3. Raw bitvector storing the items.
 
-## Bitvector
+### Bitvector
 
-A **bitvector** is vector of bits that supports rank, select, and similar queries.
+A plain **bitvector** (`BitVector`) is vector of bits that supports rank, select, and similar queries.
 It extends the functionality of a raw bitvector.
 
 Serialization format for bitvectors:
@@ -96,9 +98,11 @@ Serialization format for bitvectors:
 
 The support structures are often both application-dependent and implementation-dependent and hence optional.
 
-## Sparse bitvector
+## Compressed bitvectors
 
-A **sparse bitvector** is an Elias-Fano encoded vector of bits that supports rank, select, and similar queries.
+### Sparse bitvector
+
+A **sparse bitvector** (`SparseVector`) is an Elias-Fano encoded vector of bits that supports rank, select, and similar queries.
 It can be interpreted as a set of integers or a vector of sorted integers, where the integers are the positions of the set bits.
 
 Assume that the length of the vector of bits is `n` and that there are `m` set bits.
@@ -122,7 +126,7 @@ Serialization format for sparse bitvectors:
 
 **Note:** The encoding also supports multisets / duplicate items, but the semantics are not fully clear yet.
 
-## Wavelet matrix (version 0.4.0)
+## Wavelet matrices (version 0.4.0)
 
 A **wavelet matrix** is an immutable integer vector that supports rank/select-like queries.
 It is effectively the positional BWT of the binary sequences encoding the integers, operating on **levels** (rows) instead of columns.
@@ -144,12 +148,24 @@ Otherwise it maps to position
 The value of the item at offset `i` can be determined by starting from level `0` offset `i`, proceeding down in the matrix, and calculating the sum of values corresponding to set bits.
 This process **reorders** the items in the vector by sorting them according to their reverse binary representations.
 
-Serialization format for wavelet matrices:
+### Wavelet matrix core
+
+The **core** of a wavelet matrix (`WMCore`) consists of the bitvectors that handle the reordering.
+
+Serialization format for the wavelet matrix core:
+
+1. `width`: Width of the items as an element.
+2. `levels`: A `BitVector` for each level in `0..width`.
+
+### Plain wavelet matrix
+
+A **plain** wavelet matrix (`WaveletMatrix`) uses the core directly for representing the vector.
+
+Serialization format for plain wavelet matrices:
 
 1. `len`: Length of the vector as an element.
-2. `width`: Width of the items as an element.
-3. `data`: A `BitVector` for each level in `0..width`.
-4. `first`: An `IntVector` storing the position of the first occurrence of each value in the reordered vector.
+2. `data`: The core of the wavelet matrix as `WMCore`.
+3. `first`: An `IntVector` storing the position of the first occurrence of each value in the reordered vector.
 
 **Note:** `first` is only defined over the values in the alphabet. If a value is not present in the vector, the corresponding position is `len`.
 
