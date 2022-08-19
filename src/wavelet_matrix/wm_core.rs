@@ -47,9 +47,8 @@ use std::{cmp, io};
 ///
 /// // Construction
 /// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
-/// let mut reordered: Vec<u64> = source.iter().map(|x| x.reverse_bits()).collect();
-/// reordered.sort();
-/// reordered.iter_mut().for_each(|x| *x = x.reverse_bits());
+/// let mut reordered: Vec<u64> = source.clone();
+/// reordered.sort_by_key(|x| x.reverse_bits());
 ///
 /// // Construction
 /// let core = WMCore::from(source.clone());
@@ -292,6 +291,58 @@ impl Serialize for WMCore {
 }
 
 //-----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{internal, serialize};
+
+    fn reordered_vector(original: &[u64]) -> Vec<u64> {
+        let mut result = Vec::from(original);
+        result.sort_unstable_by_key(|x| x.reverse_bits());
+        result
+    }
+
+    fn check_core(core: &WMCore, original: &[u64], reordered: &[u64]) {
+        assert_eq!(core.len(), original.len(), "Invalid WMCore length");
+
+        for i in 0..core.len() {
+            let mapped = core.map_down_with(i, original[i]);
+            assert_eq!(reordered[mapped], original[i], "Invalid value at the mapped down position from {}", i);
+            assert_eq!(core.map_down(i), Some((mapped, original[i])), "The map down functions are inconsistent at {}", i);
+        }
+
+        for i in 0..core.len() {
+            let mapped = core.map_up_with(i, reordered[i]).unwrap();
+            assert_eq!(original[mapped], reordered[i], "Invalid value at the mapped up position from {}", i);
+            assert_eq!(core.map_down_with(mapped, original[mapped]), i, "Did not get the original position after mapping up and down from {}", i);
+        }
+    }
+
+    #[test]
+    fn empty_core() {
+        let original: Vec<u64> = Vec::new();
+        let reordered = reordered_vector(&original);
+        let core = WMCore::from(original.clone());
+        check_core(&core, &original, &reordered);
+    }
+
+    #[test]
+    fn non_empty_core() {
+        let original = internal::random_vector(322, 7);
+        let reordered = reordered_vector(&original);
+        let core = WMCore::from(original.clone());
+        check_core(&core, &original, &reordered);
+    }
+
+    #[test]
+    fn serialize_core() {
+        let original = internal::random_vector(286, 6);
+        let core = WMCore::from(original);
+        serialize::test(&core, "wm-core", None, true);
+    }
+}
 
 // FIXME tests
 
