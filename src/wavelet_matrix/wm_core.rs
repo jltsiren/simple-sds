@@ -129,6 +129,32 @@ impl WMCore {
         index
     }
 
+    /// Maps two positions down at once.
+    ///
+    /// Returns the positions in the reordered vector.
+    /// Because [`Self::map_down_with`] is constrained by memory latency, this can be faster than doing two independent queries.
+    ///
+    /// # Arguments
+    ///
+    /// * `first`: A position in the original vector.
+    /// * `second`: A position in the original vector.
+    /// * `value`: Value of an item.
+    pub fn map_down_with_two_positions(&self, first: usize, second: usize, value: u64) -> (usize, usize) {
+        let mut first = cmp::min(first, self.len());
+        let mut second = cmp::min(second, self.len());
+        for level in 0..self.width() {
+            if value & self.bit_value(level) != 0 {
+                first = self.map_down_one(first, level);
+                second = self.map_down_one(second, level);
+            } else {
+                first = self.map_down_zero(first, level);
+                second = self.map_down_zero(second, level);
+            }
+        }
+
+        (first, second)
+    }
+
     /// Maps up with the given value.
     ///
     /// Returns the position in the original vector, or [`None`] if there is no such position.
@@ -318,6 +344,15 @@ mod tests {
             assert_eq!(original[mapped], reordered[i], "Invalid value at the mapped up position from {}", i);
             assert_eq!(core.map_down_with(mapped, original[mapped]), i, "Did not get the original position after mapping up and down from {}", i);
         }
+
+        let first = internal::random_queries(core.len(), core.len());
+        let second = internal::random_queries(core.len(), core.len());
+        let values = internal::random_vector(core.len(), core.width());
+        for i in 0..core.len() {
+            let mapped = core.map_down_with_two_positions(first[i], second[i], values[i]);
+            assert_eq!(mapped.0, core.map_down_with(first[i], values[i]), "Invalid first mapped position at {}, value {}", first[i], values[i]);
+            assert_eq!(mapped.1, core.map_down_with(second[i], values[i]), "Invalid second mapped position at {}, value {}", second[i], values[i]);
+        }
     }
 
     #[test]
@@ -343,7 +378,5 @@ mod tests {
         serialize::test(&core, "wm-core", None, true);
     }
 }
-
-// FIXME tests
 
 //-----------------------------------------------------------------------------
