@@ -2,6 +2,10 @@
 
 ## Current version
 
+### Bitvectors
+
+* `RLVector`: Run-length encoded bitvector similar to the one in RLCSA.
+
 ### Wavelet matrices
 
 * Trait `VectorIndex` for rank/select-type queries over integer vectors.

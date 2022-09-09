@@ -24,6 +24,10 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
   * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries using optional support structures.
   * Iterators over set bits, unset bits, and all bits.
   * Implemented on top of `RawVector`.
+* `RLVector`: A run-length encoded bitvector.
+  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries.
+  * Iterators over set bits and all bits.
+  * Space-efficient construction with `RLBuilder`.
 * `SparseVector`: An Elias-Fano encoded bitvector.
   * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries .
   * Iterators over set bits and all bits.
