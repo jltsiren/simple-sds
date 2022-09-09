@@ -170,6 +170,13 @@ fn from_iter() {
 }
 
 #[test]
+fn copy_bit_vec() {
+    let source = random_vector(1234, 0.35);
+    let copy = BitVector::copy_bit_vec(&source);
+    assert_eq!(copy, source, "Invalid copy created with copy_bit_vec()");
+}
+
+#[test]
 fn iter() {
     let bv = random_vector(1563, 0.5);
     try_iter(&bv);

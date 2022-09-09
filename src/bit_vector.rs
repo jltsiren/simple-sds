@@ -26,6 +26,8 @@ mod tests;
 /// Conversions between `BitVector` and [`RawVector`] are possible using the [`From`] trait.
 /// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
+/// Conversions between various [`BitVec`] types are possible using the [`From`] trait.
+///
 /// `BitVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
 /// * Queries and operations: [`Rank`], [`Select`], [`PredSucc`], [`SelectZero`]
@@ -106,6 +108,34 @@ pub struct BitVector {
     rank: Option<RankSupport>,
     select: Option<SelectSupport<Identity>>,
     select_zero: Option<SelectSupport<Complement>>,
+}
+
+impl BitVector {
+    /// Returns a copy of the source bitvector as `BitVector`.
+    ///
+    /// The copy is created by iterating over the set bits using [`Select::one_iter`].
+    /// [`From`] implementations from other bitvector types should generally use this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::ops::BitVec;
+    /// use std::iter::FromIterator;
+    ///
+    /// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+    /// let bv = BitVector::from_iter(source);
+    /// let copy = BitVector::copy_bit_vec(&bv);
+    /// assert_eq!(copy.len(), bv.len());
+    /// assert_eq!(copy.count_ones(), bv.count_ones());
+    /// ```
+    pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
+        let mut data = RawVector::with_len(source.len(), false);
+        for (_, index) in source.one_iter() {
+            data.set_bit(index, true);
+        }
+        BitVector::from(data)
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -724,5 +754,17 @@ impl FromIterator<bool> for BitVector {
         }
     }
 }
+
+//-----------------------------------------------------------------------------
+
+use crate::sparse_vector::SparseVector;
+
+impl From<SparseVector> for BitVector {
+    fn from(source: SparseVector) -> Self {
+        BitVector::copy_bit_vec(&source)
+    }
+}
+
+// FIXME from RLVector
 
 //-----------------------------------------------------------------------------

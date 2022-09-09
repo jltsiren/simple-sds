@@ -907,6 +907,8 @@ pub trait BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reason.
     fn iter(&'a self) -> Self::Iter;
+
+    // TODO: add `copy_bit_vec`?
 }
 
 //-----------------------------------------------------------------------------

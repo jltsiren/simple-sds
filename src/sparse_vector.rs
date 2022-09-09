@@ -55,7 +55,7 @@ mod tests;
 /// Because most queries require support structures for one of the components, the bitvector itself is immutable.
 /// The maximum length of the vector is approximately [`usize::MAX`] bits.
 ///
-/// Conversions between `SparseVector` and [`BitVector`] are possible using the [`From`] trait.
+/// Conversions between various [`BitVec`] types are possible using the [`From`] trait.
 ///
 /// `SparseVector` supports partial multiset semantics.
 /// A multiset bitvector is one that contains duplicate values in the integer array interpretation.
@@ -154,6 +154,7 @@ impl SparseVector {
     /// Returns a copy of the source bitvector as `SparseVector`.
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
+    /// [`From`] implementations from other bitvector types should generally use this function.
     ///
     /// # Examples
     ///
@@ -170,7 +171,7 @@ impl SparseVector {
     /// assert_eq!(sv.count_ones(), bv.count_ones());
     /// assert!(!sv.is_multiset());
     /// ```
-    pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> SparseVector {
+    pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut builder = SparseBuilder::new(source.len(), source.count_ones()).unwrap();
         for (_, index) in source.one_iter() {
             unsafe { builder.set_unchecked(index); }
@@ -543,6 +544,21 @@ impl Extend<usize> for SparseBuilder {
         for index in iter {
             self.set(index);
         }
+    }
+}
+
+impl TryFrom<SparseBuilder> for SparseVector {
+    type Error = &'static str;
+
+    fn try_from(builder: SparseBuilder) -> Result<Self, Self::Error> {
+        let mut builder = builder;
+        if !builder.is_full() {
+            return Err("The builder is not full");
+        }
+        builder.data.high = BitVector::from(builder.high);
+        builder.data.high.enable_select();
+        builder.data.high.enable_select_zero();
+        Ok(builder.data)
     }
 }
 
@@ -1172,29 +1188,6 @@ impl From<BitVector> for SparseVector {
     }
 }
 
-impl From<SparseVector> for BitVector {
-    fn from(value: SparseVector) -> Self {
-        let mut data = RawVector::with_len(value.len(), false);
-        for (_, index) in value.one_iter() {
-            data.set_bit(index, true);
-        }
-        BitVector::from(data)
-    }
-}
-
-impl TryFrom<SparseBuilder> for SparseVector {
-    type Error = &'static str;
-
-    fn try_from(builder: SparseBuilder) -> Result<Self, Self::Error> {
-        let mut builder = builder;
-        if !builder.is_full() {
-            return Err("The builder is not full");
-        }
-        builder.data.high = BitVector::from(builder.high);
-        builder.data.high.enable_select();
-        builder.data.high.enable_select_zero();
-        Ok(builder.data)
-    }
-}
+// FIXME From RLVector
 
 //-----------------------------------------------------------------------------
