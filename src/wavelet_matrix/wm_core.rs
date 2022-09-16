@@ -31,6 +31,7 @@ use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
+// FIXME Should this be generic over the bitvector type? How to handle construction?
 /// A bidirectional mapping between the original vector and a stably sorted vector of the same items.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
