@@ -20,6 +20,8 @@
 
 // FIXME document serialization format
 
+// FIXME use in benchmarks
+
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, Push, Resize, BitVec, Select};
 use crate::bits;

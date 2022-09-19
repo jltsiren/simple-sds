@@ -964,12 +964,12 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
 
     #[inline]
     fn set_bit(&mut self, _: usize, _: bool) {
-        panic!("Not implemented");
+        panic!("RawVectorMapper::set_bit(): Not implemented");
     }
 
     #[inline]
     unsafe fn set_int(&mut self, _: usize, _: u64, _: usize) {
-        panic!("Not implemented");
+        panic!("RawVectorMapper::set_int(): Not implemented");
     }
 }
 

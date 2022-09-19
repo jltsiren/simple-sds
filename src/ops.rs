@@ -233,7 +233,6 @@ pub trait Access<'a>: Vector {
 
     /// Sets an item in the vector.
     ///
-    ///
     /// # Arguments
     ///
     /// * `index`: Index in the vector.
@@ -245,7 +244,7 @@ pub trait Access<'a>: Vector {
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
     fn set(&mut self, _: usize, _: <Self as Vector>::Item) {
-        panic!("The default implementation of Access is immutable");
+        panic!("Access::set(): The default implementation is immutable");
     }
 }
 
