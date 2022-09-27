@@ -36,7 +36,52 @@ use std::iter::FusedIterator;
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, tests
+// FIXME tests
+/// An immutable run-length encoded bitvector supporting rank, select, and related queries.
+///
+/// This type should be used when the bitvector contains long runs of both set and unset bits.
+/// Other bitvector types are more appropriate for dense (no long runs) and sparse (long runs of unset bits) bitvectors.
+/// The bitvector is immutable, though it would be easy to implement a mutable version by storing the blocks in a B+-tree rather than a vector.
+/// The maximum length of the vector is approximately [`usize::MAX`] bits.
+///
+/// Conversions between various [`BitVec`] types are possible using the [`From`] trait.
+///
+/// `RLVector` implements the following `simple_sds` traits:
+/// * Basic functionality: [`BitVec`]
+// FIXME other queries when implemented
+// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`] [`PredSucc`]
+// * Serialization: [`Serialize`]
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec};
+/// use simple_sds::rl_vector::{RLVector, RLBuilder};
+///
+/// let mut builder = RLBuilder::new();
+/// builder.try_set(18, 22);
+/// builder.try_set(95, 15);
+/// builder.try_set(110, 10);
+/// builder.try_set(140, 12);
+/// builder.set_len(200);
+/// let rv = RLVector::from(builder);
+///
+/// // BitVec
+/// assert_eq!(rv.len(), 200);
+/// assert!(!rv.is_empty());
+/// assert_eq!(rv.count_ones(), 59);
+/// assert_eq!(rv.count_zeros(), 141);
+/// assert!(rv.get(119));
+/// assert!(!rv.get(120));
+/// for (index, value) in rv.iter().enumerate() {
+///     assert_eq!(value, rv.get(index));
+/// }
+/// ```
+///
+/// # Notes
+///
+/// * `RLVector` never panics from I/O errors.
+/// * All `RLVector` queries are always enabled without additional support structures.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RLVector {
     len: usize,
@@ -64,11 +109,25 @@ impl RLVector {
     /// Number of code units in a block.
     pub const BLOCK_SIZE: usize = 64;
 
-    // FIXME example
     /// Returns a copy of the source bitvector as `RLVector`.
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
     /// [`From`] implementations from other bitvector types should generally use this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use simple_sds::bit_vector::BitVector;
+    /// use simple_sds::ops::BitVec;
+    /// use simple_sds::rl_vector::RLVector;
+    /// use std::iter::FromIterator;
+    ///
+    /// let source: Vec<bool> = vec![true, false, true, true, false, true, true, false];
+    /// let bv = BitVector::from_iter(source);
+    /// let rv = RLVector::copy_bit_vec(&bv);
+    /// assert_eq!(rv.len(), bv.len());
+    /// assert_eq!(rv.count_ones(), bv.count_ones());
+    /// ```
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut builder = RLBuilder::new();
         for (_, index) in source.one_iter() {
@@ -78,7 +137,9 @@ impl RLVector {
         RLVector::from(builder)
     }
 
-    // FIXME document
+    /// Returns an iterator over the runs of set bits in the bitvector.
+    ///
+    /// See [`RunIter`] for an example.
     pub fn run_iter(&self) -> RunIter<'_> {
         RunIter {
             parent: self,
@@ -310,7 +371,7 @@ impl RLBuilder {
     fn encode(&mut self, value: usize) {
         let mut value = value as u64;
         while value > RLVector::CODE_MASK {
-            self.data.push((value | RLVector::CODE_MASK) | RLVector::CODE_FLAG);
+            self.data.push((value & RLVector::CODE_MASK) | RLVector::CODE_FLAG);
             value = value >> RLVector::CODE_SHIFT;
         }
         self.data.push(value);
@@ -348,7 +409,31 @@ impl From<RLBuilder> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, tests
+// FIXME tests
+/// A read-only iterator over the runs in [`RLVector`].
+///
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
+/// The first value is the starting position of a maximal run of set bits, and the second value is its length.
+///
+/// Most [`RLVector`] queries use this iterator for iterating over the runs in a block.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec};
+/// use simple_sds::rl_vector::{RLVector, RLBuilder};
+///
+/// let mut builder = RLBuilder::new();
+/// builder.try_set(18, 22);
+/// builder.try_set(95, 15);
+/// builder.try_set(110, 10); // Merge with the previous run.
+/// builder.try_set(140, 12);
+/// builder.set_len(200);
+/// let rv = RLVector::from(builder);
+///
+/// let runs: Vec<(usize, usize)> = rv.run_iter().collect();
+/// assert_eq!(runs, vec![(18, 22), (95, 25), (140, 12)]);
+/// ```
 pub struct RunIter<'a> {
     parent: &'a RLVector,
     // Offset in the encoding.
@@ -394,7 +479,30 @@ impl<'a> FusedIterator for RunIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example, tests
+// FIXME tests
+/// A read-only iterator over [`RLVector`].
+///
+/// The type of `Item` is [`bool`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec};
+/// use simple_sds::rl_vector::{RLVector, RLBuilder};
+///
+/// let mut builder = RLBuilder::new();
+/// builder.try_set(18, 22);
+/// builder.try_set(95, 15);
+/// builder.try_set(110, 10);
+/// builder.try_set(140, 12);
+/// builder.set_len(200);
+/// let rv = RLVector::from(builder);
+///
+/// assert_eq!(rv.iter().len(), rv.len());
+/// for (index, value) in rv.iter().enumerate() {
+///     assert_eq!(value, rv.get(index));
+/// }
+/// ```
 pub struct Iter<'a> {
     iter: RunIter<'a>,
     // Run from the iterator.
@@ -429,6 +537,8 @@ impl<'a> Iterator for Iter<'a> {
         (remaining, Some(remaining))
     }
 }
+
+impl<'a> ExactSizeIterator for Iter<'a> {}
 
 impl<'a> FusedIterator for Iter<'a> {}
 
@@ -465,7 +575,8 @@ impl<'a> BitVec<'a> for RLVector {
             }
         }
 
-        panic!("RLVector::get(): Cannot find bit {}", index);
+        // Final run of unset bits.
+        false
     }
 
     fn iter(&'a self) -> Self::Iter {
