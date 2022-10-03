@@ -23,7 +23,7 @@
 // FIXME use in benchmarks
 
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, Push, Resize, BitVec, Select};
+use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select};
 use crate::bits;
 
 use std::iter::FusedIterator;
@@ -48,6 +48,7 @@ use std::iter::FusedIterator;
 ///
 /// `RLVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
+/// * Queries and operations: [`Rank`]
 // FIXME other queries when implemented
 // * Queries and operations: [`Rank`], [`Select`], [`SelectZero`] [`PredSucc`]
 // * Serialization: [`Serialize`]
@@ -55,7 +56,7 @@ use std::iter::FusedIterator;
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{BitVec};
+/// use simple_sds::ops::{BitVec, Rank};
 /// use simple_sds::rl_vector::{RLVector, RLBuilder};
 ///
 /// let mut builder = RLBuilder::new();
@@ -76,6 +77,12 @@ use std::iter::FusedIterator;
 /// for (index, value) in rv.iter().enumerate() {
 ///     assert_eq!(value, rv.get(index));
 /// }
+///
+/// // Rank
+/// assert!(rv.supports_rank());
+/// assert_eq!(rv.rank(100), 27);
+/// assert_eq!(rv.rank(130), 47);
+/// assert_eq!(rv.rank_zero(60), 38);
 /// ```
 ///
 /// # Notes
@@ -149,6 +156,16 @@ impl RLVector {
         }
     }
 
+    // Returns a `RunIter` past the end.
+    fn empty_iter(&self) -> RunIter<'_> {
+        RunIter {
+            parent: self,
+            offset: self.data.len(),
+            pos: (self.len(), self.count_ones()),
+            limit: self.count_ones(),
+        }
+    }
+
     // Returns the number of blocks in the encoding.
     fn blocks(&self) -> usize {
         self.samples.len() / 2
@@ -195,13 +212,20 @@ impl RLVector {
         low
     }
 
-    // Returns the identifier of the block containing the given bit.
-    fn block_for_bit(&self, index: usize) -> Option<usize> {
+    // Returns an iterator covering the block that contains the given bit, or `self.empty_iter()` if there is no such bit.
+    fn iter_for_bit(&self, index: usize) -> RunIter<'_> {
         if index >= self.len() {
-            return None;
+            return self.empty_iter();
         }
-        // FIXME use the index
-        Some(Self::block_for(0, self.blocks(), index, |i| self.samples.get(2 * i) as usize))
+
+        // FIXME use the index to narrow the search range
+        let block = Self::block_for(0, self.blocks(), index, |i| self.samples.get(2 * i) as usize);
+        RunIter {
+            parent: self,
+            offset: block * Self::BLOCK_SIZE,
+            pos: (self.samples.get(2 * block) as usize, self.samples.get(2 * block + 1) as usize),
+            limit: self.ones_after(block),
+        }
     }
 
     // Returns the identifier of the block containing the set bit of given rank.
@@ -420,7 +444,6 @@ impl From<RLBuilder> for RLVector {
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{BitVec};
 /// use simple_sds::rl_vector::{RLVector, RLBuilder};
 ///
 /// let mut builder = RLBuilder::new();
@@ -433,6 +456,11 @@ impl From<RLBuilder> for RLVector {
 ///
 /// let runs: Vec<(usize, usize)> = rv.run_iter().collect();
 /// assert_eq!(runs, vec![(18, 22), (95, 25), (140, 12)]);
+///
+/// let mut iter = rv.run_iter();
+/// assert_eq!((iter.offset(), iter.rank()), (0, 0));
+/// while let Some(_) = iter.next() {}
+/// assert_eq!((iter.offset(), iter.rank()), (140 + 12, 22 + 25 + 12));
 /// ```
 pub struct RunIter<'a> {
     parent: &'a RLVector,
@@ -442,6 +470,18 @@ pub struct RunIter<'a> {
     pos: (usize, usize),
     // Number of ones after the current block.
     limit: usize,
+}
+
+impl<'a> RunIter<'a> {
+    /// Returns the position in the bitvector after the latest run.
+    pub fn offset(&self) -> usize {
+        self.pos.0
+    }
+
+    /// Returns the number of set bits up to the end of the latest run.
+    pub fn rank(&self) -> usize {
+        self.pos.1
+    }
 }
 
 impl<'a> Iterator for RunIter<'a> {
@@ -558,19 +598,12 @@ impl<'a> BitVec<'a> for RLVector {
     }
 
     fn get(&self, index: usize) -> bool {
-        let block = self.block_for_bit(index).unwrap();
-        let mut iter = RunIter {
-            parent: self,
-            offset: block * Self::BLOCK_SIZE,
-            pos: (self.samples.get(2 * block) as usize, self.samples.get(2 * block + 1) as usize),
-            limit: self.ones_after(block),
-        };
-
-        while let Some((start, len)) = iter.next() {
+        let mut iter = self.iter_for_bit(index);
+        while let Some((start, _)) = iter.next() {
             if start > index {
                 return false;
             }
-            if index < start + len {
+            if index < iter.offset() {
                 return true;
             }
         }
@@ -590,7 +623,30 @@ impl<'a> BitVec<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME Rank
+// FIXME tests
+impl<'a> Rank<'a> for RLVector {
+    fn supports_rank(&self) -> bool {
+        true
+    }
+
+    fn enable_rank(&mut self) {}
+
+    fn rank(&self, index: usize) -> usize {
+        let mut iter = self.iter_for_bit(index);
+        while let Some((start, len)) = iter.next() {
+            // We reached `index` but this run is too late to affect the rank.
+            if start >= index {
+                return iter.rank() - len;
+            }
+            // We reached `index` and a part of this run affects the rank.
+            if iter.pos.0 >= index {
+                return iter.rank() - (iter.offset() - index);
+            }
+        }
+
+        iter.rank()
+    }
+}
 
 //-----------------------------------------------------------------------------
 
