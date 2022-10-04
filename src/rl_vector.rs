@@ -14,7 +14,7 @@
 //! We partition the encoding into 64-unit (32-byte) blocks that consist of entire runs.
 //! If there is not enough space left for encoding the next `(n0, n1)`, we pad the block with empty code units and start a new block.
 //!
-//! For each block, we store a sample `(i, rank(i, 1))`, where `i` is the number of bits encoded before that block.
+//! For each block, we store a sample `(rank(i, 1), i)`, where `i` is the number of bits encoded before that block.
 //! Queries use binary search on the samples to find the right block and then decompress the block sequentially.
 // FIXME rank/select indexes
 
@@ -23,7 +23,7 @@
 // FIXME use in benchmarks
 
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select};
+use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero};
 use crate::bits;
 
 use std::iter::FusedIterator;
@@ -48,15 +48,15 @@ use std::iter::FusedIterator;
 ///
 /// `RLVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
-/// * Queries and operations: [`Rank`]
+/// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`]
 // FIXME other queries when implemented
-// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`] [`PredSucc`]
+// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`], [`PredSucc`]
 // * Serialization: [`Serialize`]
 ///
 /// # Examples
 ///
 /// ```
-/// use simple_sds::ops::{BitVec, Rank};
+/// use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
 /// use simple_sds::rl_vector::{RLVector, RLBuilder};
 ///
 /// let mut builder = RLBuilder::new();
@@ -83,6 +83,24 @@ use std::iter::FusedIterator;
 /// assert_eq!(rv.rank(100), 27);
 /// assert_eq!(rv.rank(130), 47);
 /// assert_eq!(rv.rank_zero(60), 38);
+///
+/// // Select
+/// assert!(rv.supports_select());
+/// assert_eq!(rv.select(24), Some(97));
+/// let mut iter = rv.select_iter(46);
+/// assert_eq!(iter.next(), Some((46, 119)));
+/// assert_eq!(iter.next(), Some((47, 140)));
+/// let v: Vec<(usize, usize)> = rv.one_iter().take(4).collect();
+/// assert_eq!(v, vec![(0, 18), (1, 19), (2, 20), (3, 21)]);
+///
+/// // SelectZero
+/// assert!(rv.supports_select_zero());
+/// assert_eq!(rv.select_zero(130), Some(189));
+/// let mut iter = rv.select_zero_iter(72);
+/// assert_eq!(iter.next(), Some((72, 94)));
+/// assert_eq!(iter.next(), Some((73, 120)));
+/// let v: Vec<(usize, usize)> = rv.zero_iter().take(4).collect();
+/// assert_eq!(v, vec![(0, 0), (1, 1), (2, 2), (3, 3)]);
 /// ```
 ///
 /// # Notes
@@ -94,7 +112,7 @@ pub struct RLVector {
     len: usize,
     ones: usize,
     // FIXME rank/select indexes and divisors as in RLCSA
-    // (bits, ones) at the start of each block.
+    // (ones, bits) up to the start of each block.
     samples: IntVector,
     // Concatenated blocks.
     data: IntVector,
@@ -174,7 +192,7 @@ impl RLVector {
     // Returns the number of set bits after the given block.
     fn ones_after(&self, block: usize) -> usize {
         if block + 1 < self.blocks() {
-            self.samples.get(2 * (block + 1) + 1) as usize
+            self.samples.get(2 * (block + 1)) as usize
         } else {
             self.count_ones()
         }
@@ -212,14 +230,8 @@ impl RLVector {
         low
     }
 
-    // Returns an iterator covering the block that contains the given bit, or `self.empty_iter()` if there is no such bit.
-    fn iter_for_bit(&self, index: usize) -> RunIter<'_> {
-        if index >= self.len() {
-            return self.empty_iter();
-        }
-
-        // FIXME use the index to narrow the search range
-        let block = Self::block_for(0, self.blocks(), index, |i| self.samples.get(2 * i) as usize);
+    // Returns an iterator covering the given block.
+    fn iter_for_block(&self, block: usize) -> RunIter<'_> {
         RunIter {
             parent: self,
             offset: block * Self::BLOCK_SIZE,
@@ -228,22 +240,37 @@ impl RLVector {
         }
     }
 
-    // Returns the identifier of the block containing the set bit of given rank.
-    fn block_for_one(&self, rank: usize) -> Option<usize> {
-        if rank >= self.count_ones() {
-            return None;
+    // Returns an iterator covering the block that contains the given bit, or `self.empty_iter()` if there is no such bit.
+    fn iter_for_bit(&self, index: usize) -> RunIter<'_> {
+        if index >= self.len() {
+            return self.empty_iter();
         }
-        // FIXME use the index
-        Some(Self::block_for(0, self.blocks(), rank, |i| self.samples.get(2 * i + 1) as usize))
+
+        // FIXME use the index to narrow the search range
+        let block = Self::block_for(0, self.blocks(), index, |i| self.samples.get(2 * i + 1) as usize);
+        self.iter_for_block(block)
     }
 
-    // Returns the indentifier of the block containing the unset bit of given rank.
-    fn block_for_zero(&self, rank: usize) -> Option<usize> {
-        if rank >= self.count_zeros() {
-            return None;
+    // Returns an iterator covering the block that contains the given set bit, or `self.empty_iter()` if there is no such bit.
+    fn iter_for_one(&self, rank: usize) -> RunIter<'_> {
+        if rank >= self.count_ones() {
+            return self.empty_iter();
         }
-        // FIXME use the index
-        Some(Self::block_for(0, self.blocks(), rank, |i| (self.samples.get(2 * i) - self.samples.get(2 * i + 1)) as usize))
+
+        // FIXME use the index to narrow the search range
+        let block = Self::block_for(0, self.blocks(), rank, |i| self.samples.get(2 * i) as usize);
+        self.iter_for_block(block)
+    }
+
+    // Returns an iterator covering the block that contains the given unset bit, or `self.empty_iter()` if there is no such bit.
+    fn iter_for_zero(&self, rank: usize) -> RunIter<'_> {
+        if rank >= self.count_zeros() {
+            return self.empty_iter();
+        }
+
+        // FIXME use the index to narrow the search range
+        let block = Self::block_for(0, self.blocks(), rank, |i| (self.samples.get(2 * i + 1) - self.samples.get(2 * i)) as usize);
+        self.iter_for_block(block)
     }
 }
 
@@ -381,7 +408,7 @@ impl RLBuilder {
         let units_needed = Self::code_len(self.run.0 - self.tail()) + Self::code_len(self.run.1 - 1);
         if self.data.len() + units_needed > self.blocks() * RLVector::BLOCK_SIZE {
             self.data.resize(self.blocks() * RLVector::BLOCK_SIZE, 0);
-            self.samples.push((self.tail, self.ones - self.run.1));
+            self.samples.push((self.ones - self.run.1, self.tail));
         }
 
         // Encode the run and update the statistics.
@@ -417,9 +444,9 @@ impl From<RLBuilder> for RLVector {
         // Compress the samples.
         let max_value = builder.samples.last().unwrap_or(&(0, 0)).0;
         let mut samples = IntVector::with_capacity(2 * builder.blocks(), bits::bit_len(max_value as u64)).unwrap();
-        for (bits, ones) in builder.samples.iter() {
-            samples.push(*bits as u64);
+        for (ones, bits) in builder.samples.iter() {
             samples.push(*ones as u64);
+            samples.push(*bits as u64);
         }
 
         RLVector {
@@ -458,15 +485,20 @@ impl From<RLBuilder> for RLVector {
 /// assert_eq!(runs, vec![(18, 22), (95, 25), (140, 12)]);
 ///
 /// let mut iter = rv.run_iter();
-/// assert_eq!((iter.offset(), iter.rank()), (0, 0));
+/// assert_eq!(iter.offset(), 0);
+/// assert_eq!(iter.rank(), 0);
+/// assert_eq!(iter.rank_zero(), 0);
 /// while let Some(_) = iter.next() {}
-/// assert_eq!((iter.offset(), iter.rank()), (140 + 12, 22 + 25 + 12));
+/// assert_eq!(iter.offset(), 140 + 12);
+/// assert_eq!(iter.rank(), 22 + 25 + 12);
+/// assert_eq!(iter.rank_zero(), 140 - 22 - 25);
 /// ```
+#[derive(Clone, Debug)]
 pub struct RunIter<'a> {
     parent: &'a RLVector,
     // Offset in the encoding.
     offset: usize,
-    // (bitvector offset, number of ones)
+    // (rank, index) reached so far.
     pos: (usize, usize),
     // Number of ones after the current block.
     limit: usize,
@@ -475,12 +507,17 @@ pub struct RunIter<'a> {
 impl<'a> RunIter<'a> {
     /// Returns the position in the bitvector after the latest run.
     pub fn offset(&self) -> usize {
-        self.pos.0
+        self.pos.1
     }
 
     /// Returns the number of set bits up to the end of the latest run.
     pub fn rank(&self) -> usize {
-        self.pos.1
+        self.pos.0
+    }
+
+    /// Returns the number of unset bits up to the end of the latest run.
+    pub fn rank_zero(&self) -> usize {
+        self.offset() - self.rank()
     }
 }
 
@@ -494,7 +531,7 @@ impl<'a> Iterator for RunIter<'a> {
         }
 
         // Move to the next block if we have run out of ones.
-        if self.pos.1 > self.limit {
+        if self.rank() >= self.limit {
             let block = bits::div_round_up(self.offset, RLVector::BLOCK_SIZE);
             self.offset = block * RLVector::BLOCK_SIZE;
             if block >= self.parent.blocks() {
@@ -505,11 +542,11 @@ impl<'a> Iterator for RunIter<'a> {
 
         // Decode the next run.
         let (gap, next_offset) = self.parent.decode(self.offset);
-        let start = self.pos.0 + gap;
+        let start = self.offset() + gap;
         let (len, next_offset) = self.parent.decode(next_offset);
         self.offset = next_offset;
-        self.pos.0 = start + len + 1;
-        self.pos.1 += len + 1;
+        self.pos.0 += len + 1;
+        self.pos.1 = start + len + 1;
 
         Some((start, len + 1))
     }
@@ -543,11 +580,12 @@ impl<'a> FusedIterator for RunIter<'a> {}
 ///     assert_eq!(value, rv.get(index));
 /// }
 /// ```
+#[derive(Clone, Debug)]
 pub struct Iter<'a> {
     iter: RunIter<'a>,
     // Run from the iterator.
     run: Option<(usize, usize)>,
-    // Bitvector offset.
+    // Next bitvector offset.
     pos: usize,
 }
 
@@ -564,10 +602,19 @@ impl<'a> Iterator for Iter<'a> {
         }
 
         // Determine the next bit and advance.
-        self.pos += 1;
         match self.run {
-            Some((start, _)) => Some(self.pos > start),
-            None => if self.pos > self.iter.parent.len() { None } else { Some(false) },
+            Some((start, _)) => {
+                self.pos += 1;
+                Some(self.pos > start)
+            },
+            None => {
+                if self.pos >= self.iter.parent.len() {
+                    None
+                } else {
+                    self.pos += 1;
+                    Some(false)
+                }
+            },
         }
     }
 
@@ -639,7 +686,7 @@ impl<'a> Rank<'a> for RLVector {
                 return iter.rank() - len;
             }
             // We reached `index` and a part of this run affects the rank.
-            if iter.pos.0 >= index {
+            if iter.offset() >= index {
                 return iter.rank() - (iter.offset() - index);
             }
         }
@@ -650,23 +697,285 @@ impl<'a> Rank<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME OneIter
+// FIXME tests
+/// An iterator over the set bits in [`RLVector`].
+///
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
+/// This can be interpreted as:
+///
+/// * `(index, value)` or `(i, select(i))` in the integer array; or
+/// * `(rank(j), j)` in the bit array with `j` such that `self.get(j) == true`.
+///
+/// Note that `index` is not always the index provided by [`Iterator::enumerate`].
+/// Queries may create iterators in the middle of the bitvector.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec, Select};
+/// use simple_sds::rl_vector::{RLVector, RLBuilder};
+///
+/// let mut builder = RLBuilder::new();
+/// builder.try_set(18, 22);
+/// builder.try_set(95, 15);
+/// builder.try_set(110, 10);
+/// builder.try_set(140, 12);
+/// builder.set_len(200);
+/// let rv = RLVector::from(builder);
+///
+/// let mut iter = rv.one_iter();
+/// assert_eq!(iter.len(), rv.count_ones());
+/// assert_eq!(iter.next(), Some((0, 18)));
+/// assert_eq!(iter.next(), Some((1, 19)));
+/// assert_eq!(iter.next(), Some((2, 20)));
+/// ```
+#[derive(Clone, Debug)]
+pub struct OneIter<'a> {
+    iter: RunIter<'a>,
+    // Did we get a `None` from the iterator?
+    got_none: bool,
+    // Rank of the next set bit.
+    rank: usize,
+}
 
-// FIXME Iterator, ExactSizeIterator, FusedIterator
+impl<'a> Iterator for OneIter<'a> {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Read the next run if we have processed the current one.
+        if !self.got_none && self.rank >= self.iter.rank() {
+            self.got_none = self.iter.next().is_none();
+        }
+
+        // Determine the next set bit and advance.
+        if self.got_none {
+            None
+        } else {
+            let result = (self.rank, self.iter.offset() - (self.iter.rank() - self.rank));
+            self.rank += 1;
+            Some(result)
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.iter.parent.count_ones() - self.rank;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for OneIter<'a> {}
+
+impl<'a> FusedIterator for OneIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME ZeroIter
 
-// FIXME Iterator, ExactSizeIterator, FusedIterator
+// FIXME tests
+/// An iterator over the unset bits in [`RLVector`].
+///
+/// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
+/// This can be interpreted as:
+///
+/// * `(index, value)` or `(i, select(i))` in the integer array of the complement; or
+/// * `(rank(j), j)` in the bit array with `j` such that `self.get(j) == false`.
+///
+/// Note that `index` is not always the index provided by [`Iterator::enumerate`].
+/// Queries may create iterators in the middle of the bitvector.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{BitVec, SelectZero};
+/// use simple_sds::rl_vector::{RLVector, RLBuilder};
+///
+/// let mut builder = RLBuilder::new();
+/// builder.try_set(18, 22);
+/// builder.try_set(95, 15);
+/// builder.try_set(110, 10);
+/// builder.try_set(140, 12);
+/// builder.set_len(200);
+/// let rv = RLVector::from(builder);
+///
+/// let mut iter = rv.zero_iter();
+/// assert_eq!(iter.len(), rv.count_zeros());
+/// assert_eq!(iter.next(), Some((0, 0)));
+/// assert_eq!(iter.next(), Some((1, 1)));
+/// assert_eq!(iter.next(), Some((2, 2)));
+/// ```
+#[derive(Clone, Debug)]
+pub struct ZeroIter<'a> {
+    iter: RunIter<'a>,
+    // Did we get a `None` from the iterator?
+    got_none: bool,
+    // (rank, index) for the next unset bit.
+    pos: (usize, usize),
+}
+
+impl<'a> Iterator for ZeroIter<'a> {
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Read the next run of set bits if we have reached the current one.
+        if !self.got_none && self.pos.0 >= self.iter.rank_zero() {
+            self.pos.1 = self.iter.offset();
+            self.got_none = self.iter.next().is_none();
+        }
+
+        // Determine the next bit and advance.
+        if self.pos.0 >= self.iter.parent.count_zeros() {
+            None
+        } else {
+            let result = self.pos;
+            self.pos.0 += 1; self.pos.1 += 1;
+            Some(result)
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.iter.parent.count_zeros() - self.pos.0;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for ZeroIter<'a> {}
+
+impl<'a> FusedIterator for ZeroIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME Select
+impl<'a> Select<'a> for RLVector {
+    type OneIter = OneIter<'a>;
+
+    fn supports_select(&self) -> bool {
+        true
+    }
+
+    fn enable_select(&mut self) {}
+
+    fn one_iter(&'a self) -> Self::OneIter {
+        Self::OneIter {
+            iter: self.run_iter(),
+            got_none: false,
+            rank: 0,
+        }
+    }
+
+    fn select(&'a self, rank: usize) -> Option<usize> {
+        if rank >= self.count_ones() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_one(rank);
+        while iter.rank() < rank {
+            let _ = iter.next();
+        }
+        Some(iter.offset() - (iter.rank() - rank))
+    }
+
+    fn select_iter(&'a self, rank: usize) -> Self::OneIter {
+        if rank >= self.count_ones() {
+            return Self::OneIter {
+                iter: self.empty_iter(),
+                got_none: true,
+                rank: self.count_ones(),
+            };
+        }
+
+        let mut iter = self.iter_for_one(rank);
+        while iter.rank() < rank {
+            let _ = iter.next();
+        }
+        Self::OneIter {
+            iter,
+            got_none: false,
+            rank,
+        }
+    }
+}
 
 //-----------------------------------------------------------------------------
 
-// FIXME SelectZero
+impl<'a> SelectZero<'a> for RLVector {
+    type ZeroIter = ZeroIter<'a>;
+
+    fn supports_select_zero(&self) -> bool {
+        true
+    }
+
+    fn enable_select_zero(&mut self) {}
+
+    fn zero_iter(&'a self) -> Self::ZeroIter {
+        let mut iter = self.run_iter();
+        // We must take the first run instead of using (0, 0).
+        // Otherwise `ZeroIter` would not work if the first run starts at 0.
+        let got_none = iter.next().is_none();
+        Self::ZeroIter {
+            iter,
+            got_none,
+            pos: (0, 0),
+        }
+    }
+
+    fn select_zero(&'a self, rank: usize) -> Option<usize> {
+        if rank >= self.count_zeros() {
+            return None;
+        }
+
+        // Determine the number of set bits before the relevant run of unset bits.
+        let mut iter = self.iter_for_zero(rank);
+        let mut ones = iter.rank();
+        loop {
+            match iter.next() {
+                Some(_) => {
+                    if iter.rank_zero() > rank {
+                        return Some(rank + ones);
+                    }
+                    ones = iter.rank();
+                },
+                None => {
+                    return Some(rank + ones);
+                },
+            }
+        }
+    }
+
+    fn select_zero_iter(&'a self, rank: usize) -> Self::ZeroIter {
+        if rank >= self.count_zeros() {
+            return Self::ZeroIter {
+                iter: self.empty_iter(),
+                got_none: true,
+                pos: (self.count_zeros(), self.len()),
+            }
+        }
+
+        // Determine the number of set bits before the relevant run of unset bits.
+        let mut iter = self.iter_for_zero(rank);
+        let mut ones = iter.rank();
+        loop {
+            match iter.next() {
+                Some(_) => {
+                    if iter.rank_zero() > rank {
+                        return Self::ZeroIter {
+                            iter,
+                            got_none: false,
+                            pos: (rank, rank + ones),
+                        };
+                    }
+                    ones = iter.rank();
+                },
+                None => {
+                    return Self::ZeroIter {
+                        iter,
+                        got_none: true,
+                        pos: (rank, rank + ones),
+                    }
+                },
+            }
+        }
+    }
+}
 
 //-----------------------------------------------------------------------------
 

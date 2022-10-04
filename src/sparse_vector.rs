@@ -64,7 +64,7 @@ mod tests;
 ///
 /// `SparseVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
-/// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`] [`PredSucc`]
+/// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`], [`PredSucc`]
 /// * Serialization: [`Serialize`]
 ///
 /// # Examples
