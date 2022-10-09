@@ -130,13 +130,9 @@ fn non_empty_vector() {
 #[test]
 fn conversions() {
     let original = random_bit_vector(59, 0.015);
-
-    let sv_copy = SparseVector::copy_bit_vec(&original);
-    let sv_from = SparseVector::from(original.clone());
-    assert_eq!(sv_copy, sv_from, "Different SparseVectors with different construction methods");
-
-    let copy = BitVector::from(sv_copy);
-    assert_eq!(copy, original, "SparseVector changed the contents of the BitVector");
+    let sv = SparseVector::copy_bit_vec(&original);
+    let copy = BitVector::copy_bit_vec(&sv);
+    assert_eq!(copy, original, "Conversions changed the contents of the BitVector");
 }
 
 #[test]

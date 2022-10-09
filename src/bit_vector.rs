@@ -756,15 +756,3 @@ impl FromIterator<bool> for BitVector {
 }
 
 //-----------------------------------------------------------------------------
-
-use crate::sparse_vector::SparseVector;
-
-impl From<SparseVector> for BitVector {
-    fn from(source: SparseVector) -> Self {
-        BitVector::copy_bit_vec(&source)
-    }
-}
-
-// FIXME from RLVector
-
-//-----------------------------------------------------------------------------

@@ -1181,13 +1181,3 @@ impl Serialize for SparseVector {
 }
 
 //-----------------------------------------------------------------------------
-
-impl From<BitVector> for SparseVector {
-    fn from(value: BitVector) -> Self {
-        SparseVector::copy_bit_vec(&value)
-    }
-}
-
-// FIXME From RLVector
-
-//-----------------------------------------------------------------------------
