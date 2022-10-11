@@ -207,13 +207,22 @@ pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
     type Iter: Iterator<Item = <Self as Vector>::Item>;
 
-    /// Gets an item from the vector.
+    /// Returns an item from the vector.
     ///
     /// # Panics
     ///
     /// May panic if `index` is not a valid index in the vector.
     /// May panic from I/O errors.
     fn get(&self, index: usize) -> <Self as Vector>::Item;
+
+    /// Returns an item from the vector or the provided value if `index` is invalid.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn get_or(&self, index: usize, value: <Self as Vector>::Item) -> <Self as Vector>::Item {
+        if index >= self.len() { value } else { self.get(index) }
+    }
 
     /// Returns an iterator over the items in the vector.
     ///
