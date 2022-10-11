@@ -212,14 +212,14 @@ impl RLVector {
         }
     }
 
-    // Returns the identifier of the last block `i` in the range where `f(i) < value`.
+    // Returns the identifier of the last block `i` in the range where `f(i) <= value`.
     fn block_for<F: Fn(usize) -> usize>(low: usize, high: usize, value: usize, f: F) -> usize {
         let mut low = low;
         let mut high = high;
         while high - low > 1 {
             let mid = low + (high - low) / 2;
             let candidate = f(mid);
-            if candidate < value {
+            if candidate <= value {
                 low = mid;
             } else {
                 high = mid;

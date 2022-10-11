@@ -360,7 +360,7 @@ pub struct SparseBuilder {
 }
 
 impl SparseBuilder {
-    /// Returns an empty SparseBuilder without multiset semantics.
+    /// Returns an empty `SparseBuilder` without multiset semantics.
     ///
     /// Returns [`Err`] if `ones > universe`.
     ///
@@ -391,7 +391,7 @@ impl SparseBuilder {
         })
     }
 
-    /// Returns an empty SparseBuilder with multiset semantics.
+    /// Returns an empty `SparseBuilder` with multiset semantics.
     ///
     /// # Arguments
     ///
