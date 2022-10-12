@@ -24,10 +24,13 @@
 
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::serialize::Serialize;
 use crate::support::SampleIndex;
 use crate::bits;
 
+use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
+use std::io;
 
 // FIXME tests
 //#[cfg(test)]
@@ -48,8 +51,7 @@ use std::iter::FusedIterator;
 /// `RLVector` implements the following `simple_sds` traits:
 /// * Basic functionality: [`BitVec`]
 /// * Queries and operations: [`Rank`], [`Select`], [`SelectZero`], [`PredSucc`]
-// FIXME
-// * Serialization: [`Serialize`]
+/// * Serialization: [`Serialize`]
 ///
 /// # Examples
 ///
@@ -1147,6 +1149,49 @@ impl<'a> PredSucc<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME Serialize
+impl Serialize for RLVector {
+    fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.len.serialize(writer)?;
+        self.ones.serialize(writer)?;
+        Ok(())
+    }
+
+    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.samples.serialize(writer)?;
+        self.data.serialize(writer)?;
+        Ok(())
+    }
+
+    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+        let len = usize::load(reader)?;
+        let ones = usize::load(reader)?;
+        let samples = IntVector::load(reader)?;
+        let data = IntVector::load(reader)?;
+
+        // Sanity checks.
+        let sample_blocks = samples.len() / 2;
+        let data_blocks = bits::div_round_up(data.len(), Self::BLOCK_SIZE);
+        if sample_blocks != data_blocks {
+            return Err(Error::new(ErrorKind::InvalidData, "Mismatch between number of blocks and samples"));
+        }
+
+        // Rebuild indexes for narrowing down binary search ranges.
+        let rank_index = SampleIndex::new((0..sample_blocks).map(|block| samples.get(2 * block + 1) as usize), len);
+        let select_index = SampleIndex::new((0..sample_blocks).map(|block| samples.get(2 * block) as usize), ones);
+        let select_zero_index = SampleIndex::new((0..sample_blocks).map(|block| (samples.get(2 * block) - samples.get(2 * block - 1)) as usize), len - ones);
+
+        let result = RLVector {
+            len, ones, rank_index, select_index, select_zero_index, samples, data,
+        };
+        Ok(result)
+    }
+
+    fn size_in_elements(&self) -> usize {
+        self.len.size_in_elements() +
+        self.ones.size_in_elements() +
+        self.samples.size_in_elements() +
+        self.data.size_in_elements()
+    }
+}
 
 //-----------------------------------------------------------------------------
