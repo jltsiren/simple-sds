@@ -50,22 +50,22 @@ bitvector_conversion!(RLVector, SparseVector);
 /// use simple_sds::ops::{Vector, Access};
 /// use simple_sds::support::SampleIndex;
 ///
-/// let source: Vec<usize> = vec![0, 33, 124, 131, 224, 291, 322, 341, 394, 466, 501];
-/// let values = IntVector::from(source);
-/// let index = SampleIndex::new(&values, 540);
+/// let values: Vec<usize> = vec![0, 33, 124, 131, 224, 291, 322, 341, 394, 466, 501];
+/// let index = SampleIndex::new(values.iter().copied(), 540);
 ///
 /// let range = index.range(300);
-/// assert!(values.get(range.start) <= 300);
-/// assert!(values.get_or(range.end, 540) > 300);
+/// assert!(values[range.start] <= 300);
+/// let upper_bound = *values.get(range.end).unwrap_or(&540);
+/// assert!(upper_bound > 300);
 /// ```
 ///
 /// # Notes
 ///
 /// * This is a simple support structure not intended to be serialized.
-/// * While `SampleIndex` is intended to be used with [`IntVector`], the values are [`usize`] as they are usually interpreted as such in applications.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SampleIndex {
-    divisor: usize,
     num_values: usize,
+    divisor: usize,
     samples: IntVector,
 }
 
@@ -83,41 +83,45 @@ impl SampleIndex {
     /// # Panics
     ///
     /// Panics if the first value is not `0`, the sequence of values is not strictly increasing, or if universe size is too small for the values.
-    pub fn new(values: &IntVector, universe: usize) -> Self {
-        if values.is_empty() {
+    pub fn new<T: Iterator<Item = usize> + ExactSizeIterator>(iter: T, universe: usize) -> Self {
+        let mut iter = iter;
+        let len = iter.len();
+        if len == 0 {
             return SampleIndex {
-                divisor: usize::MAX,
                 num_values: 0,
+                divisor: usize::MAX,
                 samples: IntVector::with_len(1, 1, 0).unwrap(),
             }
         }
 
-        // We must have a strictly increasing sequence of values and a large enough universe size.
-        let mut prev = values.get(0);
-        assert_eq!(prev, 0, "SampleIndex::new(): The initial value must be 0");
-        for value in values.iter().skip(1) {
-            assert!(prev < value, "SampleIndex::new(): The values must be strictly increasing");
-            prev = value;
-        }
-        assert!(universe > (prev as usize), "SampleIndex::new(): Universe size ({}) must be larger than the last value ({})", universe, prev);
-
-        let (num_samples, divisor) = Self::parameters(values.len(), universe);
-        let width = bits::bit_len((values.len() - 1) as u64);
+        let (num_samples, divisor) = Self::parameters(len, universe);
+        let width = bits::bit_len((len - 1) as u64);
         let mut samples = IntVector::with_len(num_samples, width, 0).unwrap();
 
         // Invariant: `values[samples[i]] <= i * divisor` and `values[samples[i] + 1] > i * divisor`.
         let mut offset = 0;
+        let mut prev = iter.next().unwrap();
+        let mut next = iter.next();
+        assert_eq!(prev, 0, "SampleIndex::new(): The initial value must be 0");
         for sample in 1..samples.len() {
             let threshold = sample * divisor;
-            while offset + 1 < values.len() && (values.get(offset + 1) as usize) <= threshold {
+            while next.is_some() {
+                let value = next.unwrap();
+                if value > threshold {
+                    break;
+                }
+                assert!(prev < value, "SampleIndex::new(): The values must be strictly increasing");
                 offset += 1;
+                prev = value;
+                next = iter.next();
             }
             samples.set(sample, offset as u64);
         }
+        assert!(universe > prev, "SampleIndex::new(): Universe size ({}) must be larger than the last value ({})", universe, prev);
 
         SampleIndex {
+            num_values: len,
             divisor,
-            num_values: values.len(),
             samples,
         }
     }
@@ -126,13 +130,16 @@ impl SampleIndex {
     ///
     /// If `value < universe`, the range guarantees the following invariants:
     ///
-    /// * `values.get(range.start) <= value`
-    /// * `values.get_or(range.end, universe) > value`
+    /// * `values[range.start] <= value`
+    /// * `values.get(range.end).unwrap_or(universe) > value`
     pub fn range(&self, value: usize) -> Range<usize> {
         let offset = value / self.divisor;
         let start = self.samples.get_or(offset, self.num_values as u64) as usize;
-        // We need + 1 because the next sample may be too small.
-        let limit = self.samples.get_or(offset + 1, self.num_values as u64) as usize + 1;
+        let mut limit = self.samples.get_or(offset + 1, self.num_values as u64) as usize;
+        // We need + 1 because the next sample may be too small for some values in the range.
+        if limit < self.num_values {
+            limit += 1;
+        }
         start..limit
     }
 
@@ -161,14 +168,14 @@ mod tests {
         assert_eq!((universe - 1) / divisor, samples - 1, "Last value {} does not map to to last sample {} with {} values", universe - 1, samples - 1, values);
     }
 
-    fn generate_values(universe: usize, density: usize, rng: &mut ThreadRng) -> IntVector {
+    fn generate_values(universe: usize, density: usize, rng: &mut ThreadRng) -> Vec<usize> {
         let mut values: Vec<usize> = Vec::new();
         let mut last = 0;
         while last < universe {
             values.push(last);
             last += 1 + rng.gen_range(0..density);
         }
-        IntVector::from(values)
+        values
     }
 
     #[test]
@@ -197,13 +204,13 @@ mod tests {
             let universe = rng.gen_range(10_000..100_000);
             let density = rng.gen_range(2..1000);
             let values = generate_values(universe, density, &mut rng);
-            let index = SampleIndex::new(&values, universe);
+            let index = SampleIndex::new(values.iter().copied(), universe);
             for _ in 0..1000 {
                 let query = rng.gen_range(0..universe);
                 let range = index.range(query);
-                let start = values.get(range.start) as usize;
+                let start = values[range.start];
                 assert!(start <= query, "Range start values[{}] = {} is too large for query {} (universe size {}, density {})", range.start, start, query, universe, density);
-                let end = values.get_or(range.end, universe as u64) as usize;
+                let end = if range.end >= values.len() { universe } else { values[range.end] };
                 assert!(end > query, "Range end values[{}] = {} is too small for query {} (universe size {}, density {})", range.end, end, query, universe, density);
             }
         }

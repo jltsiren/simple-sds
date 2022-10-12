@@ -16,7 +16,7 @@
 //!
 //! For each block, we store a sample `(rank(i, 1), i)`, where `i` is the number of bits encoded before that block.
 //! Queries use binary search on the samples to find the right block and then decompress the block sequentially.
-// FIXME rank/select indexes
+//! A [`SampleIndex`] is used for narrowing down the range of the binary search.
 
 // FIXME document serialization format
 
@@ -24,11 +24,10 @@
 
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::support::SampleIndex;
 use crate::bits;
 
 use std::iter::FusedIterator;
-
-// FIXME the rank/select index structure as a submodule
 
 // FIXME tests
 //#[cfg(test)]
@@ -119,7 +118,9 @@ use std::iter::FusedIterator;
 pub struct RLVector {
     len: usize,
     ones: usize,
-    // FIXME rank/select indexes and divisors as in RLCSA
+    rank_index: SampleIndex,
+    select_index: SampleIndex,
+    select_zero_index: SampleIndex,
     // (ones, bits) up to the start of each block.
     samples: IntVector,
     // Concatenated blocks.
@@ -244,8 +245,8 @@ impl RLVector {
             return RunIter::empty_iter(self);
         }
 
-        // FIXME use the index to narrow the search range
-        let block = Self::block_for(0, self.blocks(), index, |i| self.samples.get(2 * i + 1) as usize);
+        let range = self.rank_index.range(index);
+        let block = Self::block_for(range.start, range.end, index, |i| self.samples.get(2 * i + 1) as usize);
         self.iter_for_block(block)
     }
 
@@ -255,8 +256,8 @@ impl RLVector {
             return RunIter::empty_iter(self);
         }
 
-        // FIXME use the index to narrow the search range
-        let block = Self::block_for(0, self.blocks(), rank, |i| self.samples.get(2 * i) as usize);
+        let range = self.select_index.range(rank);
+        let block = Self::block_for(range.start, range.end, rank, |i| self.samples.get(2 * i) as usize);
         self.iter_for_block(block)
     }
 
@@ -266,8 +267,8 @@ impl RLVector {
             return RunIter::empty_iter(self);
         }
 
-        // FIXME use the index to narrow the search range
-        let block = Self::block_for(0, self.blocks(), rank, |i| (self.samples.get(2 * i + 1) - self.samples.get(2 * i)) as usize);
+        let range = self.select_zero_index.range(rank);
+        let block = Self::block_for(range.start, range.end, rank, |i| (self.samples.get(2 * i + 1) - self.samples.get(2 * i)) as usize);
         self.iter_for_block(block)
     }
 }
@@ -342,6 +343,11 @@ impl RLBuilder {
     /// Returns the number of set bits in the bitvector.
     pub fn count_ones(&self) -> usize {
         self.ones
+    }
+
+    /// Returns the number of unset bits in the bitvector.
+    pub fn count_zeros(&self) -> usize {
+        self.len() - self.count_ones()
     }
 
     // Returns the position after the last encoded run.
@@ -476,7 +482,10 @@ impl From<RLBuilder> for RLVector {
         let mut builder = builder;
         builder.flush();
 
-        // FIXME build rank/select indexes
+        // Build indexes for narrowing down binary search ranges.
+        let rank_index = SampleIndex::new(builder.samples.iter().map(|(_, bits)| *bits), builder.len());
+        let select_index = SampleIndex::new(builder.samples.iter().map(|(ones, _)| *ones), builder.count_ones());
+        let select_zero_index = SampleIndex::new(builder.samples.iter().map(|(ones, bits)| ones - bits), builder.count_zeros());
 
         // Compress the samples.
         let max_value = builder.samples.last().unwrap_or(&(0, 0)).0;
@@ -487,8 +496,11 @@ impl From<RLBuilder> for RLVector {
         }
 
         RLVector {
-            len: builder.len,
-            ones: builder.ones,
+            len: builder.len(),
+            ones: builder.count_ones(),
+            rank_index,
+            select_index,
+            select_zero_index,
             samples: samples,
             data: builder.data,
         }
