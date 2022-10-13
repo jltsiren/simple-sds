@@ -698,7 +698,14 @@ pub trait VectorIndex<'a>: Access<'a> {
 ///         }
 ///         None
 ///     }
+///
+///     fn size_hint(&self) -> (usize, Option<usize>) {
+///         let remaining = self.parent.len() - self.index;
+///         (remaining, Some(remaining))
+///     }
 /// }
+///
+/// impl<'a> ExactSizeIterator for BitIter<'a> {}
 ///
 /// impl From<RawVector> for NaiveBitVector {
 ///     fn from(data: RawVector) -> Self {
@@ -770,7 +777,14 @@ pub trait VectorIndex<'a>: Access<'a> {
 ///         }
 ///         None
 ///     }
+///
+///     fn size_hint(&self) -> (usize, Option<usize>) {
+///         let remaining = self.parent.count_ones() - self.rank;
+///         (remaining, Some(remaining))
+///     }
 /// }
+///
+/// impl<'a> ExactSizeIterator for SelectIter<'a> {}
 ///
 /// impl<'a> Select<'a> for NaiveBitVector {
 ///     type OneIter = SelectIter<'a>;
