@@ -205,7 +205,7 @@ pub trait Pack: Vector {
 /// See [`Vector`] for an example and [`AccessIter`] for a possible implementation of the iterator.
 pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
-    type Iter: Iterator<Item = <Self as Vector>::Item>;
+    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator;
 
     /// Returns an item from the vector.
     ///
@@ -875,7 +875,7 @@ pub trait VectorIndex<'a>: Access<'a> {
 /// ```
 pub trait BitVec<'a> {
     /// Iterator type over the bit array.
-    type Iter: Iterator<Item = bool>;
+    type Iter: Iterator<Item = bool> + ExactSizeIterator;
 
     /// Returns the length of the bit array or the universe size of the integer array.
     fn len(&self) -> usize;
@@ -975,7 +975,7 @@ pub trait Select<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the integer array.
     /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
-    type OneIter: Iterator<Item = (usize, usize)>;
+    type OneIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if select support has been enabled.
     fn supports_select(&self) -> bool;
@@ -1035,7 +1035,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
     /// This can be interpreted as `(i, select_zero(i))` or `(rank_zero(j), j)`.
-    type ZeroIter: Iterator<Item = (usize, usize)>;
+    type ZeroIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if select support has been enabled for the complement.
     fn supports_select_zero(&self) -> bool;
@@ -1095,7 +1095,7 @@ pub trait PredSucc<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the integer array.
     /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
-    type OneIter: Iterator<Item = (usize, usize)>;
+    type OneIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if predecessor/successor support has been enabled.
     fn supports_pred_succ(&self) -> bool;
