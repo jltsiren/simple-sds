@@ -32,9 +32,8 @@ use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
 use std::io;
 
-// FIXME tests
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 //-----------------------------------------------------------------------------
 
@@ -755,7 +754,6 @@ impl<'a> BitVec<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 impl<'a> Rank<'a> for RLVector {
     fn supports_rank(&self) -> bool {
         true
