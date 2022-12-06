@@ -1,51 +1,47 @@
 use super::*;
 
-use crate::bit_vector::BitVector;
-use crate::raw_vector::{RawVector, PushRaw};
 use crate::{internal, serialize};
 
-use rand::distributions::{Bernoulli, Distribution};
+use rand_distr::{Geometric, Distribution};
 
 //-----------------------------------------------------------------------------
 
-fn random_vector(ones: usize, density: f64) -> SparseVector {
-    let mut data: Vec<usize> = Vec::new();
+// FIXME move to internal
+// Returns a vector of positions and universe size.
+// The distances between positions are `Geometric(density)`.
+fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
+    let mut positions: Vec<usize> = Vec::with_capacity(n);
     let mut rng = rand::thread_rng();
-    let dist = Bernoulli::new(density).unwrap();
+    let dist = Geometric::new(density).unwrap();
     let mut universe = 0;
 
     let mut iter = dist.sample_iter(&mut rng);
-    loop {
-        if iter.next().unwrap() {
-            if data.len() >= ones {
-                break;
-            }
-            data.push(universe);
-        }
-        universe += 1;
+    while positions.len() < n {
+        let pos = universe + (iter.next().unwrap() as usize);
+        positions.push(pos);
+        universe = pos + 1;
     }
+    universe += iter.next().unwrap() as usize;
 
-    let mut builder = SparseBuilder::new(universe, data.len()).unwrap();
+    (positions, universe)
+}
+
+fn random_vector(ones: usize, density: f64) -> SparseVector {
+    let (positions, universe) = random_positions(ones, density);
+
+    let mut builder = SparseBuilder::new(universe, positions.len()).unwrap();
     assert!(!builder.is_multiset(), "Builder created with new() is a multiset");
-    builder.extend(data);
+    builder.extend(positions);
 
     SparseVector::try_from(builder).unwrap()
 }
 
 fn random_bit_vector(ones: usize, density: f64) -> BitVector {
-    let mut raw: RawVector = RawVector::new();
-    let mut rng = rand::thread_rng();
-    let dist = Bernoulli::new(density).unwrap();
-    let mut generated = 0;
+    let (positions, universe) = random_positions(ones, density);
 
-    let mut iter = dist.sample_iter(&mut rng);
-    loop {
-        let bit = iter.next().unwrap();
-        generated += bit as usize;
-        if generated > ones {
-            break;
-        }
-        raw.push_bit(bit);
+    let mut raw: RawVector = RawVector::with_len(universe, false);
+    for position in positions.iter() {
+        raw.set_bit(*position, true);
     }
 
     BitVector::from(raw)
