@@ -24,13 +24,15 @@
 
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::rl_vector::index::SampleIndex;
 use crate::serialize::Serialize;
-use crate::support::SampleIndex;
 use crate::bits;
 
 use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
 use std::io;
+
+pub mod index;
 
 #[cfg(test)]
 mod tests;
