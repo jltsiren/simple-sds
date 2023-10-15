@@ -39,7 +39,6 @@ mod tests;
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// An immutable run-length encoded bitvector supporting rank, select, and related queries.
 ///
 /// This type should be used when the bitvector contains long runs of both set and unset bits.
@@ -278,7 +277,6 @@ impl RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// Space-efficient [`RLVector`] construction.
 ///
 /// `RLBuilder` builds an [`RLVector`] incrementally.
@@ -426,8 +424,8 @@ impl RLBuilder {
     /// This is intended for appending a final run of unset bits.
     pub fn set_len(&mut self, len: usize) {
         if len > self.len() {
-            self.len = len;
             self.flush();
+            self.len = len;
         }
     }
 
@@ -441,7 +439,8 @@ impl RLBuilder {
         let units_needed = Self::code_len(self.run.0 - self.tail()) + Self::code_len(self.run.1 - 1);
         if self.data.len() + units_needed > self.blocks() * RLVector::BLOCK_SIZE {
             self.data.resize(self.blocks() * RLVector::BLOCK_SIZE, 0);
-            self.samples.push((self.ones - self.run.1, self.tail));
+            let sample = (self.ones - self.run.1, self.tail);
+            self.samples.push(sample);
         }
 
         // Encode the run and update the statistics.
@@ -463,7 +462,7 @@ impl RLBuilder {
 
     // Number of code units required for encoding the value.
     fn code_len(value: usize) -> usize {
-        bits::div_round_up(bits::bit_len(value as u64), RLVector::CODE_SIZE)
+        bits::div_round_up(bits::bit_len(value as u64), RLVector::CODE_SHIFT)
     }
 }
 
@@ -488,10 +487,10 @@ impl From<RLBuilder> for RLVector {
         // Build indexes for narrowing down binary search ranges.
         let rank_index = SampleIndex::new(builder.samples.iter().map(|(_, bits)| *bits), builder.len());
         let select_index = SampleIndex::new(builder.samples.iter().map(|(ones, _)| *ones), builder.count_ones());
-        let select_zero_index = SampleIndex::new(builder.samples.iter().map(|(ones, bits)| ones - bits), builder.count_zeros());
+        let select_zero_index = SampleIndex::new(builder.samples.iter().map(|(ones, bits)| bits - ones), builder.count_zeros());
 
         // Compress the samples.
-        let max_value = builder.samples.last().unwrap_or(&(0, 0)).0;
+        let max_value = builder.samples.last().unwrap_or(&(0, 0)).1;
         let mut samples = IntVector::with_capacity(2 * builder.blocks(), bits::bit_len(max_value as u64)).unwrap();
         for (ones, bits) in builder.samples.iter() {
             samples.push(*ones as u64);
@@ -512,7 +511,6 @@ impl From<RLBuilder> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// A read-only iterator over the runs in [`RLVector`].
 ///
 /// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
@@ -642,7 +640,6 @@ impl<'a> FusedIterator for RunIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// A read-only iterator over [`RLVector`].
 ///
 /// The type of `Item` is [`bool`].
@@ -680,8 +677,7 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // Read the next run if we have processed the current one.
-        if self.run.is_some() {
-            let (start, len) = self.run.unwrap();
+        if let Some((start, len)) = self.run {
             if self.pos >= start + len {
                 self.run = self.iter.next();
             }
@@ -782,7 +778,6 @@ impl<'a> Rank<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// An iterator over the set bits in [`RLVector`].
 ///
 /// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
@@ -866,7 +861,6 @@ impl<'a> FusedIterator for OneIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME tests
 /// An iterator over the unset bits in [`RLVector`].
 ///
 /// The type of `Item` is `(`[`usize`]`, `[`usize`]`)`.
@@ -1178,7 +1172,7 @@ impl Serialize for RLVector {
         // Rebuild indexes for narrowing down binary search ranges.
         let rank_index = SampleIndex::new((0..sample_blocks).map(|block| samples.get(2 * block + 1) as usize), len);
         let select_index = SampleIndex::new((0..sample_blocks).map(|block| samples.get(2 * block) as usize), ones);
-        let select_zero_index = SampleIndex::new((0..sample_blocks).map(|block| (samples.get(2 * block) - samples.get(2 * block - 1)) as usize), len - ones);
+        let select_zero_index = SampleIndex::new((0..sample_blocks).map(|block| (samples.get(2 * block + 1) - samples.get(2 * block)) as usize), len - ones);
 
         let result = RLVector {
             len, ones, rank_index, select_index, select_zero_index, samples, data,

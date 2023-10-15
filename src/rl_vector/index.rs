@@ -57,7 +57,7 @@ impl SampleIndex {
     pub fn new<T: Iterator<Item = usize> + ExactSizeIterator>(iter: T, universe: usize) -> Self {
         let mut iter = iter;
         let len = iter.len();
-        if len == 0 {
+        if len == 0 || universe == 0 {
             return SampleIndex {
                 num_values: 0,
                 divisor: usize::MAX,

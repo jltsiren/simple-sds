@@ -7,6 +7,7 @@ use crate::bits;
 use std::time::Duration;
 
 use rand::Rng;
+use rand_distr::{Geometric, Distribution};
 
 //-----------------------------------------------------------------------------
 
@@ -31,6 +32,55 @@ pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
     }
     result
 } 
+
+// Returns a vector of positions and universe size.
+// The distances between positions are `Geometric(density)`.
+pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
+    let mut positions: Vec<usize> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(density).unwrap();
+    let mut universe = 0;
+
+    let mut iter = dist.sample_iter(&mut rng);
+    while positions.len() < n {
+        let pos = universe + (iter.next().unwrap() as usize);
+        positions.push(pos);
+        universe = pos + 1;
+    }
+    universe += iter.next().unwrap() as usize;
+
+    (positions, universe)
+}
+
+// Returns `n` random (start, length) runs, where gaps and lengths are `Geometric(p)`.
+// The second return value is universe size.
+// Note that `p` is the flip probability.
+pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
+    let mut runs: Vec<(usize, usize)> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let start_with_one: bool = rng.gen();
+    let end_with_zero: bool = rng.gen();
+    let mut universe = 0;
+    let mut iter = dist.sample_iter(&mut rng);
+    if start_with_one {
+        let len = 1 + (iter.next().unwrap() as usize);
+        runs.push((0, len));
+        universe = len;
+    }
+    while runs.len() < n {
+        let start = universe + 1 + (iter.next().unwrap() as usize);
+        let len = 1 + (iter.next().unwrap() as usize);
+        runs.push((start, len));
+        universe = start + len;
+    }
+    if end_with_zero {
+        universe += 1 + (iter.next().unwrap() as usize);
+    }
+
+    (runs, universe)
+}
 
 //-----------------------------------------------------------------------------
 

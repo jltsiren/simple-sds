@@ -2,32 +2,10 @@ use super::*;
 
 use crate::{internal, serialize};
 
-use rand_distr::{Geometric, Distribution};
-
 //-----------------------------------------------------------------------------
 
-// FIXME move to internal
-// Returns a vector of positions and universe size.
-// The distances between positions are `Geometric(density)`.
-fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
-    let mut positions: Vec<usize> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
-    let dist = Geometric::new(density).unwrap();
-    let mut universe = 0;
-
-    let mut iter = dist.sample_iter(&mut rng);
-    while positions.len() < n {
-        let pos = universe + (iter.next().unwrap() as usize);
-        positions.push(pos);
-        universe = pos + 1;
-    }
-    universe += iter.next().unwrap() as usize;
-
-    (positions, universe)
-}
-
 fn random_vector(ones: usize, density: f64) -> SparseVector {
-    let (positions, universe) = random_positions(ones, density);
+    let (positions, universe) = internal::random_positions(ones, density);
 
     let mut builder = SparseBuilder::new(universe, positions.len()).unwrap();
     assert!(!builder.is_multiset(), "Builder created with new() is a multiset");
@@ -37,7 +15,7 @@ fn random_vector(ones: usize, density: f64) -> SparseVector {
 }
 
 fn random_bit_vector(ones: usize, density: f64) -> BitVector {
-    let (positions, universe) = random_positions(ones, density);
+    let (positions, universe) = internal::random_positions(ones, density);
 
     let mut raw: RawVector = RawVector::with_len(universe, false);
     for position in positions.iter() {
@@ -121,10 +99,10 @@ fn non_empty_vector() {
 
 #[test]
 fn conversions() {
-    let original = random_bit_vector(59, 0.015);
-    let sv = SparseVector::copy_bit_vec(&original);
-    let copy = BitVector::copy_bit_vec(&sv);
-    assert_eq!(copy, original, "Conversions changed the contents of the BitVector");
+    let original = random_vector(59, 0.015);
+    let bv = BitVector::copy_bit_vec(&original);
+    let copy = SparseVector::copy_bit_vec(&bv);
+    assert_eq!(copy, original, "Conversions changed the contents of the SparseVector");
 }
 
 #[test]
