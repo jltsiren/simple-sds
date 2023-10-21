@@ -233,10 +233,11 @@ impl RLVector {
 
     // Returns an iterator covering the given block.
     fn iter_for_block(&self, block: usize) -> RunIter<'_> {
+        let pos = if self.samples.is_empty() { (0, 0) } else { (self.samples.get(2 * block) as usize, self.samples.get(2 * block + 1) as usize) };
         RunIter {
             parent: self,
             offset: block * Self::BLOCK_SIZE,
-            pos: (self.samples.get(2 * block) as usize, self.samples.get(2 * block + 1) as usize),
+            pos,
             limit: self.ones_after(block),
         }
     }
@@ -593,6 +594,9 @@ impl<'a> RunIter<'a> {
     // Like `next()`, but only advances if the `advance()` returns `true` for the next run.
     fn advance_if<F: FnMut(Option<<Self as Iterator>::Item>) -> bool>(&mut self, mut advance: F) -> Option<<Self as Iterator>::Item> {
         if self.offset >= self.parent.data.len() {
+            // We are at the end anyway, but we will call `advance()` to let the user know
+            // what the next run would be.
+            let _ = advance(None);
             return None;
         }
 
@@ -957,7 +961,7 @@ impl<'a> Select<'a> for RLVector {
         }
 
         let mut iter = self.iter_for_one(rank);
-        while iter.rank() < rank {
+        while iter.rank() <= rank {
             let _ = iter.next();
         }
         Some(iter.offset_for(rank))
@@ -1104,7 +1108,7 @@ impl<'a> PredSucc<'a> for RLVector {
         Self::OneIter {
             iter,
             got_none: false,
-            rank: rank,
+            rank,
         }
     }
 

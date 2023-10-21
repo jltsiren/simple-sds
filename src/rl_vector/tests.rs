@@ -200,26 +200,135 @@ fn large_runs() {
 
 //-----------------------------------------------------------------------------
 
-// FIXME try_rank
+#[test]
+fn empty_rank() {
+    let empty = zero_vector(0);
+    assert_eq!(empty.rank(empty.len()), empty.count_ones(), "Invalid rank at vector size");
+}
 
-// FIXME rank: empty, non-empty, uniform, large
+#[test]
+fn nonempty_rank() {
+    let rv = random_rl_vector(63, 0.02);
+    internal::try_rank(&rv);
+}
+
+#[test]
+fn uniform_rank() {
+    let zeros = zero_vector(1861);
+    let ones = one_vector(2103);
+    internal::try_rank(&zeros);
+    internal::try_rank(&ones);
+}
+
+#[test]
+#[ignore]
+fn large_rank() {
+    let rv = random_rl_vector(31568, 0.03);
+    internal::try_rank(&rv);
+}
 
 //-----------------------------------------------------------------------------
 
-// FIXME try_select, try_one_iter
+#[test]
+fn empty_select() {
+    let empty = zero_vector(0);
+    assert!(empty.select(empty.count_ones()).is_none(), "Got a result for select past the end");
+    assert!(empty.select_iter(empty.count_ones()).next().is_none(), "Got a result for select_iter past the end");
+}
 
-// FIXME select: empty, non-empty, uniform, large
+#[test]
+fn nonempty_select() {
+    let rv = random_rl_vector(75, 0.03);
+    internal::try_select(&rv, 1);
+}
+
+#[test]
+fn uniform_select() {
+    let zeros = zero_vector(1672);
+    let ones = one_vector(1571);
+    internal::try_select(&zeros, 1);
+    internal::try_select(&ones, 1);
+}
+
+#[test]
+fn one_iter() {
+    let rv = random_rl_vector(71, 0.025);
+    internal::try_one_iter(&rv, 1);
+}
+
+#[test]
+#[ignore]
+fn large_select() {
+    let rv = random_rl_vector(18731, 0.02);
+    internal::try_select(&rv, 1);
+    internal::try_one_iter(&rv, 1);
+}
 
 //-----------------------------------------------------------------------------
 
-// FIXME try_select_zero, try_zero_iter
+#[test]
+fn empty_select_zero() {
+    let empty = zero_vector(0);
+    assert!(empty.select_zero(empty.count_zeros()).is_none(), "Got a result for select_zero past the end");
+    assert!(empty.select_zero_iter(empty.count_zeros()).next().is_none(), "Got a result for select_zero_iter past the end");
+}
 
-// FIXME select_zero: empty, non-empty, uniform, large
+#[test]
+fn nonempty_select_zero() {
+    let rv = random_rl_vector(91, 0.03);
+    internal::try_select_zero(&rv);
+}
+
+#[test]
+fn uniform_select_zero() {
+    let zeros = zero_vector(2001);
+    let ones = one_vector(1678);
+    internal::try_select_zero(&zeros);
+    internal::try_select_zero(&ones);
+}
+
+#[test]
+fn zero_iter() {
+    let rv = random_rl_vector(81, 0.02);
+    internal::try_zero_iter(&rv);
+}
+
+#[test]
+#[ignore]
+fn large_select_zero() {
+    let rv = random_rl_vector(21101, 0.025);
+    internal::try_select_zero(&rv);
+    internal::try_zero_iter(&rv);
+}
 
 //-----------------------------------------------------------------------------
 
-// FIXME try_pred_succ
+#[test]
+fn empty_pred_succ() {
+    let empty = zero_vector(0);
+    assert!(empty.predecessor(0).next().is_none(), "Invalid predecessor at 0");
+    assert!(empty.successor(empty.len()).next().is_none(), "Invalid successor at vector size");
+}
 
-// FIXME pred_succ: empty, non-empty, uniform, large
+#[test]
+fn nonempty_pred_succ() {
+    let rv = random_rl_vector(101, 0.03);
+    internal::try_pred_succ(&rv);
+}
+
+#[test]
+fn uniform_pred_succ() {
+    let zeros = zero_vector(1868);
+    let ones = one_vector(2022);
+    internal::try_pred_succ(&zeros);
+    internal::try_pred_succ(&ones);
+}
+
+#[test]
+#[ignore]
+fn large_pred_succ() {
+    let rv = random_rl_vector(21961, 0.03);
+    internal::try_pred_succ(&rv);
+}
 
 //-----------------------------------------------------------------------------
