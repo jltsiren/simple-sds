@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/jltsiren/simple-sds"
 
 [features]
-binaries = ["getopts", "rand"]
+binaries = ["getopts", "rand", "rand_distr"]
 
 [dependencies]
 getopts = { version = "0.2", optional = true }

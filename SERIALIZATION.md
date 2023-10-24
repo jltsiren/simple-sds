@@ -126,6 +126,28 @@ Serialization format for sparse bitvectors:
 
 **Note:** The encoding also supports multisets / duplicate items, but the semantics are not fully clear yet.
 
+### Run-length encoded bitvector (version 0.4.0)
+
+A **run-length encoded bitvector** (`RLVector`) stores a vector of bits as a sequence of maximal runs of unset and set bits.
+
+If there are `n0` unset bits followed by `n1` set bits, it is encoded as a pair of integers `(n0, n1 - 1)`.
+Each integer is encoded in little-endian order using 4-bit code units.
+The lowest 3 bits of each code unit contain data.
+If the high bit is set, the encoding continues in the next unit.
+We partition the encoding into 64-unit (32-byte) blocks that consist of entire runs.
+If there is not enough space left for encoding the next `(n0, n1)`, we move to the next block.
+All blocks are padded with the necessary number of code units with value `0`.
+
+For each block, we store a sample `(n1, n)`, where `n` is the number of bits and `n1` is the number of set bits encoded in all preceding blocks.
+This can be interpreted as `(rank(n, 1), n)`.
+
+Serialization format for run-length encoded bitvectors:
+
+1. Length of the vector of bits as an element.
+2. Number of set bits as an element.
+3. Samples as an integer vector with the minimal width necessary.
+4. Concatenated blocks as an integer vector of width 4.
+
 ## Wavelet matrices (version 0.4.0)
 
 A **wavelet matrix** is an immutable integer vector that supports rank/select-like queries.
