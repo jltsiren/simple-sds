@@ -18,8 +18,6 @@
 //! Queries use binary search on the samples to find the right block and then decompress the block sequentially.
 //! A [`SampleIndex`] is used for narrowing down the range of the binary search.
 
-// FIXME use in benchmarks
-
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::rl_vector::index::SampleIndex;
