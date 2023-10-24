@@ -26,7 +26,7 @@ use crate::bits;
 
 use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
-use std::io;
+use std::{cmp, io};
 
 pub mod index;
 
@@ -1077,6 +1077,9 @@ impl<'a> PredSucc<'a> for RLVector {
         if self.is_empty() {
             return Self::OneIter::empty_iter(self);
         }
+
+        // A predecessor past the end is the same as predecessor at the end.
+        let value = cmp::min(value, self.len() - 1);
 
         // Find the block that would contain the value. Then advance the iterator
         // until the next run starts after the value we are interested in.
