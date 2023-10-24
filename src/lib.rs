@@ -16,8 +16,10 @@ pub mod bits;
 pub mod int_vector;
 pub mod ops;
 pub mod raw_vector;
+pub mod rl_vector;
 pub mod serialize;
 pub mod sparse_vector;
+pub mod support;
 pub mod wavelet_matrix;
 
 #[cfg(any(test, feature = "binaries"))]

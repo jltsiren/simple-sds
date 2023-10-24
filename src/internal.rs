@@ -1,12 +1,13 @@
 // Utility functions for tests.
 
-use crate::ops::{Vector, Access, VectorIndex};
+use crate::ops::{Vector, Access, VectorIndex, BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::serialize::Serialize;
 use crate::bits;
 
 use std::time::Duration;
 
 use rand::Rng;
+use rand_distr::{Geometric, Distribution};
 
 //-----------------------------------------------------------------------------
 
@@ -31,6 +32,55 @@ pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
     }
     result
 } 
+
+// Returns a vector of positions and universe size.
+// The distances between positions are `Geometric(density)`.
+pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
+    let mut positions: Vec<usize> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(density).unwrap();
+    let mut universe = 0;
+
+    let mut iter = dist.sample_iter(&mut rng);
+    while positions.len() < n {
+        let pos = universe + (iter.next().unwrap() as usize);
+        positions.push(pos);
+        universe = pos + 1;
+    }
+    universe += iter.next().unwrap() as usize;
+
+    (positions, universe)
+}
+
+// Returns `n` random (start, length) runs, where gaps and lengths are `Geometric(p)`.
+// The second return value is universe size.
+// Note that `p` is the flip probability.
+pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
+    let mut runs: Vec<(usize, usize)> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let start_with_one: bool = rng.gen();
+    let end_with_zero: bool = rng.gen();
+    let mut universe = 0;
+    let mut iter = dist.sample_iter(&mut rng);
+    if start_with_one {
+        let len = 1 + (iter.next().unwrap() as usize);
+        runs.push((0, len));
+        universe = len;
+    }
+    while runs.len() < n {
+        let start = universe + 1 + (iter.next().unwrap() as usize);
+        let len = 1 + (iter.next().unwrap() as usize);
+        runs.push((start, len));
+        universe = start + len;
+    }
+    if end_with_zero {
+        universe += 1 + (iter.next().unwrap() as usize);
+    }
+
+    (runs, universe)
+}
 
 //-----------------------------------------------------------------------------
 
@@ -131,6 +181,150 @@ pub fn report_memory_usage() {
         },
     }
     println!("");
+}
+
+//-----------------------------------------------------------------------------
+
+// Tests for `BitVec` and related traits.
+
+// Check that the iterator visits all values correctly.
+pub fn try_bitvec_iter<'a, T: BitVec<'a>>(bv: &'a T) {
+    assert_eq!(bv.iter().len(), bv.len(), "Invalid Iter length");
+
+    // Forward.
+    let mut visited = 0;
+    for (index, value) in bv.iter().enumerate() {
+        assert_eq!(value, bv.get(index), "Invalid value {} (forward)", index);
+        visited += 1;
+    }
+    assert_eq!(visited, bv.len(), "Iter did not visit all values");
+}
+
+// Check that rank queries work correctly at every position.
+pub fn try_rank<'a, T: Rank<'a>>(bv: &'a T) {
+    assert!(bv.supports_rank(), "Failed to enable rank support");
+    assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
+
+    let mut rank: usize = 0;
+    for i in 0..bv.len() {
+        assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
+        rank += bv.get(i) as usize;
+    }
+}
+
+// Check that select queries work correctly for every rank.
+// Use increment 1 normally and 0 with multisets.
+pub fn try_select<'a, T: Select<'a>>(bv: &'a T, increment: usize) {
+    assert!(bv.supports_select(), "Failed to enable select support");
+    assert!(bv.select(bv.count_ones()).is_none(), "Got a result for select past the end");
+    assert!(bv.select_iter(bv.count_ones()).next().is_none(), "Got a result for select_iter past the end");
+
+    let mut next: usize = 0;
+    for i in 0..bv.count_ones() {
+        let value = bv.select_iter(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select_iter({})", i);
+        assert!(value.1 >= next, "select_iter({}) == {}, expected at least {}", i, value.1, next);
+        let index = bv.select(i).unwrap();
+        assert_eq!(index, value.1, "Different results for select({}) and select_iter({})", i, i);
+        assert!(bv.get(index), "Bit select({}) == {} is not set", i, index);
+        next = value.1 + increment;
+    }
+}
+
+// Check that the one iterator visits all set bits correctly.
+// Use increment 1 normally and 0 with multisets.
+pub fn try_one_iter<'a, T: Select<'a>>(bv: &'a T, increment: usize) {
+    assert_eq!(bv.one_iter().len(), bv.count_ones(), "Invalid OneIter length");
+
+    // Iterate forward.
+    let mut next: (usize, usize) = (0, 0);
+    for (index, value) in bv.one_iter() {
+        assert_eq!(index, next.0, "Invalid rank from OneIter (forward)");
+        assert!(value >= next.1, "Too small value from OneIter (forward)");
+        assert!(bv.get(value), "OneIter returned an unset bit (forward)");
+        next = (next.0 + 1, value + increment);
+    }
+
+    assert_eq!(next.0, bv.count_ones(), "OneIter did not visit all unset bits");
+}
+
+// Check that select_zero queries work correctly for every rank.
+pub fn try_select_zero<'a, T: SelectZero<'a>>(bv: &'a T) {
+    assert!(bv.supports_select_zero(), "Failed to enable select_zero support");
+    assert!(bv.select_zero(bv.count_zeros()).is_none(), "Got a result for select_zero past the end");
+    assert!(bv.select_zero_iter(bv.count_zeros()).next().is_none(), "Got a result for select_zero_iter past the end");
+
+    let mut next: usize = 0;
+    for i in 0..bv.count_zeros() {
+        let value = bv.select_zero_iter(i).next().unwrap();
+        assert_eq!(value.0, i, "Invalid rank for select_zero_iter({})", i);
+        assert!(value.1 >= next, "select_zero_iter({}) == {}, expected at least {}", i, value.1, next);
+        let index = bv.select_zero(i).unwrap();
+        assert_eq!(index, value.1, "Different results for select_zero({}) and select_zero_iter({})", i, i);
+        assert!(!bv.get(index), "Bit select_zero({}) == {} is set", i, index);
+        next = value.1 + 1;
+    }
+}
+
+// Check that the zero iterator visits all unset bits correctly.
+pub fn try_zero_iter<'a, T: SelectZero<'a>>(bv: &'a T) {
+    assert_eq!(bv.zero_iter().len(), bv.count_zeros(), "Invalid ZeroIter length");
+
+    // Iterate forward.
+    let mut next: (usize, usize) = (0, 0);
+    for (index, value) in bv.zero_iter() {
+        assert_eq!(index, next.0, "Invalid rank from ZeroIter (forward)");
+        assert!(value >= next.1, "Too small value from ZeroIter (forward)");
+        assert!(!bv.get(value), "ZeroIter returned a set bit (forward)");
+        next = (next.0 + 1, value + 1);
+    }
+
+    assert_eq!(next.0, bv.count_zeros(), "ZeroIter did not visit all unset bits");
+}
+
+// Check that predecessor/successor queries work correctly at every position.
+pub fn try_pred_succ<'a, T: Rank<'a> + PredSucc<'a>>(bv: &'a T) {
+    assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
+
+    for i in 0..bv.len() {
+        let rank = bv.rank(i);
+        let pred_result = bv.predecessor(i).next();
+        let succ_result = bv.successor(i).next();
+        if bv.get(i) {
+            assert_eq!(pred_result, Some((rank, i)), "Invalid predecessor result at a set bit");
+            assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
+        } else {
+            if rank == 0 {
+                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
+            } else {
+                if let Some((pred_rank, pred_value)) = pred_result {
+                    let new_rank = bv.rank(pred_value);
+                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
+                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
+                    assert!(bv.get(pred_value), "Predecessor returned an unset bit");
+                } else {
+                    panic!("Could not find a predecessor");
+                }
+            }
+            if rank == bv.count_ones() {
+                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
+            } else {
+                if let Some((succ_rank, succ_value)) = succ_result {
+                    let new_rank = bv.rank(succ_value);
+                    assert_eq!(new_rank, rank, "The returned value was not the successor");
+                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
+                    assert!(bv.get(succ_value), "Successor returned an unset bit");
+                } else {
+                    panic!("Could not find a successor");
+                }
+            }
+        }
+    }
+
+    if bv.len() > 0 {
+        assert_eq!(bv.predecessor(bv.len()).next(), bv.predecessor(bv.len() - 1).next(), "Invalid predecessor at vector size");
+    }
+    assert!(bv.successor(bv.len()).next().is_none(), "Invalid successor at vector size");
 }
 
 //-----------------------------------------------------------------------------

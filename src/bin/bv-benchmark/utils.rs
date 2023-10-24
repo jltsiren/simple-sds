@@ -1,3 +1,5 @@
+use std::cmp;
+
 use simple_sds::bit_vector::BitVector;
 use simple_sds::ops::BitVec;
 use simple_sds::raw_vector::{RawVector, PushRaw};
@@ -5,7 +7,8 @@ use simple_sds::serialize::Serialize;
 use simple_sds::internal;
 
 use rand::Rng;
-use rand::distributions::{Bernoulli, Distribution};
+use rand::distributions::Bernoulli;
+use rand_distr::{Geometric, Distribution};
 
 //-----------------------------------------------------------------------------
 
@@ -34,6 +37,24 @@ pub fn random_vector(len: usize, density: f64) -> BitVector {
         "random_vector({}, {}): unexpected number of ones: {}", len, density, ones);
 
     bv
+}
+
+pub fn random_vector_runs(len: usize, flip: f64) -> BitVector {
+    let mut data = RawVector::with_capacity(len);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(flip).unwrap();
+
+    let mut value: bool = rng.gen();
+    let mut iter = dist.sample_iter(&mut rng);
+    while data.len() < len {
+        let run = cmp::min(1 + (iter.next().unwrap() as usize), len - data.len());
+        for _ in 0..run {
+            data.push_bit(value);
+        }
+        value = !value;
+    }
+
+    BitVector::from(data)
 }
 
 //-----------------------------------------------------------------------------

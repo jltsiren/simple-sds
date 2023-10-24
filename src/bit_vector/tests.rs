@@ -2,7 +2,7 @@ use super::*;
 
 use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
-use crate::serialize;
+use crate::{internal, serialize};
 
 use std::cmp;
 
@@ -80,12 +80,8 @@ fn non_uniform_vector(regions: &[(usize, f64)], complement: bool) -> BitVector {
 //-----------------------------------------------------------------------------
 
 fn try_iter(bv: &BitVector) {
-    assert_eq!(bv.iter().len(), bv.len(), "Invalid Iter length");
-
     // Forward.
-    for (index, value) in bv.iter().enumerate() {
-        assert_eq!(value, bv.get(index), "Invalid value {} (forward)", index);
-    }
+    internal::try_bitvec_iter(bv);
 
     // Backward.
     let mut index = bv.len();
@@ -170,6 +166,13 @@ fn from_iter() {
 }
 
 #[test]
+fn copy_bit_vec() {
+    let source = random_vector(1234, 0.35);
+    let copy = BitVector::copy_bit_vec(&source);
+    assert_eq!(copy, source, "Invalid copy created with copy_bit_vec()");
+}
+
+#[test]
 fn iter() {
     let bv = random_vector(1563, 0.5);
     try_iter(&bv);
@@ -191,17 +194,6 @@ fn large() {
 
 //-----------------------------------------------------------------------------
 
-fn try_rank(bv: &BitVector) {
-    assert!(bv.supports_rank(), "Failed to enable rank support");
-    assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
-
-    let mut rank: usize = 0;
-    for i in 0..bv.len() {
-        assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
-        rank += bv.get(i) as usize;
-    }
-}
-
 #[test]
 fn empty_rank() {
     let mut empty = BitVector::from(RawVector::new());
@@ -216,7 +208,7 @@ fn nonempty_rank() {
     let mut bv = random_vector(1957, 0.5);
     assert!(!bv.supports_rank(), "Rank support was enabled by default");
     bv.enable_rank();
-    try_rank(&bv);
+    internal::try_rank(&bv);
 }
 
 #[test]
@@ -231,41 +223,14 @@ fn serialize_rank() {
 fn large_rank() {
     let mut bv = random_vector(9871248, 0.5);
     bv.enable_rank();
-    try_rank(&bv);
+    internal::try_rank(&bv);
     let _ = serialize::test(&bv, "large-bitvector-rank", Some(192806), true);
 }
 
 //-----------------------------------------------------------------------------
 
-fn try_select(bv: &BitVector) {
-    assert!(bv.supports_select(), "Failed to enable select support");
-    assert!(bv.select(bv.count_ones()).is_none(), "Got a result for select past the end");
-    assert!(bv.select_iter(bv.count_ones()).next().is_none(), "Got a result for select_iter past the end");
-
-    let mut next: usize = 0;
-    for i in 0..bv.count_ones() {
-        let value = bv.select_iter(i).next().unwrap();
-        assert_eq!(value.0, i, "Invalid rank for select_iter({})", i);
-        assert!(value.1 >= next, "select_iter({}) == {}, expected at least {}", i, value.1, next);
-        let index = bv.select(i).unwrap();
-        assert_eq!(index, value.1, "Different results for select({}) and select_iter({})", i, i);
-        assert!(bv.get(index), "Bit select({}) == {} is not set", i, index);
-        next = value.1 + 1;
-    }
-}
-
+// Only test the non-standard functionality.
 fn try_one_iter<T: Transformation>(bv: &BitVector) {
-    assert_eq!(T::one_iter(bv).len(), T::count_ones(bv), "Invalid OneIter length");
-
-    // Iterate forward.
-    let mut next: (usize, usize) = (0, 0);
-    for (index, value) in T::one_iter(bv) {
-        assert_eq!(index, next.0, "Invalid rank from OneIter (forward)");
-        assert!(value >= next.1, "Too small value from OneIter (forward)");
-        assert!(T::bit(bv, value), "OneIter returned an unset bit (forward)");
-        next = (next.0 + 1, value + 1);
-    }
-
     // Iterate backward.
     let mut limit: (usize, usize) = (T::count_ones(bv), bv.len());
     let mut iter = T::one_iter(bv);
@@ -332,7 +297,7 @@ fn nonempty_select() {
     assert!(!bv.supports_select(), "Select support was enabled by default");
     bv.enable_select();
     assert!(bv.supports_select(), "Failed to enable select support");
-    try_select(&bv);
+    internal::try_select(&bv, 1);
 }
 
 #[test]
@@ -340,12 +305,13 @@ fn sparse_select() {
     let mut bv = random_vector(4200, 0.01);
     assert!(!bv.supports_select(), "Select support was enabled by default");
     bv.enable_select();
-    try_select(&bv);
+    internal::try_select(&bv, 1);
 }
 
 #[test]
 fn one_iter() {
     let bv = random_vector(3122, 0.5);
+    internal::try_one_iter(&bv, 1);
     try_one_iter::<Identity>(&bv);
 }
 
@@ -370,29 +336,13 @@ fn large_select() {
     assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
     assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
 
-    try_select(&bv);
+    internal::try_select(&bv, 1);
+    internal::try_one_iter(&bv, 1);
     try_one_iter::<Identity>(&bv);
     let _ = serialize::test(&bv, "large-bitvector-select", None, true);
 }
 
 //-----------------------------------------------------------------------------
-
-fn try_select_zero(bv: &BitVector) {
-    assert!(bv.supports_select_zero(), "Failed to enable select zero support");
-    assert!(bv.select_zero(Complement::count_ones(bv)).is_none(), "Got a result for select past the end");
-    assert!(bv.select_zero_iter(Complement::count_ones(bv)).next().is_none(), "Got a result for select_iter past the end");
-
-    let mut next: usize = 0;
-    for i in 0..Complement::count_ones(bv) {
-        let value = bv.select_zero_iter(i).next().unwrap();
-        assert_eq!(value.0, i, "Invalid rank for select_zero({})", i);
-        assert!(value.1 >= next, "select_zero({}) == {}, expected at least {}", i, value.1, next);
-        let index = bv.select_zero(i).unwrap();
-        assert_eq!(index, value.1, "Different results for select_zero({}) and select_zero_iter({})", i, i);
-        assert!(!bv.get(index), "Bit select_zero({}) == {} is set", i, index);
-        next = value.1 + 1;
-    }
-}
 
 #[test]
 fn empty_select_zero() {
@@ -410,7 +360,7 @@ fn nonempty_select_zero() {
     assert!(!bv.supports_select_zero(), "Select zero support was enabled by default");
     bv.enable_select_zero();
     assert!(bv.supports_select_zero(), "Failed to enable select zero support");
-    try_select_zero(&bv);
+    internal::try_select_zero(&bv);
 }
 
 #[test]
@@ -418,12 +368,13 @@ fn sparse_select_zero() {
     let mut bv = random_vector(3647, 0.99);
     assert!(!bv.supports_select_zero(), "Select zero support was enabled by default");
     bv.enable_select_zero();
-    try_select_zero(&bv);
+    internal::try_select_zero(&bv);
 }
 
 #[test]
 fn zero_iter() {
     let bv = random_vector(3354, 0.5);
+    internal::try_zero_iter(&bv);
     try_one_iter::<Complement>(&bv);
 }
 
@@ -448,51 +399,13 @@ fn large_select_zero() {
     assert_eq!(ss.long_superblocks(), 3, "Invalid number of long superblocks");
     assert_eq!(ss.short_superblocks(), 4, "Invalid number of short superblocks");
 
-    try_select_zero(&bv);
+    internal::try_select_zero(&bv);
+    internal::try_zero_iter(&bv);
     try_one_iter::<Complement>(&bv);
     let _ = serialize::test(&bv, "large-bitvector-select-zero", None, true);
 }
 
 //-----------------------------------------------------------------------------
-
-fn try_pred_succ(bv: &BitVector) {
-    assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
-
-    for i in 0..bv.len() {
-        let rank = bv.rank(i);
-        let pred_result = bv.predecessor(i).next();
-        let succ_result = bv.successor(i).next();
-        if bv.get(i) {
-            assert_eq!(pred_result, Some((rank, i)), "Invalid predecessor result at a set bit");
-            assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
-        } else {
-            if rank == 0 {
-                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
-            } else {
-                if let Some((pred_rank, pred_value)) = pred_result {
-                    let new_rank = bv.rank(pred_value);
-                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
-                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
-                    assert!(bv.get(pred_value), "Predecessor returned an unset bit");
-                } else {
-                    panic!("Could not find a predecessor");
-                }
-            }
-            if rank == bv.count_ones() {
-                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
-            } else {
-                if let Some((succ_rank, succ_value)) = succ_result {
-                    let new_rank = bv.rank(succ_value);
-                    assert_eq!(new_rank, rank, "The returned value was not the successor");
-                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
-                    assert!(bv.get(succ_value), "Successor returned an unset bit");
-                } else {
-                    panic!("Could not find a successor");
-                }
-            }
-        }
-    }
-}
 
 #[test]
 fn empty_pred_succ() {
@@ -510,7 +423,7 @@ fn nonempty_pred_succ() {
     assert!(!bv.supports_pred_succ(), "Predecessor/successor support was enabled by default");
     bv.enable_pred_succ();
     assert!(bv.supports_pred_succ(), "Failed to enable predecessor/successor support");
-    try_pred_succ(&bv);
+    internal::try_pred_succ(&bv);
 }
 
 #[test]
@@ -529,7 +442,7 @@ fn large_pred_succ() {
     let mut bv = non_uniform_vector(&regions, false);
     bv.enable_pred_succ();
 
-    try_pred_succ(&bv);
+    internal::try_pred_succ(&bv);
     let _ = serialize::test(&bv, "large-bitvector-pred-succ", None, true);
 }
 

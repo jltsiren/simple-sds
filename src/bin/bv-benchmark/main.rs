@@ -1,5 +1,7 @@
 use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
+use simple_sds::serialize::Serialize;
 use simple_sds::bit_vector::BitVector;
+use simple_sds::rl_vector::RLVector;
 use simple_sds::sparse_vector::SparseVector;
 use simple_sds::{internal, serialize};
 
@@ -21,6 +23,9 @@ fn main() {
         let bv_file: String = format!("{}.bv", basename);
         println!("Loading BitVector from {}", bv_file);
         serialize::load_from(bv_file).unwrap()
+    } else if config.runs {
+        println!("Generating a random 2^{}-bit BitVector with flip probability {}", config.bit_len, config.density);
+        utils::random_vector_runs(1usize << config.bit_len, config.density)
     } else {
         println!("Generating a random 2^{}-bit BitVector with density {}", config.bit_len, config.density);
         utils::random_vector(1usize << config.bit_len, config.density)
@@ -29,15 +34,6 @@ fn main() {
     bv.enable_rank();
     bv.enable_select();
     bv.enable_select_zero();
-    println!("Size:     {}", utils::bitvector_size(&bv));
-    println!("");
-
-    if let Some(basename) = config.outfile.as_ref() {
-        let bv_file: String = format!("{}.bv", basename);
-        println!("Saving BitVector to {}", bv_file);
-        serialize::serialize_to(&bv, &bv_file).unwrap();
-        println!("");
-    }
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
     let rank_queries = internal::random_queries(config.queries, bv.len());
@@ -51,12 +47,7 @@ fn main() {
     let select_zero_queries = internal::random_queries(config.queries, bv.count_zeros());
     println!("");
 
-    independent_rank(&bv, &rank_queries, "BitVector");
-    chained_rank(&bv, &rank_queries, config.chain_mask, "BitVector");
-    independent_select(&bv, &select_queries, "BitVector");
-    chained_select(&bv, &select_queries, config.chain_mask, "BitVector");
-    independent_select_zero(&bv, &select_zero_queries, "BitVector");
-    chained_select_zero(&bv, &select_zero_queries, config.chain_mask, "BitVector");
+    run_tests(&bv, &rank_queries, &select_queries, &select_zero_queries, "BitVector", "bv", &config);
 
     let sv: SparseVector = if let Some(basename) = config.infile.as_ref() {
         let sv_file: String = format!("{}.sv", basename);
@@ -66,22 +57,17 @@ fn main() {
         println!("Creating a SparseVector");
         SparseVector::copy_bit_vec(&bv)
     };
-    println!("Size:     {}", utils::bitvector_size(&sv));
-    println!("");
+    run_tests(&sv, &rank_queries, &select_queries, &select_zero_queries, "SparseVector", "sv", &config);
 
-    independent_rank(&sv, &rank_queries, "SparseVector");
-    chained_rank(&sv, &rank_queries, config.chain_mask, "SparseVector");
-    independent_select(&sv, &select_queries, "SparseVector");
-    chained_select(&sv, &select_queries, config.chain_mask, "SparseVector");
-    independent_select_zero(&sv, &select_zero_queries, "SparseVector");
-    chained_select_zero(&sv, &select_zero_queries, config.chain_mask, "SparseVector");
-
-    if let Some(basename) = config.outfile.as_ref() {
-        let sv_file: String = format!("{}.sv", basename);
-        println!("Saving SparseVector to {}", sv_file);
-        serialize::serialize_to(&sv, &sv_file).unwrap();
-        println!("");
-    }
+    let rv: RLVector = if let Some(basename) = config.infile.as_ref() {
+        let rv_file: String = format!("{}.rv", basename);
+        println!("Loading RLVector from {}", rv_file);
+        serialize::load_from(rv_file).unwrap()
+    } else {
+        println!("Creating an RLVector");
+        RLVector::copy_bit_vec(&bv)
+    };
+    run_tests(&rv, &rank_queries, &select_queries, &select_zero_queries, "RLVector", "rv", &config);
 
     internal::report_memory_usage();
 }
@@ -91,6 +77,7 @@ fn main() {
 pub struct Config {
     pub bit_len: usize,
     pub density: f64,
+    pub runs: bool,
     pub queries: usize,
     pub chain_mask: usize,
     pub infile: Option<String>,
@@ -110,6 +97,7 @@ impl Config {
         let mut opts = Options::new();
         opts.optopt("l", "bit-len", "use bitvectors of length 2^INT (default 32)", "INT");
         opts.optopt("d", "density", "density of set bits (default 0.5)", "FLOAT");
+        opts.optflag("r", "runs", "generate runs with the density as flip probability");
         opts.optopt("n", "queries", "number of queries (default 10000000)", "INT");
         opts.optopt("L", "load", "load the vectors from NAME.bv and NAME.sv", "NAME");
         opts.optopt("S", "save", "save the vectors to NAME.bv and NAME.sv", "NAME");
@@ -125,6 +113,7 @@ impl Config {
         let mut config = Config {
             bit_len: Self::BIT_LEN,
             density: Self::DENSITY,
+            runs: false,
             queries: Self::QUERIES,
             chain_mask: Self::CHAIN_MASK,
             infile: None,
@@ -165,6 +154,7 @@ impl Config {
                 },
             }
         }
+        config.runs = matches.opt_present("r");
         if let Some(s) = matches.opt_str("n") {
             match s.parse::<usize>() {
                 Ok(n) => {
@@ -189,7 +179,27 @@ impl Config {
 
 //-----------------------------------------------------------------------------
 
-fn independent_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
+fn run_tests<'a, T>(bv: &'a T, rank_queries: &[usize], select_queries: &[usize], select_zero_queries: &[usize], name: &str, extension: &str, config: &Config)
+where T: BitVec<'a> + Rank<'a> + Select<'a> + SelectZero<'a> + Serialize {
+    println!("Size:     {}", utils::bitvector_size(bv));
+    println!("");
+
+    independent_rank(bv, rank_queries, name);
+    chained_rank(bv, rank_queries, config.chain_mask, name);
+    independent_select(bv, select_queries, name);
+    chained_select(bv, select_queries, config.chain_mask, name);
+    independent_select_zero(bv, select_zero_queries, name);
+    chained_select_zero(bv, select_zero_queries, config.chain_mask, name);
+
+    if let Some(basename) = config.outfile.as_ref() {
+        let filename: String = format!("{}.{}", basename, extension);
+        println!("Saving {} to {}", name, filename);
+        serialize::serialize_to(bv, &filename).unwrap();
+        println!("");
+    }
+}
+
+fn independent_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &[usize], vector_type: &str) {
     println!("{} with {} independent rank queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
@@ -200,7 +210,7 @@ fn independent_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize
     internal::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
 }
 
-fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
+fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &[usize], chained_query_mask: usize, vector_type: &str) {
     println!("{} with {} chained rank queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
@@ -214,7 +224,7 @@ fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &Vec<usize>, c
     internal::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
 }
 
-fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
+fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &[usize], vector_type: &str) {
     println!("{} with {} independent select queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
@@ -225,7 +235,7 @@ fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<u
     internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
-fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
+fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &[usize], chained_query_mask: usize, vector_type: &str) {
     println!("{} with {} chained select queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
@@ -239,7 +249,7 @@ fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &Vec<usize
     internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
-fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, vector_type: &str) {
+fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &[usize], vector_type: &str) {
     println!("{} with {} independent select_zero queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
@@ -250,7 +260,7 @@ fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, querie
     internal::report_results(queries.len(), total, bv.len(), now.elapsed());
 }
 
-fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &Vec<usize>, chained_query_mask: usize, vector_type: &str) {
+fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &[usize], chained_query_mask: usize, vector_type: &str) {
     println!("{} with {} chained select_zero queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;

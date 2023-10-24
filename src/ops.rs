@@ -205,15 +205,24 @@ pub trait Pack: Vector {
 /// See [`Vector`] for an example and [`AccessIter`] for a possible implementation of the iterator.
 pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
-    type Iter: Iterator<Item = <Self as Vector>::Item>;
+    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator;
 
-    /// Gets an item from the vector.
+    /// Returns an item from the vector.
     ///
     /// # Panics
     ///
     /// May panic if `index` is not a valid index in the vector.
     /// May panic from I/O errors.
     fn get(&self, index: usize) -> <Self as Vector>::Item;
+
+    /// Returns an item from the vector or the provided value if `index` is invalid.
+    ///
+    /// # Panics
+    ///
+    /// May panic from I/O errors.
+    fn get_or(&self, index: usize, value: <Self as Vector>::Item) -> <Self as Vector>::Item {
+        if index >= self.len() { value } else { self.get(index) }
+    }
 
     /// Returns an iterator over the items in the vector.
     ///
@@ -233,7 +242,6 @@ pub trait Access<'a>: Vector {
 
     /// Sets an item in the vector.
     ///
-    ///
     /// # Arguments
     ///
     /// * `index`: Index in the vector.
@@ -245,7 +253,7 @@ pub trait Access<'a>: Vector {
     /// May panic if the underlying data is not mutable.
     /// May panic from I/O errors.
     fn set(&mut self, _: usize, _: <Self as Vector>::Item) {
-        panic!("The default implementation of Access is immutable");
+        panic!("Access::set(): The default implementation is immutable");
     }
 }
 
@@ -690,7 +698,14 @@ pub trait VectorIndex<'a>: Access<'a> {
 ///         }
 ///         None
 ///     }
+///
+///     fn size_hint(&self) -> (usize, Option<usize>) {
+///         let remaining = self.parent.len() - self.index;
+///         (remaining, Some(remaining))
+///     }
 /// }
+///
+/// impl<'a> ExactSizeIterator for BitIter<'a> {}
 ///
 /// impl From<RawVector> for NaiveBitVector {
 ///     fn from(data: RawVector) -> Self {
@@ -762,7 +777,14 @@ pub trait VectorIndex<'a>: Access<'a> {
 ///         }
 ///         None
 ///     }
+///
+///     fn size_hint(&self) -> (usize, Option<usize>) {
+///         let remaining = self.parent.count_ones() - self.rank;
+///         (remaining, Some(remaining))
+///     }
 /// }
+///
+/// impl<'a> ExactSizeIterator for SelectIter<'a> {}
 ///
 /// impl<'a> Select<'a> for NaiveBitVector {
 ///     type OneIter = SelectIter<'a>;
@@ -867,7 +889,7 @@ pub trait VectorIndex<'a>: Access<'a> {
 /// ```
 pub trait BitVec<'a> {
     /// Iterator type over the bit array.
-    type Iter: Iterator<Item = bool>;
+    type Iter: Iterator<Item = bool> + ExactSizeIterator;
 
     /// Returns the length of the bit array or the universe size of the integer array.
     fn len(&self) -> usize;
@@ -907,6 +929,8 @@ pub trait BitVec<'a> {
     /// May panic from I/O errors.
     /// The iterator may also panic for the same reason.
     fn iter(&'a self) -> Self::Iter;
+
+    // TODO: add `copy_bit_vec`?
 }
 
 //-----------------------------------------------------------------------------
@@ -965,7 +989,7 @@ pub trait Select<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the integer array.
     /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
-    type OneIter: Iterator<Item = (usize, usize)>;
+    type OneIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if select support has been enabled.
     fn supports_select(&self) -> bool;
@@ -1025,7 +1049,7 @@ pub trait SelectZero<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the complement of the integer array.
     /// This can be interpreted as `(i, select_zero(i))` or `(rank_zero(j), j)`.
-    type ZeroIter: Iterator<Item = (usize, usize)>;
+    type ZeroIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if select support has been enabled for the complement.
     fn supports_select_zero(&self) -> bool;
@@ -1085,7 +1109,7 @@ pub trait PredSucc<'a>: BitVec<'a> {
     ///
     /// The `Item` in the iterator is an (index, value) pair in the integer array.
     /// This can be interpreted as `(i, select(i))` or `(rank(j), j)`.
-    type OneIter: Iterator<Item = (usize, usize)>;
+    type OneIter: Iterator<Item = (usize, usize)> + ExactSizeIterator;
 
     /// Returns `true` if predecessor/successor support has been enabled.
     fn supports_pred_succ(&self) -> bool;

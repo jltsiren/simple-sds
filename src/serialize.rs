@@ -897,7 +897,7 @@ impl<'a, T: MemoryMapped<'a>> MappedOption<'a, T> {
     pub fn unwrap(&self) -> &T {
         match &self.data {
             Some(value) => value,
-            None => panic!("No value to unwrap"),
+            None => panic!("MappedOption::unwrap(): No value to unwrap"),
         }
     }
 

@@ -1,51 +1,25 @@
 use super::*;
 
-use crate::bit_vector::BitVector;
-use crate::raw_vector::{RawVector, PushRaw};
-use crate::serialize;
-
-use rand::distributions::{Bernoulli, Distribution};
+use crate::{internal, serialize};
 
 //-----------------------------------------------------------------------------
 
 fn random_vector(ones: usize, density: f64) -> SparseVector {
-    let mut data: Vec<usize> = Vec::new();
-    let mut rng = rand::thread_rng();
-    let dist = Bernoulli::new(density).unwrap();
-    let mut universe = 0;
+    let (positions, universe) = internal::random_positions(ones, density);
 
-    let mut iter = dist.sample_iter(&mut rng);
-    loop {
-        if iter.next().unwrap() {
-            if data.len() >= ones {
-                break;
-            }
-            data.push(universe);
-        }
-        universe += 1;
-    }
-
-    let mut builder = SparseBuilder::new(universe, data.len()).unwrap();
+    let mut builder = SparseBuilder::new(universe, positions.len()).unwrap();
     assert!(!builder.is_multiset(), "Builder created with new() is a multiset");
-    builder.extend(data);
+    builder.extend(positions);
 
     SparseVector::try_from(builder).unwrap()
 }
 
 fn random_bit_vector(ones: usize, density: f64) -> BitVector {
-    let mut raw: RawVector = RawVector::new();
-    let mut rng = rand::thread_rng();
-    let dist = Bernoulli::new(density).unwrap();
-    let mut generated = 0;
+    let (positions, universe) = internal::random_positions(ones, density);
 
-    let mut iter = dist.sample_iter(&mut rng);
-    loop {
-        let bit = iter.next().unwrap();
-        generated += bit as usize;
-        if generated > ones {
-            break;
-        }
-        raw.push_bit(bit);
+    let mut raw: RawVector = RawVector::with_len(universe, false);
+    for position in positions.iter() {
+        raw.set_bit(*position, true);
     }
 
     BitVector::from(raw)
@@ -69,12 +43,8 @@ fn one_vector(len: usize) -> SparseVector {
 //-----------------------------------------------------------------------------
 
 fn try_iter(sv: &SparseVector) {
-    assert_eq!(sv.iter().len(), sv.len(), "Invalid Iter length");
-
     // Forward.
-    for (index, value) in sv.iter().enumerate() {
-        assert_eq!(value, sv.get(index), "Invalid value {} (forward)", index);
-    }
+    internal::try_bitvec_iter(sv);
 
     // Backward.
     let mut index = sv.len();
@@ -129,14 +99,10 @@ fn non_empty_vector() {
 
 #[test]
 fn conversions() {
-    let original = random_bit_vector(59, 0.015);
-
-    let sv_copy = SparseVector::copy_bit_vec(&original);
-    let sv_from = SparseVector::from(original.clone());
-    assert_eq!(sv_copy, sv_from, "Different SparseVectors with different construction methods");
-
-    let copy = BitVector::from(sv_copy);
-    assert_eq!(copy, original, "SparseVector changed the contents of the BitVector");
+    let original = random_vector(59, 0.015);
+    let bv = BitVector::copy_bit_vec(&original);
+    let copy = SparseVector::copy_bit_vec(&bv);
+    assert_eq!(copy, original, "Conversions changed the contents of the SparseVector");
 }
 
 #[test]
@@ -193,17 +159,6 @@ fn large() {
 
 //-----------------------------------------------------------------------------
 
-fn try_rank(sv: &SparseVector) {
-    assert!(sv.supports_rank(), "Failed to enable rank support");
-    assert_eq!(sv.rank(sv.len()), sv.count_ones(), "Invalid rank at vector size");
-
-    let mut rank: usize = 0;
-    for i in 0..sv.len() {
-        assert_eq!(sv.rank(i), rank, "Invalid rank at {}", i);
-        rank += sv.get(i) as usize;
-    }
-}
-
 #[test]
 fn empty_rank() {
     let empty = zero_vector(0);
@@ -213,54 +168,29 @@ fn empty_rank() {
 #[test]
 fn nonempty_rank() {
     let sv = random_vector(81, 0.025);
-    try_rank(&sv);
+    internal::try_rank(&sv);
 }
 
 #[test]
 fn uniform_rank() {
     let zeros = zero_vector(1977);
     let ones = one_vector(1654);
-    try_rank(&zeros);
-    try_rank(&ones);
+    internal::try_rank(&zeros);
+    internal::try_rank(&ones);
 }
 
 #[test]
 #[ignore]
 fn large_rank() {
     let sv = random_vector(19666, 0.015);
-    try_rank(&sv);
+    internal::try_rank(&sv);
 }
 
 //-----------------------------------------------------------------------------
 
-fn try_select(sv: &SparseVector, increment: usize) {
-    assert!(sv.supports_select(), "Failed to enable select support");
-    assert!(sv.select(sv.count_ones()).is_none(), "Got a result for select past the end");
-    assert!(sv.select_iter(sv.count_ones()).next().is_none(), "Got a result for select_iter past the end");
-
-    let mut next: usize = 0;
-    for i in 0..sv.count_ones() {
-        let value = sv.select_iter(i).next().unwrap();
-        assert_eq!(value.0, i, "Invalid rank for select_iter({})", i);
-        assert!(value.1 >= next, "select_iter({}) == {}, expected at least {}", i, value.1, next);
-        let index = sv.select(i).unwrap();
-        assert_eq!(index, value.1, "Different results for select({}) and select_iter({})", i, i);
-        assert!(sv.get(index), "Bit select({}) == {} is not set", i, index);
-        next = value.1 + increment;
-    }
-}
-
 fn try_one_iter(sv: &SparseVector, increment: usize) {
-    assert_eq!(sv.one_iter().len(), sv.count_ones(), "Invalid OneIter length");
-
     // Iterate forward.
-    let mut next: (usize, usize) = (0, 0);
-    for (index, value) in sv.one_iter() {
-        assert_eq!(index, next.0, "Invalid rank from OneIter (forward)");
-        assert!(value >= next.1, "Too small value from OneIter (forward)");
-        assert!(sv.get(value), "OneIter returned an unset bit (forward)");
-        next = (next.0 + 1, value + increment);
-    }
+    internal::try_one_iter(sv, increment);
 
     // Iterate backward.
     let mut limit: (usize, usize) = (sv.count_ones(), sv.len());
@@ -306,15 +236,15 @@ fn empty_select() {
 #[test]
 fn nonempty_select() {
     let sv = random_vector(70, 0.02);
-    try_select(&sv, 1);
+    internal::try_select(&sv, 1);
 }
 
 #[test]
 fn uniform_select() {
     let zeros = zero_vector(2020);
     let ones = one_vector(1984);
-    try_select(&zeros, 1);
-    try_select(&ones, 1);
+    internal::try_select(&zeros, 1);
+    internal::try_select(&ones, 1);
 }
 
 #[test]
@@ -327,41 +257,11 @@ fn one_iter() {
 #[ignore]
 fn large_select() {
     let sv = random_vector(20304, 0.02);
-    try_select(&sv, 1);
+    internal::try_select(&sv, 1);
     try_one_iter(&sv, 1);
 }
 
 //-----------------------------------------------------------------------------
-
-fn try_select_zero(sv: &SparseVector) {
-    assert!(sv.supports_select_zero(), "Failed to enable select_zero support");
-    assert!(sv.select_zero(sv.count_zeros()).is_none(), "Got a result for select_zero past the end");
-    assert!(sv.select_zero_iter(sv.count_zeros()).next().is_none(), "Got a result for select_zero_iter past the end");
-
-    let mut next: usize = 0;
-    for i in 0..sv.count_zeros() {
-        let value = sv.select_zero_iter(i).next().unwrap();
-        assert_eq!(value.0, i, "Invalid rank for select_zero_iter({})", i);
-        assert!(value.1 >= next, "select_zero_iter({}) == {}, expected at least {}", i, value.1, next);
-        let index = sv.select_zero(i).unwrap();
-        assert_eq!(index, value.1, "Different results for select_zero({}) and select_zero_iter({})", i, i);
-        assert!(!sv.get(index), "Bit select_zero({}) == {} is set", i, index);
-        next = value.1 + 1;
-    }
-}
-
-fn try_zero_iter(sv: &SparseVector) {
-    assert_eq!(sv.zero_iter().len(), sv.count_zeros(), "Invalid ZeroIter length");
-
-    // Iterate forward.
-    let mut next: (usize, usize) = (0, 0);
-    for (index, value) in sv.zero_iter() {
-        assert_eq!(index, next.0, "Invalid rank from ZeroIter (forward)");
-        assert!(value >= next.1, "Too small value from ZeroIter (forward)");
-        assert!(!sv.get(value), "ZeroIter returned a set bit (forward)");
-        next = (next.0 + 1, value + 1);
-    }
-}
 
 #[test]
 fn empty_select_zero() {
@@ -373,76 +273,32 @@ fn empty_select_zero() {
 #[test]
 fn nonempty_select_zero() {
     let sv = random_vector(77, 0.025);
-    try_select_zero(&sv);
+    internal::try_select_zero(&sv);
 }
 
 #[test]
 fn uniform_select_zero() {
     let zeros = zero_vector(1998);
     let ones = one_vector(2022);
-    try_select_zero(&zeros);
-    try_select_zero(&ones);
+    internal::try_select_zero(&zeros);
+    internal::try_select_zero(&ones);
 }
 
 #[test]
 fn zero_iter() {
     let sv = random_vector(97, 0.02);
-    try_zero_iter(&sv);
+    internal::try_zero_iter(&sv);
 }
 
 #[test]
 #[ignore]
 fn large_select_zero() {
     let sv = random_vector(19664, 0.022);
-    try_select_zero(&sv);
-    try_zero_iter(&sv);
+    internal::try_select_zero(&sv);
+    internal::try_zero_iter(&sv);
 }
 
 //-----------------------------------------------------------------------------
-
-fn try_pred_succ(sv: &SparseVector) {
-    assert!(sv.supports_pred_succ(), "Failed to enable predecessor/successor support");
-
-    for i in 0..sv.len() {
-        let rank = sv.rank(i);
-        let pred_result = sv.predecessor(i).next();
-        let succ_result = sv.successor(i).next();
-        if sv.get(i) {
-            assert_eq!(pred_result, Some((rank, i)), "Invalid predecessor result at a set bit");
-            assert_eq!(succ_result, Some((rank, i)), "Invalid successor result at a set bit");
-        } else {
-            if rank == 0 {
-                assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
-            } else {
-                if let Some((pred_rank, pred_value)) = pred_result {
-                    let new_rank = sv.rank(pred_value);
-                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
-                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
-                    assert!(sv.get(pred_value), "Predecessor returned an unset bit");
-                } else {
-                    panic!("Could not find a predecessor");
-                }
-            }
-            if rank == sv.count_ones() {
-                assert!(succ_result.is_none(), "Got a successor result after the last set bit");
-            } else {
-                if let Some((succ_rank, succ_value)) = succ_result {
-                    let new_rank = sv.rank(succ_value);
-                    assert_eq!(new_rank, rank, "The returned value was not the successor");
-                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
-                    assert!(sv.get(succ_value), "Successor returned an unset bit");
-                } else {
-                    panic!("Could not find a successor");
-                }
-            }
-        }
-    }
-
-    if sv.len() > 0 {
-        assert_eq!(sv.predecessor(sv.len()).next(), sv.predecessor(sv.len() - 1).next(), "Invalid predecessor at vector size");
-    }
-    assert!(sv.successor(sv.len()).next().is_none(), "Invalid successor at vector size");
-}
 
 #[test]
 fn empty_pred_succ() {
@@ -454,22 +310,22 @@ fn empty_pred_succ() {
 #[test]
 fn nonempty_pred_succ() {
     let sv = random_vector(91, 0.025);
-    try_pred_succ(&sv);
+    internal::try_pred_succ(&sv);
 }
 
 #[test]
 fn uniform_pred_succ() {
     let zeros = zero_vector(1999);
     let ones = one_vector(2021);
-    try_pred_succ(&zeros);
-    try_pred_succ(&ones);
+    internal::try_pred_succ(&zeros);
+    internal::try_pred_succ(&ones);
 }
 
 #[test]
 #[ignore]
 fn large_pred_succ() {
     let sv = random_vector(15663, 0.015);
-    try_pred_succ(&sv);
+    internal::try_pred_succ(&sv);
 }
 
 //-----------------------------------------------------------------------------
@@ -551,14 +407,14 @@ fn multiset_tests(sv: &SparseVector, len: usize, truth: &[usize]) {
     assert_eq!(sv.len(), len, "Invalid length for the bitvector");
     assert_eq!(sv.count_ones(), truth.len(), "Invalid number of ones in the bitvector");
 
-    multiset_access(&sv, truth);
-    try_iter(&sv);
+    multiset_access(sv, truth);
+    try_iter(sv);
     let _ = serialize::test(sv, "multiset-sparse-vector", None, true);
 
-    multiset_rank(&sv, &truth);
-    try_select(&sv, 0);
-    try_one_iter(&sv, 0);
-    multiset_pred_succ(&sv, &truth);
+    multiset_rank(sv, &truth);
+    internal::try_select(sv, 0);
+    try_one_iter(sv, 0);
+    multiset_pred_succ(sv, &truth);
 }
 
 #[test]

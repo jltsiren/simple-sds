@@ -113,6 +113,18 @@ impl<'a> VectorIndex<'a> for NaiveVector {
 //-----------------------------------------------------------------------------
 
 #[test]
+fn get_or() {
+    let data: Vec<u64> = (0..237).collect();
+    let naive = NaiveVector::from(data);
+    let default = u64::MAX;
+
+    for i in 0..naive.len() {
+        assert_eq!(naive.get_or(i, default), i as u64, "Invalid get_or({})", i);
+    }
+    assert_eq!(naive.get_or(naive.len(), default), default, "Invalid default value from get_or()");
+}
+
+#[test]
 fn access_iter() {
     let data = internal::random_vector(322, 7);
     let naive = NaiveVector::from(data.clone());

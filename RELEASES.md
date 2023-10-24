@@ -2,6 +2,13 @@
 
 ## Current version
 
+### Bitvectors
+
+* `RLVector`: Run-length encoded bitvector similar to the one in RLCSA.
+* Consistent conversions between bitvector types:
+  * `From` trait between any two bitvector types.
+  * Associated function `copy_bit_vec` for copying from a type that implements `Select`.
+
 ### Wavelet matrices
 
 * Trait `VectorIndex` for rank/select-type queries over integer vectors.
@@ -14,6 +21,7 @@
   * The default implementation is immutable.
   * The trait includes an iterator over the values.
   * `AccessIter` is a trivial implementation of the iterator using `Access::get`.
+  * `Access::get_or` returns a default value if the index is not valid.
 
 ## Simple-SDS 0.3.1 (2022-02-17)
 
