@@ -1,6 +1,8 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize};
+use crate::serialize::Serialize;
+#[cfg(not(target_family = "wasm"))]
+use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
@@ -906,12 +908,14 @@ impl Drop for RawVectorWriter {
 /// drop(mapper); drop(map);
 /// fs::remove_file(&filename);
 /// ```
+#[cfg(not(target_family = "wasm"))]
 #[derive(PartialEq, Eq, Debug)]
 pub struct RawVectorMapper<'a> {
     len: usize,
     data: MappedSlice<'a, u64>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> RawVectorMapper<'a> {
     /// Returns the length of the vector in bits.
     #[inline]
@@ -935,6 +939,7 @@ impl<'a> RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> AccessRaw for RawVectorMapper<'a> {
     #[inline]
     fn bit(&self, bit_offset: usize) -> bool {
@@ -973,6 +978,7 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
@@ -995,6 +1001,7 @@ impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> AsRef<MappedSlice<'a, u64>> for RawVectorMapper<'a> {
     #[inline]
     fn as_ref(&self) -> &MappedSlice<'a, u64> {
