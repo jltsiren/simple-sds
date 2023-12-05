@@ -135,8 +135,8 @@ Each integer is encoded in little-endian order using 4-bit code units.
 The lowest 3 bits of each code unit contain data.
 If the high bit is set, the encoding continues in the next unit.
 We partition the encoding into 64-unit (32-byte) blocks that consist of entire runs.
-If there is not enough space left for encoding the next `(n0, n1)`, we move to the next block.
-All blocks are padded with the necessary number of code units with value `0`.
+If there is not enough space left for encoding the next `(n0, n1)`, we pad the block with `0` values and move to the next block.
+If the final block is not full, it must not contain any padding.
 
 For each block, we store a sample `(n1, n)`, where `n` is the number of bits and `n1` is the number of set bits encoded in all preceding blocks.
 This can be interpreted as `(rank(n, 1), n)`.

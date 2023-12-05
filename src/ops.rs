@@ -628,7 +628,7 @@ pub trait VectorIndex<'a>: Access<'a> {
 
     /// Returns an iterator at the last occurrence `i <= index` of item `value`.
     ///
-    /// The iterator will return `None` if no such occurrence exists.
+    /// The iterator will return [`None`] if no such occurrence exists.
     /// The default implementation uses [`VectorIndex::rank`] and [`VectorIndex::select_iter`].
     ///
     /// # Panics
@@ -643,7 +643,7 @@ pub trait VectorIndex<'a>: Access<'a> {
 
     /// Returns an iterator at the first occurrence `i >= index` of item `value`.
     ///
-    /// The iterator will return `None` if no such occurrence exists.
+    /// The iterator will return [`None`] if no such occurrence exists.
     /// The default implementation uses [`VectorIndex::rank`] and [`VectorIndex::select_iter`].
     ///
     /// # Panics
@@ -1121,7 +1121,7 @@ pub trait PredSucc<'a>: BitVec<'a> {
 
     /// Returns an iterator at the largest `v <= value` in the integer array.
     ///
-    /// The iterator will return `None` if no such value exists.
+    /// The iterator will return [`None`] if no such value exists.
     /// In the bit array interpretation, the iterator points to the largest `i <= value` such that `self.get(i) == true`.
     ///
     /// # Panics
