@@ -5,6 +5,7 @@
 ### Bitvectors
 
 * `RLVector`: Run-length encoded bitvector similar to the one in RLCSA.
+* `FullBitVec`: A marker trait indicating a fully functional bitvector.
 * Consistent conversions between bitvector types:
   * `From` trait between any two bitvector types.
   * Associated function `copy_bit_vec` for copying from a type that implements `Select`.

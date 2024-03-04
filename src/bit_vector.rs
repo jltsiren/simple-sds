@@ -2,7 +2,7 @@
 
 use crate::bit_vector::rank_support::RankSupport;
 use crate::bit_vector::select_support::SelectSupport;
-use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc, FullBitVec};
 use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -709,6 +709,8 @@ impl Serialize for BitVector {
 }
 
 //-----------------------------------------------------------------------------
+
+impl<'a> FullBitVec<'a> for BitVector {}
 
 impl AsRef<RawVector> for BitVector {
     #[inline]

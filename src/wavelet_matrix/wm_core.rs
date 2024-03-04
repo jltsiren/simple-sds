@@ -31,7 +31,7 @@ use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
-// FIXME Should this be generic over the bitvector type? How to handle construction?
+// FIXME Make generic over the bitvector type.
 /// A bidirectional mapping between the original vector and a stably sorted vector of the same items.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
@@ -46,7 +46,7 @@ use std::{cmp, io};
 /// ```
 /// use simple_sds::wavelet_matrix::wm_core::WMCore;
 ///
-/// // Construction
+/// // Source data
 /// let source: Vec<u64> = vec![1, 0, 3, 1, 1, 2, 4, 5, 1, 2, 1, 7, 0, 1];
 /// let mut reordered: Vec<u64> = source.clone();
 /// reordered.sort_by_key(|x| x.reverse_bits());
@@ -215,6 +215,8 @@ impl WMCore {
 }
 
 //-----------------------------------------------------------------------------
+
+// FIXME: Separate construction from BitVector and RLVector.
 
 macro_rules! wm_core_from {
     ($t:ident) => {

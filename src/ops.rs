@@ -16,6 +16,9 @@
 //! * [`Select`]: Select queries and iterators over set bits.
 //! * [`SelectZero`]: Select queries on the complement and iterators over unset bits.
 //! * [`PredSucc`]: Predecessor and successor queries.
+//! * [`FullBitVec`]: A fully functional bitvector with the above operations as well as [`Serialize`].
+
+use crate::serialize::Serialize;
 
 use std::iter::FusedIterator;
 use std::cmp;
@@ -1143,5 +1146,12 @@ pub trait PredSucc<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
 }
+
+//-----------------------------------------------------------------------------
+
+/// A marker trait indicating that the structure is a fully functional bitvector.
+///
+/// This trait implies all other bitvector traits as well as [`Serialize`].
+pub trait FullBitVec<'a>: BitVec<'a> + Rank<'a> + Select<'a> + PredSucc<'a> + Serialize {}
 
 //-----------------------------------------------------------------------------

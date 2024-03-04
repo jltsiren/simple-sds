@@ -19,7 +19,8 @@
 //! A [`SampleIndex`] is used for narrowing down the range of the binary search.
 
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::{Vector, Access, Push, Resize};
+use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc, FullBitVec};
 use crate::rl_vector::index::SampleIndex;
 use crate::serialize::Serialize;
 use crate::bits;
@@ -1190,5 +1191,9 @@ impl Serialize for RLVector {
         self.data.size_in_elements()
     }
 }
+
+//-----------------------------------------------------------------------------
+
+impl<'a> FullBitVec<'a> for RLVector {}
 
 //-----------------------------------------------------------------------------

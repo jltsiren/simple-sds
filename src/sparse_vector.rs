@@ -33,7 +33,8 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, BitVec, Rank, Select, PredSucc, SelectZero};
+use crate::ops::{Vector, Access};
+use crate::ops::{BitVec, Rank, Select, PredSucc, SelectZero, FullBitVec};
 use crate::raw_vector::{RawVector, AccessRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -1179,5 +1180,9 @@ impl Serialize for SparseVector {
         self.low.size_in_elements()
     }
 }
+
+//-----------------------------------------------------------------------------
+
+impl<'a> FullBitVec<'a> for SparseVector {}
 
 //-----------------------------------------------------------------------------
