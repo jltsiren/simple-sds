@@ -216,7 +216,7 @@ impl WMCore {
 
 //-----------------------------------------------------------------------------
 
-// FIXME: Separate construction from BitVector and RLVector.
+// FIXME: Separate construction for BitVector and RLVector.
 
 macro_rules! wm_core_from {
     ($t:ident) => {

@@ -143,6 +143,13 @@ fn from_vec() {
 }
 
 #[test]
+fn from_slice() {
+    let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+    let int_vec = IntVector::from(&correct[..]);
+    internal::check_vector(&int_vec, &correct, 64);
+}
+
+#[test]
 fn extend() {
     let first: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
     let second: Vec<u64> = vec![1, 2, 4, 8, 16, 32, 64, 128];

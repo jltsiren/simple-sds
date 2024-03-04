@@ -656,8 +656,18 @@ macro_rules! from_extend_int_vector {
     ($t:ident, $w:expr) => {
         impl From<Vec<$t>> for IntVector {
             fn from(v: Vec<$t>) -> Self {
-                let mut result = IntVector::with_capacity(v.len(), $w).unwrap();
+                let mut result = IntVector::new($w).unwrap();
                 result.extend(v);
+                result
+            }
+        }
+
+        impl From<&[$t]> for IntVector {
+            fn from(v: &[$t]) -> Self {
+                let mut result = IntVector::with_capacity(v.len(), $w).unwrap();
+                for value in v.iter() {
+                    result.push(*value as <Self as Vector>::Item);
+                }
                 result
             }
         }

@@ -7,7 +7,7 @@
 * `RLVector`: Run-length encoded bitvector similar to the one in RLCSA.
 * `FullBitVec`: A marker trait indicating a fully functional bitvector.
 * Consistent conversions between bitvector types:
-  * `From` trait between any two bitvector types.
+  * `From` trait between any two bitvector types from both values and references.
   * Associated function `copy_bit_vec` for copying from a type that implements `Select`.
 
 ### Wavelet matrices
@@ -23,6 +23,7 @@
   * The trait includes an iterator over the values.
   * `AccessIter` is a trivial implementation of the iterator using `Access::get`.
   * `Access::get_or` returns a default value if the index is not valid.
+* `IntVector` construction from a slice of integers.
 
 ## Simple-SDS 0.3.1 (2022-02-17)
 
