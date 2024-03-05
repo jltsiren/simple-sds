@@ -9,6 +9,7 @@
 //! See [`wm_core`] for a low-level description.
 //! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
+use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack};
 use crate::serialize::Serialize;
@@ -89,15 +90,16 @@ mod tests;
 /// # Notes
 ///
 /// * `WaveletMatrix` never panics from I/O errors.
+/// * Because `WaveletMatrix` uses a separate bitvector for each level, it is not space-efficient for short vectors.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WaveletMatrix {
+pub struct WaveletMatrix<'a> {
     len: usize,
-    data: WMCore,
+    data: WMCore<'a, BitVector>,
     // Starting offset of each value after reordering by the wavelet matrix, or `len` if the value does not exist.
     first: IntVector,
 }
 
-impl WaveletMatrix {
+impl<'a> WaveletMatrix<'a> {
     // Returns the starting offset of the value after reordering.
     fn start(&self, value: <Self as Vector>::Item) -> usize {
         self.first.get(value as usize) as usize
@@ -139,7 +141,7 @@ impl WaveletMatrix {
 
 macro_rules! wavelet_matrix_from {
     ($t:ident) => {
-        impl From<Vec<$t>> for WaveletMatrix {
+        impl<'a> From<Vec<$t>> for WaveletMatrix<'a> {
             fn from(source: Vec<$t>) -> Self {
                 let len = source.len();
                 let max_value = source.iter().cloned().max().unwrap_or(0);
@@ -159,7 +161,7 @@ wavelet_matrix_from!(usize);
 
 //-----------------------------------------------------------------------------
 
-impl Vector for WaveletMatrix {
+impl<'a> Vector for WaveletMatrix<'a> {
     type Item = u64;
 
     #[inline]
@@ -178,7 +180,7 @@ impl Vector for WaveletMatrix {
     }
 }
 
-impl<'a> Access<'a> for WaveletMatrix {
+impl<'a> Access<'a> for WaveletMatrix<'a> {
     type Iter = AccessIter<'a, Self>;
 
     fn get(&self, index: usize) -> <Self as Vector>::Item {
@@ -190,7 +192,7 @@ impl<'a> Access<'a> for WaveletMatrix {
     }
 }
 
-impl<'a> VectorIndex<'a> for WaveletMatrix {
+impl<'a> VectorIndex<'a> for WaveletMatrix<'a> {
     type ValueIter = ValueIter<'a>;
 
     fn contains(&self, value: <Self as Vector>::Item) -> bool {
@@ -236,7 +238,7 @@ impl<'a> VectorIndex<'a> for WaveletMatrix {
     }
 }
 
-impl Serialize for WaveletMatrix {
+impl<'a> Serialize for WaveletMatrix<'a> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)
     }
@@ -292,8 +294,8 @@ impl Serialize for WaveletMatrix {
 /// ```
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
-    parent: &'a WaveletMatrix,
-    value: <WaveletMatrix as Vector>::Item,
+    parent: &'a WaveletMatrix<'a>,
+    value: <WaveletMatrix<'a> as Vector>::Item,
     // The first rank we have not seen.
     rank: usize,
 }
@@ -335,13 +337,13 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 /// assert_eq!(target, source);
 /// ```
 #[derive(Clone, Debug)]
-pub struct IntoIter {
-    parent: WaveletMatrix,
+pub struct IntoIter<'a> {
+    parent: WaveletMatrix<'a>,
     index: usize,
 }
 
-impl Iterator for IntoIter {
-    type Item = <WaveletMatrix as Vector>::Item;
+impl<'a> Iterator for IntoIter<'a> {
+    type Item = <WaveletMatrix<'a> as Vector>::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.parent.len() {
@@ -360,13 +362,13 @@ impl Iterator for IntoIter {
     }
 }
 
-impl ExactSizeIterator for IntoIter {}
+impl<'a> ExactSizeIterator for IntoIter<'a> {}
 
-impl FusedIterator for IntoIter {}
+impl<'a> FusedIterator for IntoIter<'a> {}
 
-impl IntoIterator for WaveletMatrix {
+impl<'a> IntoIterator for WaveletMatrix<'a> {
     type Item = <Self as Vector>::Item;
-    type IntoIter = IntoIter;
+    type IntoIter = IntoIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {

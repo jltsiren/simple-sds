@@ -21,8 +21,9 @@
 //! > `bv[level].count_zeros() + bv[level].rank(i)`.
 
 use crate::bit_vector::BitVector;
-use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::FullBitVec;
 use crate::raw_vector::{RawVector, PushRaw};
+use crate::rl_vector::{RLVector, RLBuilder};
 use crate::serialize::Serialize;
 use crate::bits;
 
@@ -31,7 +32,6 @@ use std::{cmp, io};
 
 //-----------------------------------------------------------------------------
 
-// FIXME Make generic over the bitvector type.
 /// A bidirectional mapping between the original vector and a stably sorted vector of the same items.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
@@ -44,6 +44,7 @@ use std::{cmp, io};
 /// # Examples
 ///
 /// ```
+/// use simple_sds::bit_vector::BitVector;
 /// use simple_sds::wavelet_matrix::wm_core::WMCore;
 ///
 /// // Source data
@@ -52,7 +53,7 @@ use std::{cmp, io};
 /// reordered.sort_by_key(|x| x.reverse_bits());
 ///
 /// // Construction
-/// let core = WMCore::from(source.clone());
+/// let core: WMCore<'_, BitVector> = WMCore::from(source.clone());
 /// assert_eq!(core.len(), source.len());
 /// assert_eq!(core.width(), 3);
 ///
@@ -71,11 +72,12 @@ use std::{cmp, io};
 /// }
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WMCore {
-    levels: Vec<BitVector>,
+pub struct WMCore<'a, T: FullBitVec<'a>> {
+    levels: Vec<T>,
+    _phantom: std::marker::PhantomData<&'a T>,
 }
 
-impl WMCore {
+impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
     /// Returns the length of each level in the structure.
     pub fn len(&self) -> usize {
         self.levels[0].len()
@@ -165,7 +167,7 @@ impl WMCore {
     ///
     /// * `index`: Position in the reordered vector.
     /// * `value`: Value of an item.
-    pub fn map_up_with(&self, index: usize, value: u64) -> Option<usize> {
+    pub fn map_up_with(&'a self, index: usize, value: u64) -> Option<usize> {
         let mut index = index;
         for level in (0..self.width()).rev() {
             if value & self.bit_value(level) != 0 {
@@ -194,12 +196,12 @@ impl WMCore {
     }
 
     // Maps the index from the next level with a set bit.
-    fn map_up_one(&self, index: usize, level: usize) -> Option<usize> {
+    fn map_up_one(&'a self, index: usize, level: usize) -> Option<usize> {
         self.levels[level].select(index - self.levels[level].count_zeros())
     }
 
     // Maps the index from the next level with an unset bit.
-    fn map_up_zero(&self, index: usize, level: usize) -> Option<usize> {
+    fn map_up_zero(&'a self, index: usize, level: usize) -> Option<usize> {
         self.levels[level].select_zero(index)
     }
 
@@ -216,11 +218,10 @@ impl WMCore {
 
 //-----------------------------------------------------------------------------
 
-// FIXME: Separate construction for BitVector and RLVector.
-
+// TODO: Optimize construction. There are fast algorithms in the literature.
 macro_rules! wm_core_from {
     ($t:ident) => {
-        impl From<Vec<$t>> for WMCore {
+        impl From<Vec<$t>> for WMCore<'_, BitVector> {
             fn from(source: Vec<$t>) -> Self {
                 let mut source = source;
                 let max_value = source.iter().cloned().max().unwrap_or(0);
@@ -253,7 +254,7 @@ macro_rules! wm_core_from {
                     levels.push(BitVector::from(raw_data));
                 }
 
-                let mut result = WMCore { levels, };
+                let mut result = WMCore { levels, _phantom: std::marker::PhantomData, };
                 result.init_support();
                 result
             }
@@ -267,14 +268,60 @@ wm_core_from!(u32);
 wm_core_from!(u64);
 wm_core_from!(usize);
 
+impl<'a> WMCore<'a, RLVector> {
+    /// Creates a new run-length encoded `WMCore` from a vector of runs.
+    ///
+    /// The runs are given as `(value, length)` pairs.
+    pub fn from_runs(runs: Vec<(u64, usize)>) -> Self {
+        let len: usize = runs.iter().map(|(_, len)| *len).sum();
+        let max_value = runs.iter().map(|(value, _)| *value).max().unwrap_or(0);
+        let width = bits::bit_len(max_value);
+
+        let mut runs = runs;
+        let mut levels: Vec<RLVector> = Vec::new();
+        for level in 0..width {
+            let bit_value = 1 << (width - 1 - level);
+            let mut zeros: Vec<(u64, usize)> = Vec::new();
+            let mut ones: Vec<(u64, usize)> = Vec::new();
+            let mut builder = RLBuilder::new();
+
+            // Determine if the current bit is set in each run.
+            let mut offset = 0;
+            for (value, len) in runs.iter() {
+                if value & bit_value != 0 {
+                    unsafe { builder.set_run_unchecked(offset, *len); }
+                    ones.push((*value, *len));
+                } else {
+                    zeros.push((*value, *len));
+                }
+                offset += len;
+            }
+
+            // Sort the values stably by the current bit.
+            runs.clear();
+            runs.extend(zeros);
+            runs.extend(ones);
+
+            // Create the bitvector for the current level.
+            builder.set_len(len);
+            levels.push(RLVector::from(builder));
+        }
+
+        let mut result = WMCore { levels, _phantom: std::marker::PhantomData, };
+        result.init_support();
+        result
+    }
+}
+
+
 //-----------------------------------------------------------------------------
 
-impl Serialize for WMCore {
-    fn serialize_header<T: io::Write>(&self, _: &mut T) -> io::Result<()> {
+impl<'a, T: FullBitVec<'a>> Serialize for WMCore<'a, T> {
+    fn serialize_header<W: io::Write>(&self, _: &mut W) -> io::Result<()> {
         Ok(())
     }
 
-    fn serialize_body<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
+    fn serialize_body<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         let width = self.width();
         width.serialize(writer)?;
         for bv in self.levels.iter() {
@@ -283,16 +330,16 @@ impl Serialize for WMCore {
         Ok(())
     }
 
-    fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
+    fn load<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let width = usize::load(reader)?;
         if width == 0 || width > bits::WORD_BITS {
             return Err(Error::new(ErrorKind::InvalidData, "Invalid width"));
         }
 
         let mut len: Option<usize> = None;
-        let mut levels: Vec<BitVector> = Vec::with_capacity(width);
+        let mut levels: Vec<T> = Vec::with_capacity(width);
         for _ in 0..width {
-            let bv = BitVector::load(reader)?;
+            let bv = T::load(reader)?;
             match len {
                 Some(len) => {
                     if bv.len() != len {
@@ -305,7 +352,7 @@ impl Serialize for WMCore {
             }
             levels.push(bv);
         }
-        let mut result = WMCore { levels, };
+        let mut result = WMCore { levels, _phantom: std::marker::PhantomData, };
         result.init_support();
         Ok(result)
     }
@@ -333,8 +380,9 @@ mod tests {
         result
     }
 
-    fn check_core(core: &WMCore, original: &[u64], reordered: &[u64]) {
+    fn check_core<'a, T: FullBitVec<'a>>(core: &'a WMCore<'a, T>, original: &[u64]) {
         assert_eq!(core.len(), original.len(), "Invalid WMCore length");
+        let reordered = reordered_vector(original);
 
         for i in 0..core.len() {
             let mapped = core.map_down_with(i, original[i]);
@@ -358,27 +406,56 @@ mod tests {
         }
     }
 
+    fn check_core_rl(core: &WMCore<'_, RLVector>, original: &[(u64, usize)]) {
+        let mut values: Vec<u64> = Vec::new();
+        for (value, len) in original.iter() {
+            for _ in 0..*len {
+                values.push(*value);
+            }
+        }
+        check_core(core, &values);
+    }
+
     #[test]
-    fn empty_core() {
+    fn empty_core_plain() {
         let original: Vec<u64> = Vec::new();
-        let reordered = reordered_vector(&original);
-        let core = WMCore::from(original.clone());
-        check_core(&core, &original, &reordered);
+        let core: WMCore<'_, BitVector> = WMCore::from(original.clone());
+        check_core(&core, &original);
     }
 
     #[test]
-    fn non_empty_core() {
+    fn empty_core_rl() {
+        let original: Vec<(u64, usize)> = Vec::new();
+        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        check_core_rl(&core, &original);
+    }
+
+    #[test]
+    fn non_empty_core_plain() {
         let original = internal::random_vector(322, 7);
-        let reordered = reordered_vector(&original);
-        let core = WMCore::from(original.clone());
-        check_core(&core, &original, &reordered);
+        let core: WMCore<'_, BitVector> = WMCore::from(original.clone());
+        check_core(&core, &original);
     }
 
     #[test]
-    fn serialize_core() {
+    fn non_empty_core_rl() {
+        let original = internal::random_integer_runs(37, 9, 0.08);
+        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        check_core_rl(&core, &original);
+    }
+
+    #[test]
+    fn serialize_core_plain() {
         let original = internal::random_vector(286, 6);
-        let core = WMCore::from(original);
-        serialize::test(&core, "wm-core", None, true);
+        let core: WMCore<'_, BitVector> = WMCore::from(original.clone());
+        serialize::test(&core, "wm-core-plain", None, true);
+    }
+
+    #[test]
+    fn serialize_core_rl() {
+        let original = internal::random_integer_runs(29, 8, 0.07);
+        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        serialize::test(&core, "wm-core-rl", None, true);
     }
 }
 

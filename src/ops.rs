@@ -1152,6 +1152,6 @@ pub trait PredSucc<'a>: BitVec<'a> {
 /// A marker trait indicating that the structure is a fully functional bitvector.
 ///
 /// This trait implies all other bitvector traits as well as [`Serialize`].
-pub trait FullBitVec<'a>: BitVec<'a> + Rank<'a> + Select<'a> + PredSucc<'a> + Serialize {}
+pub trait FullBitVec<'a>: BitVec<'a> + Rank<'a> + Select<'a> + SelectZero<'a> + PredSucc<'a> + Serialize {}
 
 //-----------------------------------------------------------------------------

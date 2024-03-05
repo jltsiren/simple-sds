@@ -82,6 +82,24 @@ pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
     (runs, universe)
 }
 
+// Returns `n` random (value, length) runs, where lengths are `Geometric(p)`.
+// The values are in `0..(1 << width)`, and it is possible that the same value is repeated.
+// Note that `p` is the flip probability.
+pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> {
+    let mut runs: Vec<(u64, usize)> = Vec::with_capacity(n);
+    let mut rng = rand::thread_rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let mask = bits::low_set(width);
+    for _ in 0..n {
+        let value: u64 = rng.gen::<u64>() & mask;
+        let len = 1 + (dist.sample(&mut rng) as usize);
+        runs.push((value & bits::low_set(width), len));
+    }
+
+    runs
+}
+
 //-----------------------------------------------------------------------------
 
 // Returns a human-readable representation of a size in bytes.
