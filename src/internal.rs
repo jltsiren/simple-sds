@@ -113,16 +113,16 @@ pub fn readable_size(bytes: usize) -> (f64, &'static str) {
     ];
 
     let value = bytes as f64;
-    let mut unit = 0;
-    for i in 1..units.len() {
-        if value >= units[i].0 {
-            unit = i;
+    let mut unit = units[0];
+    for next in units.iter().skip(1) {
+        if value >= next.0 {
+            unit = *next;
         } else {
             break;
         }
     }
 
-    (value / units[unit].0, units[unit].1)
+    (value / unit.0, unit.1)
 }
 
 // Prints a summary report for construction.
@@ -135,7 +135,7 @@ pub fn report_construction<T: Serialize>(object: &T, len: usize, duration: Durat
     let (size, unit) = readable_size(object.size_in_bytes());
     println!("Time:     {:.3} seconds ({:.1} ns/symbol)", duration.as_secs_f64(), ns);
     println!("Size:     {:.3} {}", size, unit);
-    println!("");
+    println!();
 }
 
 // Prints a summary report for query results.
@@ -150,7 +150,7 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
     let ns = (duration.as_nanos() as f64) / (queries as f64);
     println!("Time:     {:.3} seconds ({:.1} ns/query)", duration.as_secs_f64(), ns);
     println!("Average:  {:.0} absolute, {:.6} normalized", average, normalized);
-    println!("");
+    println!();
 }
 
 //-----------------------------------------------------------------------------
@@ -198,7 +198,7 @@ pub fn report_memory_usage() {
             println!("{}", f);
         },
     }
-    println!("");
+    println!();
 }
 
 //-----------------------------------------------------------------------------
@@ -314,27 +314,23 @@ pub fn try_pred_succ<'a, T: Rank<'a> + PredSucc<'a>>(bv: &'a T) {
         } else {
             if rank == 0 {
                 assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
+            } else if let Some((pred_rank, pred_value)) = pred_result {
+                let new_rank = bv.rank(pred_value);
+                assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
+                assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
+                assert!(bv.get(pred_value), "Predecessor returned an unset bit");
             } else {
-                if let Some((pred_rank, pred_value)) = pred_result {
-                    let new_rank = bv.rank(pred_value);
-                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
-                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
-                    assert!(bv.get(pred_value), "Predecessor returned an unset bit");
-                } else {
-                    panic!("Could not find a predecessor");
-                }
+                panic!("Could not find a predecessor");
             }
             if rank == bv.count_ones() {
                 assert!(succ_result.is_none(), "Got a successor result after the last set bit");
+            } else if let Some((succ_rank, succ_value)) = succ_result {
+                let new_rank = bv.rank(succ_value);
+                assert_eq!(new_rank, rank, "The returned value was not the successor");
+                assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
+                assert!(bv.get(succ_value), "Successor returned an unset bit");
             } else {
-                if let Some((succ_rank, succ_value)) = succ_result {
-                    let new_rank = bv.rank(succ_value);
-                    assert_eq!(new_rank, rank, "The returned value was not the successor");
-                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
-                    assert!(bv.get(succ_value), "Successor returned an unset bit");
-                } else {
-                    panic!("Could not find a successor");
-                }
+                panic!("Could not find a successor");
             }
         }
     }
@@ -358,8 +354,8 @@ where
     assert_eq!(v.is_empty(), truth.is_empty(), "Invalid vector emptiness");
     assert_eq!(v.width(), width, "Invalid vector width");
 
-    for i in 0..v.len() {
-        assert_eq!(v.get(i), truth[i], "Invalid value {}", i);
+    for (i, value) in truth.iter().enumerate() {
+        assert_eq!(v.get(i), *value, "Invalid value {}", i);
     }
     assert!(v.iter().eq(truth.iter().cloned()), "Invalid iterator (forward)");
 

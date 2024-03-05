@@ -1,3 +1,8 @@
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::new_without_default
+)]
+
 use simple_sds::ops::{Vector, Access, VectorIndex};
 use simple_sds::serialize::Serialize;
 use simple_sds::wavelet_matrix::WaveletMatrix;
@@ -23,27 +28,27 @@ fn main() {
 
     println!("Generating {} random access queries over the vector", config.queries);
     let access_queries = internal::random_queries(config.queries, wm.len());
-    println!("");
+    println!();
 
     println!("Generating {} random rank queries over the vector", config.queries);
     let rank_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random inverse select queries over the vector", config.queries);
     let inverse_select_queries = internal::random_queries(config.queries, wm.len());
-    println!("");
+    println!();
 
     println!("Generating {} random select queries over the vector", config.queries);
     let select_queries = query_pairs(config.queries, wm.len() >> wm.width(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random predecessor queries over the vector", config.queries);
     let predecessor_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random successor queries over the vector", config.queries);
     let successor_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     independent_access(&wm, &access_queries, "WaveletMatrix");
     independent_rank(&wm, &rank_queries, "WaveletMatrix");
@@ -80,7 +85,7 @@ impl Config {
         let matches = match opts.parse(&args[1..]) {
             Ok(m) => m,
             Err(f) => {
-                eprintln!("{}", f.to_string());
+                eprintln!("{}", f);
                 process::exit(1);
             }
         };
@@ -105,7 +110,7 @@ impl Config {
                     config.len = 1 << n;
                 },
                 Err(f) => {
-                    eprintln!("--bit-len: {}", f.to_string());
+                    eprintln!("--bit-len: {}", f);
                     process::exit(1);
                 },
             }
@@ -120,7 +125,7 @@ impl Config {
                     config.width = n;
                 },
                 Err(f) => {
-                    eprintln!("--width: {}", f.to_string());
+                    eprintln!("--width: {}", f);
                     process::exit(1);
                 },
             }
@@ -135,7 +140,7 @@ impl Config {
                     config.queries = n;
                 },
                 Err(f) => {
-                    eprintln!("--queries: {}", f.to_string());
+                    eprintln!("--queries: {}", f);
                     process::exit(1);
                 },
             }
