@@ -79,11 +79,13 @@ pub struct WMCore<'a, T: FullBitVec<'a>> {
 
 impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
     /// Returns the length of each level in the structure.
+    #[inline]
     pub fn len(&self) -> usize {
         self.levels[0].len()
     }
 
     /// Returns the number of levels in the structure.
+    #[inline]
     pub fn width(&self) -> usize {
         self.levels.len()
     }

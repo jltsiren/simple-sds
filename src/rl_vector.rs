@@ -328,6 +328,7 @@ impl RLBuilder {
     /// Returns the length of the bitvector.
     ///
     /// This is the first position that can be set.
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -335,16 +336,19 @@ impl RLBuilder {
     /// Returns `true` if the bitvector is empty.
     ///
     /// Makes Clippy happy.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the number of set bits in the bitvector.
+    #[inline]
     pub fn count_ones(&self) -> usize {
         self.ones
     }
 
     /// Returns the number of unset bits in the bitvector.
+    #[inline]
     pub fn count_zeros(&self) -> usize {
         self.len() - self.count_ones()
     }
