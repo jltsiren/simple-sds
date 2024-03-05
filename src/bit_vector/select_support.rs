@@ -121,7 +121,7 @@ impl<T: Transformation> SelectSupport<T> {
         let mut iter = T::one_iter(parent);
         let mut value = iter.next();
 
-        while sample != None {
+        while sample.is_some() {
             let start = sample.unwrap();
             let next_sample = sample_iter.nth(Self::SUPERBLOCK_SIZE - 1);
             let limit = match next_sample {

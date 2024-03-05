@@ -146,6 +146,7 @@ impl RLVector {
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
     /// [`From`] implementations from other bitvector types should generally use this function.
+    /// If the source is in an invalid state or a multiset, this will select a greedy increasing subsequence of positions of set bits.
     ///
     /// # Examples
     ///
@@ -164,7 +165,9 @@ impl RLVector {
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut builder = RLBuilder::new();
         for (_, index) in source.one_iter() {
-            unsafe { builder.set_bit_unchecked(index); }
+            if index >= builder.len() {
+                unsafe { builder.set_bit_unchecked(index); }
+            }
         }
         builder.set_len(source.len());
         RLVector::from(builder)
@@ -405,7 +408,7 @@ impl RLBuilder {
     ///
     /// Behavior is undefined if `start < self.len()` of `start + len > usize::MAX`.
     pub unsafe fn set_run_unchecked(&mut self, start: usize, len: usize) {
-        if len <= 0 {
+        if len == 0 {
             return;
         }
         if start == self.len() {
@@ -433,7 +436,7 @@ impl RLBuilder {
 
     // Encodes the current run if necessary and sets the active run to `(self.len(), 0)`.
     fn flush(&mut self) {
-        if self.run.1 <= 0 {
+        if self.run.1 == 0 {
             return;
         }
 
@@ -457,7 +460,7 @@ impl RLBuilder {
         let mut value = value as u64;
         while value > RLVector::CODE_MASK {
             self.data.push((value & RLVector::CODE_MASK) | RLVector::CODE_FLAG);
-            value = value >> RLVector::CODE_SHIFT;
+            value >>= RLVector::CODE_SHIFT;
         }
         self.data.push(value);
     }
@@ -505,7 +508,7 @@ impl From<RLBuilder> for RLVector {
             rank_index,
             select_index,
             select_zero_index,
-            samples: samples,
+            samples,
             data: builder.data,
         }
     }
@@ -1099,7 +1102,7 @@ impl<'a> PredSucc<'a> for RLVector {
                 let (start, _) = next.unwrap();
 
                 iterate = start <= value;
-                return iterate;
+                iterate
             });
         }
 

@@ -84,6 +84,14 @@ impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
         self.levels[0].len()
     }
 
+    /// Returns `true` if the structure is empty.
+    ///
+    /// Keeps Clippy happy.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns the number of levels in the structure.
     #[inline]
     pub fn width(&self) -> usize {

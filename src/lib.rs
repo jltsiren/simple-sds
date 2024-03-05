@@ -11,6 +11,8 @@
 //! * Unix-like operating system is required for `mmap()`.
 //! * Things may not work if the system is not little-endian or if `usize` is not 64-bit.
 
+#![allow(clippy::uninlined_format_args)]
+
 pub mod bit_vector;
 pub mod bits;
 pub mod int_vector;

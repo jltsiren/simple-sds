@@ -30,6 +30,7 @@
 //!
 //! We can also support multisets that contain duplicate values (in the integer array interpretation).
 //! Rank/select queries for unset bits do not work correctly with multisets.
+//! When a multiset is converted to other bitvector types, the result is a set.
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
@@ -172,10 +173,15 @@ impl SparseVector {
     /// assert_eq!(sv.count_ones(), bv.count_ones());
     /// assert!(!sv.is_multiset());
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the source bitvector is in an invalid state.
+    /// Will panic if the source is a `SparseVector` representing a multiset.
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut builder = SparseBuilder::new(source.len(), source.count_ones()).unwrap();
         for (_, index) in source.one_iter() {
-            unsafe { builder.set_unchecked(index); }
+            builder.set(index);
         }
         SparseVector::try_from(builder).unwrap()
     }

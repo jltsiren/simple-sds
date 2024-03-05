@@ -129,6 +129,10 @@ impl BitVector {
     /// assert_eq!(copy.len(), bv.len());
     /// assert_eq!(copy.count_ones(), bv.count_ones());
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the source bitvector is in an invalid state.
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut data = RawVector::with_len(source.len(), false);
         for (_, index) in source.one_iter() {
@@ -245,7 +249,7 @@ impl<'a> BitVec<'a> for BitVector {
 
 impl<'a> Rank<'a> for BitVector {
     fn supports_rank(&self) -> bool {
-        self.rank != None
+        self.rank.is_some()
     }
 
     fn enable_rank(&mut self) {
@@ -521,7 +525,7 @@ impl<'a> Select<'a> for BitVector {
     type OneIter = OneIter<'a, Identity>;
 
     fn supports_select(&self) -> bool {
-        self.select != None
+        self.select.is_some()
     }
 
     fn enable_select(&mut self) {
@@ -572,7 +576,7 @@ impl<'a> SelectZero<'a> for BitVector {
     type ZeroIter = OneIter<'a, Complement>;
 
     fn supports_select_zero(&self) -> bool {
-        self.select_zero != None
+        self.select_zero.is_some()
     }
 
     fn enable_select_zero(&mut self) {
@@ -623,7 +627,7 @@ impl<'a> PredSucc<'a> for BitVector {
     type OneIter = OneIter<'a, Identity>;
 
     fn supports_pred_succ(&self) -> bool {
-        self.rank != None && self.select != None
+        self.rank.is_some() && self.select.is_some()
     }
 
     fn enable_pred_succ(&mut self) {
@@ -671,6 +675,9 @@ impl Serialize for BitVector {
         let data = RawVector::load(reader)?;
         if ones > data.len() {
             return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
+        }
+        if ones != data.count_ones() {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of set bits"));
         }
 
         let rank = Option::<RankSupport>::load(reader)?;

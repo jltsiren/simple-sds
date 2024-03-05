@@ -4,7 +4,7 @@ use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
-use std::io::{Error, ErrorKind, Seek, SeekFrom};
+use std::io::{Error, ErrorKind, Seek};
 use std::path::{Path, PathBuf};
 use std::{cmp, io};
 
@@ -808,7 +808,7 @@ impl RawVectorWriter {
     // Seeks to the start of the file, appends its own header to `header`, and writes it into the file.
     fn write_header(&mut self, header: &mut Vec<u64>) -> io::Result<()> {
         if let Some(f) = self.file.as_mut() {
-            f.seek(SeekFrom::Start(0))?;
+            f.rewind()?;
             header.push(self.len as u64);
             header.push(bits::bits_to_words(self.len) as u64);
             header.serialize_body(f)?;
