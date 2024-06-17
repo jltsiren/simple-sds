@@ -323,7 +323,6 @@ impl<'a> WMCore<'a, RLVector> {
     }
 }
 
-
 //-----------------------------------------------------------------------------
 
 impl<'a, T: FullBitVec<'a>> Serialize for WMCore<'a, T> {
