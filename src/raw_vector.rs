@@ -531,6 +531,9 @@ impl AccessRaw for RawVector {
 
     #[inline]
     unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        if width == 0 {
+            return 0;
+        }
         bits::read_int(&self.data, bit_offset, width)
     }
 
@@ -602,6 +605,9 @@ impl PopRaw for RawVector {
 
     unsafe fn pop_int(&mut self, width: usize) -> Option<u64> {
         if self.len() >= width {
+            if width == 0 {
+                return Some(0);
+            }
             let result = self.int(self.len - width, width);
             self.len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
@@ -865,6 +871,9 @@ impl PushRaw for RawVectorWriter {
     }
 
     unsafe fn push_int(&mut self, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         self.buf.push_int(value, width); self.len += width;
         if self.buf.len() >= self.buf_len {
             self.flush(FlushMode::Safe).unwrap();
