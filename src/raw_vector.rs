@@ -558,6 +558,9 @@ impl AccessRaw for RawVector {
 
     #[inline]
     unsafe fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
@@ -952,6 +955,9 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
 
     #[inline]
     unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        if width == 0 {
+            return 0;
+        }
         bits::read_int(&self.data, bit_offset, width)
     }
 
