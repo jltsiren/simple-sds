@@ -573,6 +573,9 @@ impl PushRaw for RawVector {
     }
 
     unsafe fn push_int(&mut self, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
