@@ -14,9 +14,9 @@ use rand_distr::{Geometric, Distribution};
 // Returns a vector of `len` random `width`-bit integers.
 pub fn random_vector(len: usize, width: usize) -> Vec<u64> {
     let mut result: Vec<u64> = Vec::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..len {
-        let value: u64 = rng.gen();
+        let value: u64 = rng.random();
         result.push(value & bits::low_set(width));
     }
     result
@@ -25,9 +25,9 @@ pub fn random_vector(len: usize, width: usize) -> Vec<u64> {
 // Returns `n` random values in `0..universe`.
 pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
     let mut result: Vec<usize> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..n {
-        let value: usize = rng.gen();
+        let value: usize = rng.random::<u64>() as usize;
         result.push(value % universe);
     }
     result
@@ -37,7 +37,7 @@ pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
 // The distances between positions are `Geometric(density)`.
 pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
     let mut positions: Vec<usize> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(density).unwrap();
     let mut universe = 0;
 
@@ -57,11 +57,11 @@ pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
 // Note that `p` is the flip probability.
 pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
     let mut runs: Vec<(usize, usize)> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(p).unwrap();
 
-    let start_with_one: bool = rng.gen();
-    let end_with_zero: bool = rng.gen();
+    let start_with_one: bool = rng.random();
+    let end_with_zero: bool = rng.random();
     let mut universe = 0;
     let mut iter = dist.sample_iter(&mut rng);
     if start_with_one {
@@ -87,12 +87,12 @@ pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
 // Note that `p` is the flip probability.
 pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> {
     let mut runs: Vec<(u64, usize)> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(p).unwrap();
 
     let mask = bits::low_set(width);
     for _ in 0..n {
-        let value: u64 = rng.gen::<u64>() & mask;
+        let value: u64 = rng.random::<u64>() & mask;
         let len = 1 + (dist.sample(&mut rng) as usize);
         runs.push((value & bits::low_set(width), len));
     }

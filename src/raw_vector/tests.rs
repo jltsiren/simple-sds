@@ -11,9 +11,9 @@ use rand::Rng;
 
 fn random_vector(n: usize, width: usize) -> Vec<u64> {
     let mut result: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..n {
-        let value: u64 = rng.gen();
+        let value: u64 = rng.random();
         result.push(value & bits::low_set(width));
     }
     result
@@ -269,9 +269,9 @@ fn push_bits_to_writer() {
     let filename = serialize::temp_file_name("push-bits-to-raw-vector-writer");
 
     let mut correct: Vec<bool> = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..3523 {
-        correct.push(rng.gen());
+        correct.push(rng.random());
     }
 
     let mut header: Vec<u64> = Vec::new();

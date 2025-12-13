@@ -275,7 +275,7 @@ impl SparseVector {
 
     // Returns (run rank, one_iter past the run) for the run of 0s that contains
     // unset bit of the given rank.
-    fn find_zero_run(&self, rank: usize) -> (usize, OneIter) {
+    fn find_zero_run(&'_ self, rank: usize) -> (usize, OneIter<'_>) {
         let mut low = 0;
         let mut high = self.count_ones();
         let mut result = (0, self.one_iter());

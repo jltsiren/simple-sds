@@ -144,23 +144,23 @@ mod tests {
         let mut last = 0;
         while last < universe {
             values.push(last);
-            last += 1 + rng.gen_range(0..density);
+            last += 1 + rng.random_range(0..density);
         }
         values
     }
 
     #[test]
     fn parameters() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut values: Vec<usize> = (1..10).collect();
         for _ in 0..100 {
-            values.push(rng.gen_range(1..10000));
+            values.push(rng.random_range(1..10000));
         }
 
         for v in values {
             let mut universe: Vec<usize> = vec![v, v + 1, v * SampleIndex::RATIO - 1, v * SampleIndex::RATIO, v * SampleIndex::RATIO + 1];
             for _ in 0..10 {
-                universe.push(v * rng.gen_range(1..10) + rng.gen_range(0..v));
+                universe.push(v * rng.random_range(1..10) + rng.random_range(0..v));
             }
             for u in universe {
                 check_parameters(v, u);
@@ -170,14 +170,14 @@ mod tests {
 
     #[test]
     fn sample_index() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..10 {
-            let universe = rng.gen_range(10_000..100_000);
-            let density = rng.gen_range(2..1000);
+            let universe = rng.random_range(10_000..100_000);
+            let density = rng.random_range(2..1000);
             let values = generate_values(universe, density, &mut rng);
             let index = SampleIndex::new(values.iter().copied(), universe);
             for _ in 0..1000 {
-                let query = rng.gen_range(0..universe);
+                let query = rng.random_range(0..universe);
                 let range = index.range(query);
                 let start = values[range.start];
                 assert!(start <= query, "Range start values[{}] = {} is too large for query {} (universe size {}, density {})", range.start, start, query, universe, density);

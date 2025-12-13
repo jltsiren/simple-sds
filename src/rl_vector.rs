@@ -392,7 +392,7 @@ impl RLBuilder {
     ///
     /// Behavior is undefined if `index < self.len()`.
     pub unsafe fn set_bit_unchecked(&mut self, index: usize) {
-        self.set_run_unchecked(index, 1);
+        unsafe { self.set_run_unchecked(index, 1); }
     }
 
     /// Encodes a run of set bits of length `len` starting at position `start`.

@@ -534,7 +534,7 @@ impl AccessRaw for RawVector {
         if width == 0 {
             return 0;
         }
-        bits::read_int(&self.data, bit_offset, width)
+        unsafe { bits::read_int(&self.data, bit_offset, width) }
     }
 
     #[inline]
@@ -544,7 +544,7 @@ impl AccessRaw for RawVector {
 
     #[inline]
     unsafe fn word_unchecked(&self, index: usize) -> u64 {
-        *self.data.get_unchecked(index)
+        unsafe { *self.data.get_unchecked(index) }
     }
 
     #[inline]
@@ -564,7 +564,7 @@ impl AccessRaw for RawVector {
         if width == 0 {
             return;
         }
-        bits::write_int(&mut self.data, bit_offset, value, width);
+        unsafe { bits::write_int(&mut self.data, bit_offset, value, width); }
     }
 }
 
@@ -585,7 +585,7 @@ impl PushRaw for RawVector {
         if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
-        bits::write_int(&mut self.data, self.len, value, width);
+        unsafe { bits::write_int(&mut self.data, self.len, value, width); }
         self.len += width;
     }
 }
@@ -608,7 +608,7 @@ impl PopRaw for RawVector {
             if width == 0 {
                 return Some(0);
             }
-            let result = self.int(self.len - width, width);
+            let result = unsafe { self.int(self.len - width, width) };
             self.len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
             self.set_unused_bits(false);
@@ -874,7 +874,8 @@ impl PushRaw for RawVectorWriter {
         if width == 0 {
             return;
         }
-        self.buf.push_int(value, width); self.len += width;
+        unsafe { self.buf.push_int(value, width); }
+        self.len += width;
         if self.buf.len() >= self.buf_len {
             self.flush(FlushMode::Safe).unwrap();
         }
@@ -967,7 +968,7 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
         if width == 0 {
             return 0;
         }
-        bits::read_int(&self.data, bit_offset, width)
+        unsafe { bits::read_int(&self.data, bit_offset, width) }
     }
 
     #[inline]
@@ -977,7 +978,7 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
 
     #[inline]
     unsafe fn word_unchecked(&self, index: usize) -> u64 {
-        *self.data.get_unchecked(index)
+        unsafe { *self.data.get_unchecked(index) }
     }
 
     #[inline]

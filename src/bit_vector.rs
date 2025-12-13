@@ -329,7 +329,7 @@ impl Transformation for Identity {
 
     #[inline]
     unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
-        parent.data.word_unchecked(index)
+        unsafe { parent.data.word_unchecked(index) }
     }
 
     #[inline]
@@ -363,10 +363,12 @@ impl Transformation for Complement {
 
     unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
         let (last_index, offset) = bits::split_offset(parent.len());
-        if index >= last_index {
-            (!parent.data.word_unchecked(index)) & bits::low_set_unchecked(offset)
-        } else {
-            !parent.data.word_unchecked(index)
+        unsafe {
+            if index >= last_index {
+                (!parent.data.word_unchecked(index)) & bits::low_set_unchecked(offset)
+            } else {
+                !parent.data.word_unchecked(index)
+            }
         }
     }
 

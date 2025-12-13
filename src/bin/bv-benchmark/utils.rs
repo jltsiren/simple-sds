@@ -7,17 +7,16 @@ use simple_sds::serialize::Serialize;
 use simple_sds::internal;
 
 use rand::Rng;
-use rand::distributions::Bernoulli;
-use rand_distr::{Geometric, Distribution};
+use rand_distr::{Bernoulli, Geometric, Distribution};
 
 //-----------------------------------------------------------------------------
 
 pub fn random_vector(len: usize, density: f64) -> BitVector {
     let mut data = RawVector::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     if density == 0.5 {
         while data.len() < len {
-            unsafe { data.push_int(rng.gen(), 64); }
+            unsafe { data.push_int(rng.random(), 64); }
         }
     }
     else {
@@ -41,10 +40,10 @@ pub fn random_vector(len: usize, density: f64) -> BitVector {
 
 pub fn random_vector_runs(len: usize, flip: f64) -> BitVector {
     let mut data = RawVector::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(flip).unwrap();
 
-    let mut value: bool = rng.gen();
+    let mut value: bool = rng.random();
     let mut iter = dist.sample_iter(&mut rng);
     while data.len() < len {
         let run = cmp::min(1 + (iter.next().unwrap() as usize), len - data.len());

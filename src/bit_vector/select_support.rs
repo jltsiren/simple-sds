@@ -238,16 +238,19 @@ impl<T: Transformation> SelectSupport<T> {
             // from the start of the current word.
             if relative_rank > 0 {
                 let (mut word, word_offset) = bits::split_offset(result);
-                let mut value: u64 = T::word_unchecked(parent, word) & !bits::low_set_unchecked(word_offset);
+                let mut value: u64 = unsafe {
+                    T::word_unchecked(parent, word) & !bits::low_set_unchecked(word_offset)
+                };
                 loop {
                     let ones = value.count_ones() as usize;
                     if ones > relative_rank {
-                        result = bits::bit_offset(word, bits::select(value, relative_rank));
+                        let offset = unsafe { bits::select(value, relative_rank) };
+                        result = bits::bit_offset(word, offset);
                         break;
                     }
                     relative_rank -= ones;
                     word += 1;
-                    value = T::word_unchecked(parent, word);
+                    value = unsafe { T::word_unchecked(parent, word) };
                 }
             }
         }
@@ -302,7 +305,7 @@ mod tests {
     use crate::ops::BitVec;
     use crate::raw_vector::{RawVector, PushRaw};
     use crate::serialize;
-    use rand::distributions::{Bernoulli, Distribution};
+    use rand_distr::{Bernoulli, Distribution};
 
     #[test]
     fn empty_vector() {
@@ -315,7 +318,7 @@ mod tests {
 
     fn with_density(len: usize, density: f64) -> RawVector {
         let mut data = RawVector::with_capacity(len);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let dist = Bernoulli::new(density).unwrap();
         let mut iter = dist.sample_iter(&mut rng);
         while data.len() < len {

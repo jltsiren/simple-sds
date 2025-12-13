@@ -472,7 +472,7 @@ impl MemoryMap {
     ///
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
     pub unsafe fn as_mut_slice(&mut self) -> &mut [u64] {
-        slice::from_raw_parts_mut(self.ptr, self.len)
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 
     /// Returns the length of the memory-mapped file.
