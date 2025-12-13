@@ -1,6 +1,8 @@
 //! The basic vector implementing the low-level functionality used by other vectors in the crate.
 
-use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped, Serialize};
+use crate::serialize::Serialize;
+#[cfg(not(target_family = "wasm"))]
+use crate::serialize::{MappedSlice, MemoryMap, MemoryMapped};
 use crate::bits;
 
 use std::fs::{File, OpenOptions};
@@ -529,6 +531,9 @@ impl AccessRaw for RawVector {
 
     #[inline]
     unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        if width == 0 {
+            return 0;
+        }
         bits::read_int(&self.data, bit_offset, width)
     }
 
@@ -556,6 +561,9 @@ impl AccessRaw for RawVector {
 
     #[inline]
     unsafe fn set_int(&mut self, bit_offset: usize, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         bits::write_int(&mut self.data, bit_offset, value, width);
     }
 }
@@ -571,6 +579,9 @@ impl PushRaw for RawVector {
     }
 
     unsafe fn push_int(&mut self, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         if self.len + width > bits::words_to_bits(self.data.len()) {
             self.data.push(0);
         }
@@ -594,6 +605,9 @@ impl PopRaw for RawVector {
 
     unsafe fn pop_int(&mut self, width: usize) -> Option<u64> {
         if self.len() >= width {
+            if width == 0 {
+                return Some(0);
+            }
             let result = self.int(self.len - width, width);
             self.len -= width;
             self.data.resize(bits::bits_to_words(self.len()), 0); // Avoid using unnecessary words.
@@ -857,6 +871,9 @@ impl PushRaw for RawVectorWriter {
     }
 
     unsafe fn push_int(&mut self, value: u64, width: usize) {
+        if width == 0 {
+            return;
+        }
         self.buf.push_int(value, width); self.len += width;
         if self.buf.len() >= self.buf_len {
             self.flush(FlushMode::Safe).unwrap();
@@ -906,12 +923,14 @@ impl Drop for RawVectorWriter {
 /// drop(mapper); drop(map);
 /// fs::remove_file(&filename);
 /// ```
+#[cfg(not(target_family = "wasm"))]
 #[derive(PartialEq, Eq, Debug)]
 pub struct RawVectorMapper<'a> {
     len: usize,
     data: MappedSlice<'a, u64>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> RawVectorMapper<'a> {
     /// Returns the length of the vector in bits.
     #[inline]
@@ -935,6 +954,7 @@ impl<'a> RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> AccessRaw for RawVectorMapper<'a> {
     #[inline]
     fn bit(&self, bit_offset: usize) -> bool {
@@ -944,6 +964,9 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
 
     #[inline]
     unsafe fn int(&self, bit_offset: usize, width: usize) -> u64 {
+        if width == 0 {
+            return 0;
+        }
         bits::read_int(&self.data, bit_offset, width)
     }
 
@@ -973,6 +996,7 @@ impl<'a> AccessRaw for RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
@@ -995,6 +1019,7 @@ impl<'a> MemoryMapped<'a> for RawVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> AsRef<MappedSlice<'a, u64>> for RawVectorMapper<'a> {
     #[inline]
     fn as_ref(&self) -> &MappedSlice<'a, u64> {

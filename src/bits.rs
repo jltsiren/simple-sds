@@ -310,6 +310,25 @@ pub fn bit_len(n: u64) -> usize {
     WORD_BITS - ((n | 1).leading_zeros() as usize)
 }
 
+/// Returns the lowest `bits` bits of integer `n` in reverse order.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::bits;
+///
+/// assert_eq!(bits::reverse_low(0b1010, 4), 0b0101);
+/// assert_eq!(bits::reverse_low(0b10011, 4), 0b1100);
+/// ```
+///
+/// # Panics
+///
+/// May panic if `bits == 0` or `bits > 64`.
+#[inline]
+pub fn reverse_low(n: u64, bits: usize) -> u64 {
+    n.reverse_bits() >> (WORD_BITS - bits)
+}
+
 /// Returns the bit offset of the set bit of specified rank.
 ///
 /// # Arguments
@@ -685,6 +704,13 @@ mod tests {
         assert_eq!(bit_len(0x1FFF), 13, "bit_len(0x1FFF) failed");
         assert_eq!(bit_len(0x7FFF_FFFF_FFFF_FFFF), 63, "bit_len(0x7FFF_FFFF_FFFF_FFFF) failed");
         assert_eq!(bit_len(0xFFFF_FFFF_FFFF_FFFF), 64, "bit_len(0xFFFF_FFFF_FFFF_FFFF) failed");
+    }
+
+    #[test]
+    fn reverse_low_test() {
+        assert_eq!(reverse_low(0b1010, 4), 0b0101, "reverse_low(0b1010, 4) failed");
+        assert_eq!(reverse_low(0b10011, 4), 0b1100, "reverse_low(0b10011, 4) failed");
+        assert_eq!(reverse_low(0x1, 64), 1 << 63, "reverse_low(_, 64) failed");
     }
 
     #[test]

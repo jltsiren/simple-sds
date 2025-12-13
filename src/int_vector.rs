@@ -1,8 +1,12 @@
 //! A bit-packed integer vector storing fixed-width integers.
 
 use crate::ops::{Vector, Resize, Pack, Access, AccessIter, Push, Pop};
-use crate::raw_vector::{RawVector, RawVectorMapper, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
-use crate::serialize::{MemoryMap, MemoryMapped, Serialize};
+use crate::raw_vector::{RawVector, RawVectorWriter, AccessRaw, PushRaw, PopRaw};
+#[cfg(not(target_family = "wasm"))]
+use crate::raw_vector::RawVectorMapper;
+use crate::serialize::Serialize;
+#[cfg(not(target_family = "wasm"))]
+use crate::serialize::{MemoryMap, MemoryMapped};
 use crate::bits;
 
 use std::io::{Error, ErrorKind};
@@ -580,6 +584,7 @@ impl Drop for IntVectorWriter {
 /// drop(mapper); drop(map);
 /// fs::remove_file(&filename).unwrap();
 /// ```
+#[cfg(not(target_family = "wasm"))]
 #[derive(PartialEq, Eq, Debug)]
 pub struct IntVectorMapper<'a> {
     len: usize,
@@ -587,6 +592,7 @@ pub struct IntVectorMapper<'a> {
     data: RawVectorMapper<'a>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> Vector for IntVectorMapper<'a> {
     type Item = u64;
 
@@ -606,6 +612,7 @@ impl<'a> Vector for IntVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> Access<'a> for IntVectorMapper<'a> {
     type Iter = AccessIter<'a, Self>;
 
@@ -620,6 +627,7 @@ impl<'a> Access<'a> for IntVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset + 1 >= map.len() {
@@ -643,6 +651,7 @@ impl<'a> MemoryMapped<'a> for IntVectorMapper<'a> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<'a> AsRef<RawVectorMapper<'a>> for IntVectorMapper<'a> {
     #[inline]
     fn as_ref(&self) -> &RawVectorMapper<'a> {
