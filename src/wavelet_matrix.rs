@@ -11,7 +11,7 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, AccessIter, VectorIndex, Pack};
+use crate::ops::{Vector, Access, AccessIter, VectorIndex};
 use crate::serialize::Serialize;
 use crate::wavelet_matrix::wm_core::WMCore;
 
@@ -115,27 +115,7 @@ impl<'a> WaveletMatrix<'a> {
         for value in iter {
             counts[value as usize].1 += 1;
         }
-
-        // Sort the counts in reverse bit order to get the order below the final level.
-        counts.sort_unstable_by_key(|(value, _)| value.reverse_bits());
-
-        // Replace occurrence counts with the prefix sum in the sorted order.
-        let mut cumulative = 0;
-        for (_, count) in counts.iter_mut() {
-            if *count == 0 {
-                *count = len;
-            } else {
-                let increment = *count;
-                *count = cumulative;
-                cumulative += increment;
-            }
-        }
-
-        // Sort the prefix sums by symbol to get starting offsets and then return the offsets.
-        counts.sort_unstable_by_key(|(value, _)| *value);
-        let mut result: IntVector = counts.into_iter().map(|(_, offset)| offset).collect();
-        result.pack();
-        result
+        wm_core::counts_to_first(counts, len)
     }
 }
 
@@ -144,8 +124,8 @@ macro_rules! wavelet_matrix_from {
         impl<'a> From<Vec<$t>> for WaveletMatrix<'a> {
             fn from(source: Vec<$t>) -> Self {
                 let len = source.len();
-                let max_value = source.iter().cloned().max().unwrap_or(0);
-                let first = Self::start_offsets(source.iter().map(|x| *x as u64), source.len(), max_value as u64);
+                let max_value = source.iter().copied().max().unwrap_or(0);
+                let first = Self::start_offsets(source.iter().map(|x| *x as u64), len, max_value as u64);
                 let data = WMCore::from(source);
                 WaveletMatrix { len, data, first, }
             }

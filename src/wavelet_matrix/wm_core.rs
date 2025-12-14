@@ -21,7 +21,8 @@
 //! > `bv[level].count_zeros() + bv[level].rank(i)`.
 
 use crate::bit_vector::BitVector;
-use crate::ops::FullBitVec;
+use crate::int_vector::IntVector;
+use crate::ops::{FullBitVec, Pack};
 use crate::raw_vector::{RawVector, PushRaw};
 use crate::rl_vector::{RLVector, RLBuilder};
 use crate::serialize::Serialize;
@@ -37,7 +38,11 @@ use std::{cmp, io};
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
 /// The width determines the number of levels in the `WMCore`.
 ///
-/// A `WMCore` can be built from a [`Vec`] of unsigned integers using the [`From`] trait.
+/// A `WMCore` can be built using the [`From`]:
+///
+/// * From a [`Vec`] of unsigned integers when the underlying bitvector type is [`BitVector`].
+/// * From a [`Vec`] of `(item, length)` runs of [`u64`] integers when the underlying bitvector type is [`RLVector`].
+///
 /// The construction requires several passes over the input and uses the input vector as working space.
 /// Using smaller integer types helps reducing the space overhead during construction.
 ///
@@ -278,11 +283,8 @@ wm_core_from!(u32);
 wm_core_from!(u64);
 wm_core_from!(usize);
 
-impl<'a> WMCore<'a, RLVector> {
-    /// Creates a new run-length encoded `WMCore` from a vector of runs.
-    ///
-    /// The runs are given as `(value, length)` pairs.
-    pub fn from_runs(runs: Vec<(u64, usize)>) -> Self {
+impl From<Vec<(u64, usize)>> for WMCore<'_, RLVector> {
+    fn from(runs: Vec<(u64, usize)>) -> Self {
         let len: usize = runs.iter().map(|(_, len)| *len).sum();
         let max_value = runs.iter().map(|(value, _)| *value).max().unwrap_or(0);
         let width = bits::bit_len(max_value);
@@ -377,6 +379,38 @@ impl<'a, T: FullBitVec<'a>> Serialize for WMCore<'a, T> {
 
 //-----------------------------------------------------------------------------
 
+// TODO: tests?
+// TODO: take BTreeMap as input, handle missing items internally?
+// Transforms the occurrence counts of items into starting positions in the reordered vector.
+//
+// The input consists of pairs `counts[i] = (i, count)`.
+// For items with no occurrences, the starting position is the end of the vector (`len`).
+pub(crate) fn counts_to_first(counts: Vec<(u64, usize)>, len: usize) -> IntVector {
+    // Sort the counts in reverse bit order to get the order below the final level.
+    let mut counts = counts;
+    counts.sort_unstable_by_key(|(value, _)| value.reverse_bits());
+
+    // Replace occurrence counts with the prefix sum in the sorted order.
+    let mut cumulative = 0;
+    for (_, count) in counts.iter_mut() {
+        if *count == 0 {
+            *count = len;
+        } else {
+            let increment = *count;
+            *count = cumulative;
+            cumulative += increment;
+        }
+    }
+
+    // Sort the prefix sums by symbol to get starting offsets and then return the offsets.
+    counts.sort_unstable_by_key(|(value, _)| *value);
+    let mut result: IntVector = counts.into_iter().map(|(_, offset)| offset).collect();
+    result.pack();
+    result
+}
+
+//-----------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,7 +469,7 @@ mod tests {
     #[test]
     fn empty_core_rl() {
         let original: Vec<(u64, usize)> = Vec::new();
-        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        let core: WMCore<'_, RLVector> = WMCore::from(original.clone());
         check_core_rl(&core, &original);
     }
 
@@ -449,7 +483,7 @@ mod tests {
     #[test]
     fn non_empty_core_rl() {
         let original = internal::random_integer_runs(37, 9, 0.08);
-        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        let core: WMCore<'_, RLVector> = WMCore::from(original.clone());
         check_core_rl(&core, &original);
     }
 
@@ -463,7 +497,7 @@ mod tests {
     #[test]
     fn serialize_core_rl() {
         let original = internal::random_integer_runs(29, 8, 0.07);
-        let core: WMCore<'_, RLVector> = WMCore::from_runs(original.clone());
+        let core: WMCore<'_, RLVector> = WMCore::from(original.clone());
         serialize::test(&core, "wm-core-rl", None, true);
     }
 }
