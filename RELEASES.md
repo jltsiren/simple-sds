@@ -24,6 +24,7 @@
   * `AccessIter` is a trivial implementation of the iterator using `Access::get`.
   * `Access::get_or` returns a default value if the index is not valid.
 * `IntVector` construction from a slice of integers.
+* Memory-mapped structures are enabled with feature `libc`.
 
 ## Simple-SDS 0.3.1 (2022-02-17)
 
