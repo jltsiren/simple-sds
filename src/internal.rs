@@ -156,7 +156,7 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
 //-----------------------------------------------------------------------------
 
 // Returns peak RSS size so far; Linux version.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "libc"))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
@@ -169,7 +169,7 @@ pub fn peak_memory_usage() -> Result<usize, &'static str> {
 }
 
 // Returns peak RSS size so far; macOS version.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "libc"))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
@@ -182,7 +182,7 @@ pub fn peak_memory_usage() -> Result<usize, &'static str> {
 }
 
 // Returns peak RSS size so far; generic version.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos"), feature = "libc")))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     Err("No peak_memory_usage implementation for this OS")
 }
