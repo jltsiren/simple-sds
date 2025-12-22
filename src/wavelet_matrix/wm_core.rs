@@ -276,7 +276,49 @@ impl<'a> WMCore<'a, RLVector> {
         Some((index, value, run_len))
     }
 
-    // FIXME: map_up_with_run
+
+    // Maps the index from the next level with a set bit.
+    // Returns (new position, remaining run length).
+    // Returns `None` if the index is out of bounds.
+    fn map_up_one_with_run(&'a self, index: usize, level: usize) -> Option<(usize, usize)> {
+        self.levels[level].select_with_run(index - self.levels[level].count_zeros())
+    }
+
+    // Maps the index from the next level with an unset bit.
+    // Returns (new position, remaining run length).
+    // Returns `None` if the index is out of bounds.
+    fn map_up_zero_with_run(&'a self, index: usize, level: usize) -> Option<(usize, usize)> {
+        self.levels[level].select_zero_with_run(index)
+    }
+
+    // FIXME: test
+    /// Maps up with the given value.
+    ///
+    /// Returns the position in the original vector, as well as the length of the right-maximal run containing the item.
+    /// Returns [`None`] if there is no such position.
+    /// This is the position where [`Self::map_down_with_run`] would return `(index, value, run_len)`.
+    ///
+    /// # Arguments
+    ///
+    /// * `index`: Position in the reordered vector.
+    /// * `value`: Value of an item.
+    pub fn map_up_with_run(&'a self, index: usize, value: u64) -> Option<(usize, usize)> {
+        let mut index = index;
+        let mut run_len = usize::MAX;
+        for level in (0..self.width()).rev() {
+            if value & self.bit_value(level) != 0 {
+                let (new_index, level_run_len) = self.map_up_one_with_run(index, level)?;
+                index = new_index;
+                run_len = cmp::min(run_len, level_run_len);
+            } else {
+                let (new_index, level_run_len) = self.map_up_zero_with_run(index, level)?;
+                index = new_index;
+                run_len = cmp::min(run_len, level_run_len);
+            }
+        }
+
+        Some((index, run_len))
+    }
 }
 
 //-----------------------------------------------------------------------------
