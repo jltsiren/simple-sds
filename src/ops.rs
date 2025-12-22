@@ -977,6 +977,7 @@ pub trait Rank<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     #[inline]
     fn rank_zero(&self, index: usize) -> usize {
+        let index = cmp::min(index, self.len());
         index - self.rank(index)
     }
 }

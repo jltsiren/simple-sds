@@ -341,13 +341,13 @@ fn test_run_ops(rv: &RLVector) {
         let (rank, value, run_len) = result.unwrap();
         assert_eq!(value, rv.get(index), "rank_with_run returned incorrect value at index {} (len {})", index, rv.len());
         let (true_rank, rank_at_end, rank_past_end) = if value {
-            (rv.rank(index), rv.rank(index + run_len - 1), rv.rank(index + run_len))
+            (rv.rank(index), rv.rank(index + run_len), rv.rank(index + run_len + 1))
         } else {
-            (rv.rank_zero(index), rv.rank_zero(index + run_len - 1), rv.rank_zero(index + run_len))
+            (rv.rank_zero(index), rv.rank_zero(index + run_len), rv.rank_zero(index + run_len + 1))
         };
         assert_eq!(rank, true_rank, "rank_with_run returned incorrect rank {} at index {} (len {})", value, index, rv.len());
-        assert_eq!(rank + run_len - 1, rank_at_end, "rank_with_run returned incorrect {} run length at index {} (len {})", value, index, rv.len());
-        assert_eq!(rank + run_len, rank_past_end, "rank_with_run returned a non-maximal {} run length at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len, rank_at_end, "rank_with_run did not return a {} run at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len, rank_past_end, "rank_with_run returned a non-maximal {} run at index {} (len {})", value, index, rv.len());
     }
     let result = rv.rank_with_run(rv.len());
     assert!(result.is_none(), "rank_with_run returned a result for index past the end (len {})", rv.len());
