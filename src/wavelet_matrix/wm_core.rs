@@ -280,14 +280,14 @@ impl<'a> WMCore<'a, RLVector> {
     // Returns (new position, remaining run length).
     // Returns `None` if the index is out of bounds.
     fn map_up_one_with_run(&'a self, index: usize, level: usize) -> Option<(usize, usize)> {
-        self.levels[level].select_with_run(index - self.levels[level].count_zeros())
+        self.levels[level].select_run(index - self.levels[level].count_zeros())
     }
 
     // Maps the index from the next level with an unset bit.
     // Returns (new position, remaining run length).
     // Returns `None` if the index is out of bounds.
     fn map_up_zero_with_run(&'a self, index: usize, level: usize) -> Option<(usize, usize)> {
-        self.levels[level].select_zero_with_run(index)
+        self.levels[level].select_zero_run(index)
     }
 
     /// Maps up with the given value.
@@ -566,7 +566,7 @@ mod tests {
         let reordered = reordered_vector(&values);
         for i in 0..core.len() {
             let result = core.map_up_with_run(i, reordered[i]);
-            assert!(result.is_some(), "map_up_with_run returned None at {}", i); // FIXME: this fails
+            assert!(result.is_some(), "map_up_with_run returned None at {}", i);
             let (mapped, run_len) = result.unwrap();
             assert_eq!(values[mapped], reordered[i], "map_up_with_run returned a wrong mapped position at {}", i);
             let (down_index, _, down_run_len) = core.map_down_with_run(mapped).unwrap();

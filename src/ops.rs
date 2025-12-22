@@ -208,7 +208,7 @@ pub trait Pack: Vector {
 /// See [`Vector`] for an example and [`AccessIter`] for a possible implementation of the iterator.
 pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
-    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator;
+    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator + FusedIterator;
 
     /// Returns an item from the vector.
     ///

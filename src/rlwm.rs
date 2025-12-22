@@ -3,7 +3,7 @@
 // FIXME document
 
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, AccessIter, VectorIndex};
+use crate::ops::{Vector, Access, VectorIndex};
 use crate::rl_vector::RLVector;
 use crate::serialize::Serialize;
 use crate::wavelet_matrix::wm_core::WMCore;
@@ -37,6 +37,9 @@ use std::io;
 /// Overridden default implementations:
 /// * [`VectorIndex::contains`] has a simple constant-time implementation.
 /// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
+/// * [`Access::iter`] returns a more efficient iterator that accesses the vector one run at a time.
+///
+/// Both iterators ([`AccessIter`] and [`ValueIter`]) support iterating over the runs using `next_run`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RLWM<'a> {
     len: usize,
@@ -103,14 +106,19 @@ impl<'a> Vector for RLWM<'a> {
 }
 
 impl<'a> Access<'a> for RLWM<'a> {
-    type Iter = AccessIter<'a, Self>;
+    type Iter = AccessIter<'a>;
 
     fn get(&self, index: usize) -> <Self as Vector>::Item {
         self.inverse_select(index).unwrap().1
     }
 
     fn iter(&'a self) -> Self::Iter {
-        Self::Iter::new(self)
+        AccessIter {
+            parent: self,
+            index: 0,
+            value: 0,
+            run_len: 0,
+        }
     }
 }
 
@@ -135,8 +143,10 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter {
         Self::ValueIter {
             parent: self,
-            value,
             rank: 0,
+            value,
+            index: 0,
+            run_len: 0,
         }
     }
 
@@ -154,15 +164,17 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
     fn select_iter(&'a self, rank: usize, value: <Self as Vector>::Item) -> Self::ValueIter {
         Self::ValueIter {
             parent: self,
-            value,
             rank,
+            value,
+            index: 0,
+            run_len: 0,
         }
     }
 }
 
-// FIXME: implement, test, examples
 impl <'a> RLWM<'a> {
-    /// Returns the run of values starting at the given index.
+    // FIXME: test, examples
+    /// Returns the right-maximal run of values starting at the given index.
     ///
     /// The returned tuple is (value, length).
     /// See also [`Access::get`].
@@ -171,14 +183,21 @@ impl <'a> RLWM<'a> {
     ///
     /// Panics if `index` is out of bounds.
     pub fn get_run(&self, index: usize) -> (u64, usize) {
-        unimplemented!()
+        let result = self.data.map_down_with_run(index).unwrap();
+        (result.1, result.2)
     }
 
-    /// Returns an iterator over the runs of the vector.
+    // FIXME: test, examples
+    /// Returns the right-maximal run of the vector that starts with occurrence of item `value` of rank `rank`.
     ///
-    /// The iterator yields tuples of (value, length).
-    pub fn run_iter(&'a self) -> () {
-        unimplemented!()
+    /// The returned tuple is (starting index, run length).
+    /// Returns [`None`] if there is no such occurrence.
+    /// See also [`VectorIndex::select`].
+    pub fn select_run(&self, rank: usize, value: <Self as Vector>::Item) -> Option<(usize, usize)> {
+        if !self.contains(value) {
+            return None;
+        }
+        self.data.map_up_with_run(self.start(value) + rank, value)
     }
 }
 
@@ -214,38 +233,136 @@ impl<'a> Serialize for RLWM<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME RunIter that iterates over the RLWM / WMCore as (offset, value, length) runs
+// FIXME: tests, examples
+/// A read-only iterator over the items in [`RLWM`].
+///
+/// This is a more efficient override of the default iterator provided by [`Access`].
+/// It accesses the vector one run at a time using [`RLWM::get_run`] instead of one item at a time using [`Access::get`].
+///
+/// Method [`AccessIter::next_run`] can be used for iterating over runs of values.
+#[derive(Clone, Debug)]
+pub struct AccessIter<'a> {
+    parent: &'a RLWM<'a>,
+    // The first index we have not seen.
+    index: usize,
+    // Item value for the current run.
+    value: <RLWM<'a> as Vector>::Item,
+    // Remaining length of the current run.
+    run_len: usize,
+}
+
+impl<'a> AccessIter<'a> {
+    // Ensures that the next run is cached.
+    fn ensure_next_run(&mut self) -> Option<()> {
+        if self.index >= self.parent.len() {
+            return None;
+        }
+        if self.run_len == 0 {
+            (self.value, self.run_len) = self.parent.get_run(self.index);
+        }
+        Some(())
+    }
+
+    // TODO: separate RunIter?
+    /// Returns the right-maximal run starting at the position [`Self::next`] would return next.
+    ///
+    /// The returned tuple is (starting index, value, run length).
+    /// Advances the iterator to the end of the run.
+    /// Returns [`None`] if the iterator is exhausted.
+    pub fn next_run(&mut self) -> Option<(usize, <RLWM<'a> as Vector>::Item, usize)> {
+        self.ensure_next_run()?;
+        let result = Some((self.index, self.value, self.run_len));
+        self.index += self.run_len;
+        self.run_len = 0;
+        result
+    }
+}
+
+impl<'a> Iterator for AccessIter<'a> {
+    type Item = <RLWM<'a> as Vector>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.ensure_next_run()?;
+        self.index += 1;
+        self.run_len -= 1;
+        Some(self.value)
+    }
+}
+
+impl<'a> ExactSizeIterator for AccessIter<'a> {
+    fn len(&self) -> usize {
+        self.parent.len() - self.index
+    }
+}
+
+impl<'a> FusedIterator for AccessIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME AccessIter to replace the default; thin wrapper around RunIter
-
-//-----------------------------------------------------------------------------
-
-// FIXME Optimized ValueIter that can also report and skip runs
+// FIXME: example, tests
+/// A read-only iterator over the occurrences of a specific value in [`RLWM`].
+///
+/// The type of `Item` is [`(usize, usize)`] representing a pair (rank, index).
+/// The item at position `index` has the given value, and the rank of that value at that position is `rank`.
+///
+/// Method [`ValueIter::next_run`] can be used for iterating over runs of the given value.
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
     parent: &'a RLWM<'a>,
-    value: <RLWM<'a> as Vector>::Item,
     // The first rank we have not seen.
     rank: usize,
+    // Item value being iterated.
+    value: <RLWM<'a> as Vector>::Item,
+    // Starting index of the current run.
+    index: usize,
+    // Remaining length of the current run.
+    run_len: usize,
+}
+
+impl<'a> ValueIter<'a> {
+    // Ensures that the next run is cached.
+    fn ensure_next_run(&mut self) -> Option<()> {
+        if self.index >= self.parent.len() {
+            return None;
+        }
+        if self.run_len == 0 {
+            if let Some((index, run_len)) = self.parent.select_run(self.rank, self.value) {
+                self.index = index;
+                self.run_len = run_len;
+            } else {
+                self.index = self.parent.len();
+                return None;
+            }
+        }
+        Some(())
+    }
+
+    // TODO: separate ValueRunIter?
+    /// Returns the right-maximal run starting at the position [`Self::next`] would return next.
+    ///
+    /// The returned tuple is (rank, starting index, run length).
+    /// Advances the iterator to the end of the run.
+    /// Returns [`None`] if the iterator is exhausted.
+    pub fn next_run(&mut self) -> Option<(usize, usize, usize)> {
+        self.ensure_next_run()?;
+        let result = Some((self.rank, self.index, self.run_len));
+        self.rank += self.run_len;
+        self.index += self.run_len;
+        self.run_len = 0;
+        result
+    }
 }
 
 impl<'a> Iterator for ValueIter<'a> {
     type Item = (usize, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.rank >= self.parent.len() {
-            return None;
-        }
-        if let Some(index) = self.parent.select(self.rank, self.value) {
-            let result = Some((self.rank, index));
-            self.rank += 1;
-            result
-        } else {
-            self.rank = self.parent.len();
-            None
-        }
+        self.ensure_next_run()?;
+        let result = Some((self.rank, self.index));
+        self.rank += 1;
+        self.index += 1;
+        self.run_len -= 1;
+        result
     }
 }
 

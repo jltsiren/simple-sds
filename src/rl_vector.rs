@@ -111,9 +111,9 @@ mod tests;
 /// // Operations returning remaining run lengths
 /// let rank_result = rv.rank_with_run(100);
 /// assert_eq!(rank_result, Some((27, true, 20)));
-/// let select_result = rv.select_with_run(40);
+/// let select_result = rv.select_run(40);
 /// assert_eq!(select_result, Some((113, 7)));
-/// let select_zero_result = rv.select_zero_with_run(50);
+/// let select_zero_result = rv.select_zero_run(50);
 /// assert_eq!(select_zero_result, Some((72, 23)));
 /// ```
 ///
@@ -1198,7 +1198,7 @@ impl RLVector {
     /// Returns the bit array index for set bit of the given rank, as well as the length of the right-maximal run containing it.
     ///
     /// Returns [`None`] if there is no such set bit.
-    pub fn select_with_run(&self, rank: usize) -> Option<(usize, usize)> {
+    pub fn select_run(&self, rank: usize) -> Option<(usize, usize)> {
         if rank >= self.count_ones() {
             return None;
         }
@@ -1217,7 +1217,7 @@ impl RLVector {
     /// Returns the bit array index for unset bit of the given rank, as well as the length of the right-maximal run containing it.
     ///
     /// Returns [`None`] if there is no such unset bit.
-    pub fn select_zero_with_run(&self, rank: usize) -> Option<(usize, usize)> {
+    pub fn select_zero_run(&self, rank: usize) -> Option<(usize, usize)> {
         if rank >= self.count_zeros() {
             return None;
         }
