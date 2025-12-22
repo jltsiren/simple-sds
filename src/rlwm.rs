@@ -287,13 +287,15 @@ impl<'a> Iterator for AccessIter<'a> {
         self.run_len -= 1;
         Some(self.value)
     }
-}
 
-impl<'a> ExactSizeIterator for AccessIter<'a> {
-    fn len(&self) -> usize {
-        self.parent.len() - self.index
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.parent.len() - self.index;
+        (remaining, Some(remaining))
     }
 }
+
+impl<'a> ExactSizeIterator for AccessIter<'a> {}
 
 impl<'a> FusedIterator for AccessIter<'a> {}
 
@@ -370,6 +372,48 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME IntoIter
+// FIXME example, tests
+/// [`RLWM`] iterator that consumes the vector.
+///
+/// The type of `Item` is [`u64`].
+#[derive(Clone, Debug)]
+pub struct IntoIter<'a> {
+    parent: RLWM<'a>,
+    index: usize,
+}
 
+impl<'a> Iterator for IntoIter<'a> {
+    type Item = <RLWM<'a> as Vector>::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.parent.len() {
+            return None;
+        }
+        let value = self.parent.get(self.index);
+        self.index += 1;
+        Some(value)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.parent.len() - self.index;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a> ExactSizeIterator for IntoIter<'a> {}
+
+impl<'a> FusedIterator for IntoIter<'a> {}
+
+impl<'a> IntoIterator for RLWM<'a> {
+    type Item = <Self as Vector>::Item;
+    type IntoIter = IntoIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            parent: self,
+            index: 0,
+        }
+    }
+}
 //-----------------------------------------------------------------------------

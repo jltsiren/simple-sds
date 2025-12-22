@@ -14,7 +14,8 @@
 
 * Trait `VectorIndex` for rank/select-type queries over integer vectors.
 * Implementations of `VectorIndex`:
-  * `WaveletMatrix`: Plain balanced wavelet matrix.
+  * `WaveletMatrix`: Balanced plain wavelet matrix.
+  * `RLWM`: Balanced run-length encoded wavelet matrix.
 
 ### Other
 
