@@ -246,7 +246,6 @@ impl<'a> WMCore<'a, RLVector> {
         Some((index, bit_value, run_len))
     }
 
-    // FIXME: test
     /// Maps the item at the given position down.
     ///
     /// The return value consists of:
@@ -291,7 +290,6 @@ impl<'a> WMCore<'a, RLVector> {
         self.levels[level].select_zero_with_run(index)
     }
 
-    // FIXME: test
     /// Maps up with the given value.
     ///
     /// Returns the position in the original vector, as well as the length of the right-maximal run containing the item.
@@ -547,6 +545,40 @@ mod tests {
             }
         }
         check_core(core, &values);
+
+        // map_down_with_run
+        for i in 0..core.len() {
+            let result = core.map_down_with_run(i);
+            assert!(result.is_some(), "map_down_with_run returned None at {}", i);
+            let (mapped, value, run_len) = result.unwrap();
+            let (true_mapped, true_value) = core.map_down(i).unwrap();
+            assert_eq!(mapped, true_mapped, "map_down_with_run returned a wrong mapped position at {}", i);
+            assert_eq!(value, true_value, "map_down_with_run returned a wrong value at {}", i);
+            for j in 0..run_len {
+                assert_eq!(values.get(i + j), Some(&value), "map_down_with_run returned a too long run at {}, offset {}", i, j);
+            }
+            assert_ne!(values.get(i + run_len), Some(&value), "map_down_with_run returned a non-maximal run at {}", i);
+        }
+        let result = core.map_down_with_run(core.len());
+        assert!(result.is_none(), "map_down_with_run returned a result for index past the end (len {})", core.len());
+
+        // map_up_with_run
+        let reordered = reordered_vector(&values);
+        for i in 0..core.len() {
+            let result = core.map_up_with_run(i, reordered[i]);
+            assert!(result.is_some(), "map_up_with_run returned None at {}", i); // FIXME: this fails
+            let (mapped, run_len) = result.unwrap();
+            assert_eq!(values[mapped], reordered[i], "map_up_with_run returned a wrong mapped position at {}", i);
+            let (down_index, _, down_run_len) = core.map_down_with_run(mapped).unwrap();
+            assert_eq!(down_index, i, "map_up_with_run returned a position that did not map back correctly at {}", i);
+            assert_eq!(run_len, down_run_len, "map_up_with_run returned a wrong run length at {}", i);
+            if i + 1 < core.len() && reordered[i + 1] != reordered[i] {
+                let result = core.map_up_with_run(i + 1, reordered[i]);
+                assert!(result.is_none(), "map_up_with_run returned a past-the-end result for value {}", reordered[i]);
+            }
+        }
+        let result = core.map_up_with_run(core.len(), 0);
+        assert!(result.is_none(), "map_up_with_run returned a result for index past the end (len {})", core.len());
     }
 
     #[test]

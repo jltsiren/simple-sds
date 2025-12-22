@@ -1230,7 +1230,11 @@ impl RLVector {
                 return Some((index, run_len));
             }
         }
-        None
+
+        // We have a trailing run of unset bits.
+        let index = self.len() - (self.count_zeros() - rank);
+        let run_len = self.len() - index;
+        Some((index, run_len))
     }
 }
 
