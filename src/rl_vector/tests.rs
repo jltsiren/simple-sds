@@ -332,3 +332,56 @@ fn large_pred_succ() {
 }
 
 //-----------------------------------------------------------------------------
+
+fn test_run_ops(rv: &RLVector) {
+    // rank_with_run
+    for index in 0..rv.len() {
+        let result = rv.rank_with_run(index);
+        assert!(result.is_some(), "rank_with_run returned None for index {} (len {})", index, rv.len());
+        let (rank, value, run_len) = result.unwrap();
+        assert_eq!(value, rv.get(index), "rank_with_run returned incorrect value at index {} (len {})", index, rv.len());
+        let (true_rank, rank_at_end, rank_past_end) = if value {
+            (rv.rank(index), rv.rank(index + run_len - 1), rv.rank(index + run_len))
+        } else {
+            (rv.rank_zero(index), rv.rank_zero(index + run_len - 1), rv.rank_zero(index + run_len))
+        };
+        assert_eq!(rank, true_rank, "rank_with_run returned incorrect rank {} at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len - 1, rank_at_end, "rank_with_run returned incorrect {} run length at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len, rank_past_end, "rank_with_run returned a non-maximal {} run length at index {} (len {})", value, index, rv.len());
+    }
+    let result = rv.rank_with_run(rv.len());
+    assert!(result.is_none(), "rank_with_run returned a result for index past the end (len {})", rv.len());
+
+    // select_with_run
+
+    // select_zero_with_run
+}
+
+#[test]
+fn empty_run_ops() {
+    let empty = zero_vector(0);
+    test_run_ops(&empty);
+}
+
+#[test]
+fn nonempty_run_ops() {
+    let rv = random_rl_vector(87, 0.025);
+    test_run_ops(&rv);
+}
+
+#[test]
+fn uniform_run_ops() {
+    let zeros = zero_vector(1903);
+    let ones = one_vector(1754);
+    test_run_ops(&zeros);
+    test_run_ops(&ones);
+}
+
+#[test]
+#[ignore]
+fn large_run_ops() {
+    let rv = random_rl_vector(20567, 0.03);
+    test_run_ops(&rv);
+}
+
+//-----------------------------------------------------------------------------

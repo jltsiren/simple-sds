@@ -938,6 +938,8 @@ pub trait BitVec<'a> {
 
 //-----------------------------------------------------------------------------
 
+// TODO: Add inverse_select that returns (bv.rank(bv[i]), bv[i])
+// TODO: with a default implementation using get() and rank() / rank_zero()
 /// Rank queries on a bitvector.
 ///
 /// Some bitvector types do not build rank/select support structures by default.

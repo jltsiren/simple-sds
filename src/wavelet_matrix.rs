@@ -29,7 +29,7 @@ mod tests;
 /// An immutable integer vector supporting rank/select-type queries.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
-/// The vector is represented using [`WMCore`].
+/// The vector is represented using [`WMCore`] with [`BitVector`] as the underlying bitvector type.
 /// There is also an [`IntVector`] storing the starting position of each possible item value after the reordering done by the core.
 /// Hence a `WaveletMatrix` should only be used when most values in `0..(1 << width)` are in use.
 /// The maximum length of the vector is approximately [`usize::MAX`] items.

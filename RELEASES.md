@@ -47,7 +47,6 @@
 ### Other
 
 * Vectors have items instead of elements to avoid confusion between vector elements and serialization elements.
-* Uses `rand` 0.8 instead of 0.7.
 * Serialization improvements:
   * `skip_option`, `absent_option`, and `absent_option_size` for dealing with optional structures.
   * `test` for running basic serialization tests for a new type.

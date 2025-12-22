@@ -22,7 +22,7 @@
 
 use crate::bit_vector::BitVector;
 use crate::int_vector::IntVector;
-use crate::ops::{FullBitVec, Pack};
+use crate::ops::{BitVec, FullBitVec, Pack};
 use crate::raw_vector::{RawVector, PushRaw};
 use crate::rl_vector::{RLVector, RLBuilder};
 use crate::serialize::Serialize;
@@ -103,6 +103,7 @@ impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
         self.levels.len()
     }
 
+    // TODO: this should use inverse_select when it's implemented
     /// Maps the item at the given position down.
     ///
     /// Returns the position of the item in the reordered vector and the value of the item, or [`None`] if the position is invalid.
@@ -229,6 +230,53 @@ impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
             bv.enable_pred_succ();
         }
     }
+}
+
+//-----------------------------------------------------------------------------
+
+impl<'a> WMCore<'a, RLVector> {
+    // Maps the index to the next level, using the bit value in the given position.
+    // Returns (new position, bit value, remaining run length).
+    // Returns `None` if the index is out of bounds.
+    fn map_down_level_with_run(&self, index: usize, level: usize) -> Option<(usize, bool, usize)> {
+        let (mut index, bit_value, run_len) = self.levels[level].rank_with_run(index)?;
+        if bit_value {
+            index += self.levels[level].count_zeros();
+        }
+        Some((index, bit_value, run_len))
+    }
+
+    // FIXME: test
+    /// Maps the item at the given position down.
+    ///
+    /// The return value consists of:
+    ///
+    /// * The position of the item in the reordered vector.
+    /// * The value of the item.
+    /// * The length of the right-maximal run containing the item.
+    ///
+    /// Returns [`None`] if the position is out of bounds.
+    pub fn map_down_with_run(&self, index: usize) -> Option<(usize, u64, usize)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let mut index = index;
+        let mut value = 0;
+        let mut run_len = usize::MAX;
+        for level in 0..self.width() {
+            let (new_index, bit_value, level_run_len) = self.map_down_level_with_run(index, level)?;
+            index = new_index;
+            if bit_value {
+                value += self.bit_value(level);
+            }
+            run_len = cmp::min(run_len, level_run_len);
+        }
+
+        Some((index, value, run_len))
+    }
+
+    // FIXME: map_up_with_run
 }
 
 //-----------------------------------------------------------------------------

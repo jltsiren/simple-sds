@@ -17,7 +17,26 @@ use std::io;
 
 //-----------------------------------------------------------------------------
 
-// FIXME document, example
+// FIXME example
+/// An immutable run-length encoded integer vector supporting rank/select-type queries.
+///
+/// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
+/// The vector is represented using [`WMCore`] with [`RLVector`] as the underlying bitvector type.
+/// There is also an [`IntVector`] storing the starting position of each possible item value after the reordering done by the core.
+/// Hence a `RLWM` should only be used when most values in `0..(1 << width)` are in use.
+/// The maximum length of the vector is approximately [`usize::MAX`] items.
+///
+/// A `RLWM` can be built from a [`Vec`] of (value ([`u64`]), length ([`usize`])) runs using the [`From`] trait.
+/// The construction requires several passes over the input and uses the input vector as working space.
+///
+/// `RLWM` implements the following `simple_sds` traits:
+/// * Basic functionality: [`Vector`], [`Access`]
+/// * Queries and operations: [`VectorIndex`]
+/// * Serialization: [`Serialize`]
+///
+/// Overridden default implementations:
+/// * [`VectorIndex::contains`] has a simple constant-time implementation.
+/// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RLWM<'a> {
     len: usize,
@@ -26,7 +45,6 @@ pub struct RLWM<'a> {
     first: IntVector,
 }
 
-// FIXME: special run-based operations such as select_run for iterators
 impl<'a> RLWM<'a> {
     // Returns the starting offset of the value after reordering.
     fn start(&self, value: <Self as Vector>::Item) -> usize {
@@ -142,6 +160,28 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
     }
 }
 
+// FIXME: implement, test, examples
+impl <'a> RLWM<'a> {
+    /// Returns the run of values starting at the given index.
+    ///
+    /// The returned tuple is (value, length).
+    /// See also [`Access::get`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    pub fn get_run(&self, index: usize) -> (u64, usize) {
+        unimplemented!()
+    }
+
+    /// Returns an iterator over the runs of the vector.
+    ///
+    /// The iterator yields tuples of (value, length).
+    pub fn run_iter(&'a self) -> () {
+        unimplemented!()
+    }
+}
+
 impl<'a> Serialize for RLWM<'a> {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)
@@ -174,11 +214,15 @@ impl<'a> Serialize for RLWM<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME AccessIter to replace the default 
+// FIXME RunIter that iterates over the RLWM / WMCore as (offset, value, length) runs
 
 //-----------------------------------------------------------------------------
 
-// FIXME Optimized ValueIter
+// FIXME AccessIter to replace the default; thin wrapper around RunIter
+
+//-----------------------------------------------------------------------------
+
+// FIXME Optimized ValueIter that can also report and skip runs
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
     parent: &'a RLWM<'a>,
@@ -206,10 +250,6 @@ impl<'a> Iterator for ValueIter<'a> {
 }
 
 impl<'a> FusedIterator for ValueIter<'a> {}
-
-//-----------------------------------------------------------------------------
-
-// FIXME RunIter?
 
 //-----------------------------------------------------------------------------
 

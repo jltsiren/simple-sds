@@ -107,6 +107,14 @@ mod tests;
 /// assert_eq!(rv.successor(139).next(), Some((47, 140)));
 /// assert_eq!(rv.successor(140).next(), Some((47, 140)));
 /// assert!(rv.successor(152).next().is_none());
+///
+/// // Operations returning remaining run lengths
+/// let rank_result = rv.rank_with_run(100);
+/// assert_eq!(rank_result, Some((27, true, 20)));
+/// let select_result = rv.select_with_run(40);
+/// assert_eq!(select_result, Some((113, 7)));
+/// let select_zero_result = rv.select_zero_with_run(50);
+/// assert_eq!(select_zero_result, Some((72, 23)));
 /// ```
 ///
 /// # Notes
@@ -1149,6 +1157,80 @@ impl<'a> PredSucc<'a> for RLVector {
             got_none: false,
             rank,
         }
+    }
+}
+
+//-----------------------------------------------------------------------------
+
+impl RLVector {
+    /// Returns the rank of the bit at `index`, as well as the right-maximal run containing it.
+    ///
+    /// Let `bv[index..index + len]` be a right-maximal run of bit values `value`.
+    /// Then, the return value is `(rank, value, len)`, or [`None`] if the index is out of bounds.
+    /// Here `rank` is either `rank(index)` or `rank_zero(index)`, depending on `value`.
+    pub fn rank_with_run(&self, index: usize) -> Option<(usize, bool, usize)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_bit(index);
+        while let Some((start, len)) = iter.next() {
+            if start > index {
+                // The bit is unset.
+                let rank = index - (iter.rank() - len);
+                let run_len = start - index;
+                return Some((rank, false, run_len));
+            }
+            if iter.offset() > index {
+                // The bit is set.
+                let rank = iter.rank_at(index);
+                let run_len = iter.offset() - index;
+                return Some((rank, true, run_len));
+            }
+        }
+
+        // We have a trailing run of unset bits.
+        let rank = self.count_zeros() - (self.len() - index);
+        let run_len = self.len() - index;
+        Some((rank, false, run_len))
+    }
+
+    /// Returns the bit array index for set bit of the given rank, as well as the length of the right-maximal run containing it.
+    ///
+    /// Returns [`None`] if there is no such set bit.
+    pub fn select_with_run(&self, rank: usize) -> Option<(usize, usize)> {
+        if rank >= self.count_ones() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_one(rank);
+        while let Some((start, len)) = iter.next() {
+            if iter.rank() > rank {
+                let index = iter.offset_for(rank);
+                let run_len = start + len - index;
+                return Some((index, run_len));
+            }
+        }
+        None
+    }
+
+    /// Returns the bit array index for unset bit of the given rank, as well as the length of the right-maximal run containing it.
+    ///
+    /// Returns [`None`] if there is no such unset bit.
+    pub fn select_zero_with_run(&self, rank: usize) -> Option<(usize, usize)> {
+        if rank >= self.count_zeros() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_zero(rank);
+        while let Some((start, _)) = iter.next() {
+            if iter.rank_zero() > rank {
+                let run_len = iter.rank_zero() - rank;
+                let index = start - run_len;
+                return Some((index, run_len));
+            }
+        }
+        None
     }
 }
 
