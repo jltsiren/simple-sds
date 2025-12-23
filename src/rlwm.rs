@@ -177,7 +177,7 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
 }
 
 impl <'a> RLWM<'a> {
-    // FIXME: test, examples
+    // FIXME: examples
     /// Returns the right-maximal run of values starting at the given index.
     ///
     /// The returned tuple is (value, length).
@@ -191,7 +191,7 @@ impl <'a> RLWM<'a> {
         (result.1, result.2)
     }
 
-    // FIXME: test, examples
+    // FIXME: examples
     /// Returns the right-maximal run of the vector that starts with occurrence of item `value` of rank `rank`.
     ///
     /// The returned tuple is (starting index, run length).
@@ -237,7 +237,7 @@ impl<'a> Serialize for RLWM<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME: tests, examples
+// FIXME: examples
 /// A read-only iterator over the items in [`RLWM`].
 ///
 /// This is a more efficient override of the default iterator provided by [`Access`].
@@ -271,13 +271,14 @@ impl<'a> AccessIter<'a> {
     }
 
     // TODO: separate RunIter?
-    /// Returns the right-maximal run starting at the position [`Self::next`] would return next.
+    /// Returns the run starting at the position [`Self::next`] would return next.
     ///
     /// The returned tuple is (starting index, value, run length).
     /// Returns [`None`] if the iterator is exhausted.
     ///
     /// Advances the iterator to the end of the run.
-    /// The run may not be right-maximal, if [`DoubleEndedIterator::next_back`] has been used.
+    /// By default, the returned runs are maximal.
+    /// Using [`Iterator::next`] and [`DoubleEndedIterator::next_back`] may break maximality by consuming individual items.
     pub fn next_run(&mut self) -> Option<(usize, <RLWM<'a> as Vector>::Item, usize)> {
         self.ensure_next_run()?;
         let run_len = cmp::min(self.run_len, self.limit - self.index);
@@ -321,7 +322,7 @@ impl<'a> FusedIterator for AccessIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME: example, tests
+// FIXME: example
 /// A read-only iterator over the occurrences of a specific value in [`RLWM`].
 ///
 /// The type of `Item` is [`(usize, usize)`] representing a pair (rank, index).
@@ -360,11 +361,14 @@ impl<'a> ValueIter<'a> {
     }
 
     // TODO: separate ValueRunIter?
-    /// Returns the right-maximal run starting at the position [`Self::next`] would return next.
+    /// Returns the run starting at the position [`Self::next`] would return next.
     ///
     /// The returned tuple is (rank, starting index, run length).
-    /// Advances the iterator to the end of the run.
     /// Returns [`None`] if the iterator is exhausted.
+    ///
+    /// Advances the iterator to the end of the run.
+    /// By default, the returned runs are maximal.
+    /// Using [`Iterator::next`] may break left-maximality by consuming individual items.
     pub fn next_run(&mut self) -> Option<(usize, usize, usize)> {
         self.ensure_next_run()?;
         let result = Some((self.rank, self.index, self.run_len));
@@ -392,7 +396,7 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME example, tests
+// FIXME example
 /// [`RLWM`] iterator that consumes the vector.
 ///
 /// The type of `Item` is [`u64`].

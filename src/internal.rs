@@ -101,6 +101,20 @@ pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> 
     runs
 }
 
+pub fn maximal_runs(runs: Vec<(u64, usize)>) -> Vec<(u64, usize)> {
+    let mut maximal: Vec<(u64, usize)> = Vec::new();
+    for (value, length) in runs.into_iter() {
+        if let Some(last) = maximal.last_mut() {
+            if last.0 == value {
+                last.1 += length;
+                continue;
+            }
+        }
+        maximal.push((value, length));
+    }
+    maximal
+}
+
 pub fn runs_to_values(runs: &[(u64, usize)]) -> Vec<u64> {
     let mut values: Vec<u64> = Vec::new();
     for &(value, length) in runs.iter() {
