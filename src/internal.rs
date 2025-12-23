@@ -95,7 +95,30 @@ pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> 
     for _ in 0..n {
         let value: u64 = rng.random::<u64>() & mask;
         let len = 1 + (dist.sample(&mut rng) as usize);
-        runs.push((value & bits::low_set(width), len));
+        runs.push((value, len));
+    }
+
+    runs
+}
+
+// Returns random runs of total length `len`, where lengths are `Geometric(p)`.
+// The values are in `0..(1 << width)`, and it is possible that the same value is repeated.
+// Note that `p` is the flip probability.
+pub fn random_integer_runs_with_len(len: usize, width: usize, p: f64) -> Vec<(u64, usize)> {
+    let mut runs: Vec<(u64, usize)> = Vec::new();
+    let mut rng = rand::rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let mask = bits::low_set(width);
+    let mut total_len = 0;
+    while total_len < len {
+        let value: u64 = rng.random::<u64>() & mask;
+        let mut run_len = 1 + (dist.sample(&mut rng) as usize);
+        if total_len + run_len > len {
+            run_len = len - total_len;
+        }
+        runs.push((value, run_len));
+        total_len += run_len;
     }
 
     runs
