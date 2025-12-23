@@ -4,6 +4,7 @@ use crate::ops::{Vector, Access, VectorIndex, BitVec, Rank, Select, SelectZero, 
 use crate::serialize::Serialize;
 use crate::bits;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use rand::Rng;
@@ -98,6 +99,16 @@ pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> 
     }
 
     runs
+}
+
+pub fn runs_to_values(runs: &[(u64, usize)]) -> Vec<u64> {
+    let mut values: Vec<u64> = Vec::new();
+    for &(value, length) in runs.iter() {
+        for _ in 0..length {
+            values.push(value);
+        }
+    }
+    values
 }
 
 //-----------------------------------------------------------------------------
@@ -395,8 +406,12 @@ pub fn check_contains<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let mut values = HashSet::new();
+    for value in v.iter() {
+        values.insert(value);
+    }
     for value in 0..(1 << width) {
-        let should_have = v.iter().any(|x| x == value);
+        let should_have = values.contains(&value);
         assert_eq!(v.contains(value), should_have, "Invalid contains({})", value);
     }
 }
@@ -406,13 +421,14 @@ pub fn check_rank<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
-    for value in 0..(1 << width) {
-        let mut count = 0;
-        for index in 0..=v.len() {
-            assert_eq!(v.rank(index, value), count, "Invalid rank({}, {})", index, value);
-            if index < v.len() && v.get(index) == value {
-                count += 1;
-            }
+    let mut counts: Vec<usize> = vec![0; 1 << width];
+    for index in 0..=v.len() {
+        for value in 0..(1 << width) {
+            assert_eq!(v.rank(index, value), counts[value as usize], "Invalid rank({}, {})", index, value);
+        }
+        if index < v.len() {
+            let value = v.get(index) as usize;
+            counts[value] += 1;
         }
     }
 }
@@ -432,7 +448,7 @@ where
 }
 
 // Test `value_iter`.
-pub fn check_value_iter<'a, T>(v: &'a T, width: usize)
+pub fn check_value_iter<'a, T>(v: &'a T, width: usize, values: &[u64])
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
@@ -442,7 +458,7 @@ where
         let mut rank = 0;
         let mut index = 0;
         while index < v.len() {
-            if v.get(index) == value {
+            if values[index] == value {
                 assert_eq!(iter.next(), Some((rank, index)), "Invalid result of rank {} from value_iter({})", rank, value);
                 rank += 1;
             }
@@ -453,7 +469,7 @@ where
 }
 
 // Test `select` and `select_iter`.
-pub fn check_select<'a, T>(v: &'a T, width: usize)
+pub fn check_select<'a, T>(v: &'a T, width: usize, values: &[u64])
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
@@ -461,7 +477,7 @@ where
         let mut rank = 0;
         let mut index = 0;
         while index < v.len() {
-            if v.get(index) == value {
+            if values[index] == value {
                 assert_eq!(v.select(rank, value), Some(index), "Invalid select({}, {})", rank, value);
                 assert_eq!(v.select_iter(rank, value).next(), Some((rank, index)), "Invalid select_iter({}, {})", rank, value);
                 rank += 1;
@@ -478,21 +494,26 @@ pub fn check_pred_succ<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let mut iters = Vec::with_capacity(1 << width);
+    let mut prev = Vec::with_capacity(1 << width);
+    let mut next = Vec::with_capacity(1 << width);
     for value in 0..(1 << width) {
-        let mut iter = v.value_iter(value);
-        let mut prev: Option<(usize, usize)> = None;
-        let mut next: Option<(usize, usize)> = iter.next();
+        iters.push(v.value_iter(value));
+        prev.push(None);
+        next.push(iters[value as usize].next());
+    }
 
-        // Try also querying at past-the-end position.
-        for index in 0..=v.len() {
-            if next.is_some() && index == next.unwrap().1 {
-                assert_eq!(v.predecessor(index, value).next(), next, "Invalid predecessor({}, {}) at occurrence", index, value);
-                assert_eq!(v.successor(index, value).next(), next, "Invalid successor({}, {}) at occurrence", index, value);
-                prev = next;
-                next = iter.next();
+    for index in 0..=v.len() {
+        for value in 0..(1 << width) {
+            let val = value as usize;
+            if next[val].is_some() && index == next[val].unwrap().1 {
+                assert_eq!(v.predecessor(index, value).next(), next[val], "Invalid predecessor({}, {}) at occurrence", index, value);
+                assert_eq!(v.successor(index, value).next(), next[val], "Invalid successor({}, {}) at occurrence", index, value);
+                prev[val] = next[val];
+                next[val] = iters[val].next();
             } else {
-                assert_eq!(v.predecessor(index, value).next(), prev, "Invalid predecessor({}, {})", index, value);
-                assert_eq!(v.successor(index, value).next(), next, "Invalid successor({}, {})", index, value);
+                assert_eq!(v.predecessor(index, value).next(), prev[val], "Invalid predecessor({}, {})", index, value);
+                assert_eq!(v.successor(index, value).next(), next[val], "Invalid successor({}, {})", index, value);
             }
         }
     }
@@ -502,11 +523,12 @@ pub fn check_vector_index<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let values: Vec<u64> = v.iter().collect();
     check_contains(v, width);
     check_rank(v, width);
     check_inverse_select(v);
-    check_value_iter(v, width);
-    check_select(v, width);
+    check_value_iter(v, width, &values);
+    check_select(v, width, &values);
     check_pred_succ(v, width);
 }
 

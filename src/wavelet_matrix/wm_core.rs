@@ -538,12 +538,7 @@ mod tests {
     }
 
     fn check_core_rl(core: &WMCore<'_, RLVector>, original: &[(u64, usize)]) {
-        let mut values: Vec<u64> = Vec::new();
-        for (value, len) in original.iter() {
-            for _ in 0..*len {
-                values.push(*value);
-            }
-        }
+        let values = internal::runs_to_values(original);
         check_core(core, &values);
 
         // map_down_with_run

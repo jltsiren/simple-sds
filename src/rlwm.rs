@@ -11,9 +11,10 @@ use crate::wavelet_matrix::wm_core;
 
 use std::io::{Error, ErrorKind};
 use std::iter::FusedIterator;
-use std::io;
+use std::{cmp, io};
 
-// FIXME tests
+#[cfg(test)]
+mod tests;
 
 //-----------------------------------------------------------------------------
 
@@ -116,6 +117,7 @@ impl<'a> Access<'a> for RLWM<'a> {
         AccessIter {
             parent: self,
             index: 0,
+            limit: self.len(),
             value: 0,
             run_len: 0,
         }
@@ -170,6 +172,8 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
             run_len: 0,
         }
     }
+
+    // TODO: implement predecessor/successor using the same functionality in RLVector?
 }
 
 impl <'a> RLWM<'a> {
@@ -239,12 +243,15 @@ impl<'a> Serialize for RLWM<'a> {
 /// This is a more efficient override of the default iterator provided by [`Access`].
 /// It accesses the vector one run at a time using [`RLWM::get_run`] instead of one item at a time using [`Access::get`].
 ///
+/// Backward iteration with [`DoubleEndedIterator::next_back`] is supported but less efficient.
 /// Method [`AccessIter::next_run`] can be used for iterating over runs of values.
 #[derive(Clone, Debug)]
 pub struct AccessIter<'a> {
     parent: &'a RLWM<'a>,
     // The first index we have not seen.
     index: usize,
+    // The first index we should not visit.
+    limit: usize,
     // Item value for the current run.
     value: <RLWM<'a> as Vector>::Item,
     // Remaining length of the current run.
@@ -254,7 +261,7 @@ pub struct AccessIter<'a> {
 impl<'a> AccessIter<'a> {
     // Ensures that the next run is cached.
     fn ensure_next_run(&mut self) -> Option<()> {
-        if self.index >= self.parent.len() {
+        if self.index >= self.limit {
             return None;
         }
         if self.run_len == 0 {
@@ -267,13 +274,16 @@ impl<'a> AccessIter<'a> {
     /// Returns the right-maximal run starting at the position [`Self::next`] would return next.
     ///
     /// The returned tuple is (starting index, value, run length).
-    /// Advances the iterator to the end of the run.
     /// Returns [`None`] if the iterator is exhausted.
+    ///
+    /// Advances the iterator to the end of the run.
+    /// The run may not be right-maximal, if [`DoubleEndedIterator::next_back`] has been used.
     pub fn next_run(&mut self) -> Option<(usize, <RLWM<'a> as Vector>::Item, usize)> {
         self.ensure_next_run()?;
-        let result = Some((self.index, self.value, self.run_len));
-        self.index += self.run_len;
-        self.run_len = 0;
+        let run_len = cmp::min(self.run_len, self.limit - self.index);
+        let result = Some((self.index, self.value, run_len));
+        self.index += run_len;
+        self.run_len -= run_len;
         result
     }
 }
@@ -290,8 +300,18 @@ impl<'a> Iterator for AccessIter<'a> {
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.parent.len() - self.index;
+        let remaining = self.limit - self.index;
         (remaining, Some(remaining))
+    }
+}
+
+impl<'a> DoubleEndedIterator for AccessIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.index >= self.limit {
+            return None;
+        }
+        self.limit -= 1;
+        Some(self.parent.get(self.limit))
     }
 }
 
