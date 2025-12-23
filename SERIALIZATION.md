@@ -180,9 +180,10 @@ Serialization format for the wavelet matrix core:
 1. `width`: Width of the items as an element.
 2. `levels`: A bitvector for each level in `0..width`.
 
-### Plain wavelet matrix
+### Wavelet matrix
 
 A **plain** wavelet matrix (`WaveletMatrix`) uses `WMCore` with plain bitvectors (`BitVector`).
+A **run-length encoded** wavelet matrix (`RLWM`) uses `WMCore` with run-length encoded bitvectors (`RLVector`).
 
 Serialization format for plain wavelet matrices:
 
