@@ -5,15 +5,17 @@
 ### Bitvectors
 
 * `RLVector`: Run-length encoded bitvector similar to the one in RLCSA.
+* `FullBitVec`: A marker trait indicating a fully functional bitvector.
 * Consistent conversions between bitvector types:
-  * `From` trait between any two bitvector types.
+  * `From` trait between any two bitvector types from both values and references.
   * Associated function `copy_bit_vec` for copying from a type that implements `Select`.
 
 ### Wavelet matrices
 
 * Trait `VectorIndex` for rank/select-type queries over integer vectors.
 * Implementations of `VectorIndex`:
-  * `WaveletMatrix`: Plain balanced wavelet matrix.
+  * `WaveletMatrix`: Balanced plain wavelet matrix.
+  * `RLWM`: Balanced run-length encoded wavelet matrix.
 
 ### Other
 
@@ -22,6 +24,8 @@
   * The trait includes an iterator over the values.
   * `AccessIter` is a trivial implementation of the iterator using `Access::get`.
   * `Access::get_or` returns a default value if the index is not valid.
+* `IntVector` construction from a slice of integers.
+* Memory-mapped structures are enabled with feature `libc`.
 
 ## Simple-SDS 0.3.1 (2022-02-17)
 
@@ -44,7 +48,6 @@
 ### Other
 
 * Vectors have items instead of elements to avoid confusion between vector elements and serialization elements.
-* Uses `rand` 0.8 instead of 0.7.
 * Serialization improvements:
   * `skip_option`, `absent_option`, and `absent_option_size` for dealing with optional structures.
   * `test` for running basic serialization tests for a new type.

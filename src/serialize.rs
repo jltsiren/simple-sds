@@ -54,17 +54,17 @@ use crate::bits;
 
 use std::fmt::Debug;
 use std::fs::OpenOptions;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 use std::ops::{Deref, Index};
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{env, fs, io, mem, process, slice, str};
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 use std::{marker, ptr};
 
 #[cfg(test)]
@@ -354,7 +354,7 @@ impl<V: Serialize> Serialize for Option<V> {
 //-----------------------------------------------------------------------------
 
 /// Modes of memory mapping a file.
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MappingMode {
     /// The file is read-only.
@@ -393,7 +393,7 @@ pub enum MappingMode {
 /// drop(map);
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(Debug)]
 pub struct MemoryMap {
     _file: File, // The compiler might otherwise get overzealous and complain that we don't touch the file.
@@ -404,7 +404,7 @@ pub struct MemoryMap {
 }
 
 // TODO: implement madvise()?
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl MemoryMap {
     /// Returns a memory map for the specified file in the given mode.
     ///
@@ -472,7 +472,7 @@ impl MemoryMap {
     ///
     /// Behavior is undefined if the file was opened with mode `MappingMode::ReadOnly`.
     pub unsafe fn as_mut_slice(&mut self) -> &mut [u64] {
-        slice::from_raw_parts_mut(self.ptr, self.len)
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 
     /// Returns the length of the memory-mapped file.
@@ -488,14 +488,14 @@ impl MemoryMap {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl AsRef<[u64]> for MemoryMap {
     fn as_ref(&self) -> &[u64] {
         unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl Drop for MemoryMap {
     fn drop(&mut self) {
         unsafe {
@@ -567,7 +567,7 @@ impl Drop for MemoryMap {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 pub trait MemoryMapped<'a>: Sized {
     /// Returns an immutable memory-mapped structure corresponding to an interval in the file.
     ///
@@ -616,14 +616,14 @@ pub trait MemoryMapped<'a>: Sized {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(PartialEq, Eq, Debug)]
 pub struct MappedSlice<'a, T: Serializable> {
     data: &'a [T],
     offset: usize,
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: Serializable> MappedSlice<'a, T> {
     /// Returns the length of the slice.
     pub fn len(&self) -> usize {
@@ -636,14 +636,14 @@ impl<'a, T: Serializable> MappedSlice<'a, T> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: Serializable> AsRef<[T]> for MappedSlice<'a, T> {
     fn as_ref(&self) -> &[T] {
         self.data
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: Serializable> Deref for MappedSlice<'a, T> {
     type Target = [T];
 
@@ -652,7 +652,7 @@ impl<'a, T: Serializable> Deref for MappedSlice<'a, T> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: Serializable> Index<usize> for MappedSlice<'a, T> {
     type Output = T;
 
@@ -661,7 +661,7 @@ impl<'a, T: Serializable> Index<usize> for MappedSlice<'a, T> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
@@ -715,14 +715,14 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(PartialEq, Eq, Debug)]
 pub struct MappedBytes<'a> {
     data: &'a [u8],
     offset: usize,
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> MappedBytes<'a> {
     /// Returns the length of the slice.
     pub fn len(&self) -> usize {
@@ -735,14 +735,14 @@ impl<'a> MappedBytes<'a> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> AsRef<[u8]> for MappedBytes<'a> {
     fn as_ref(&self) -> &[u8] {
         self.data
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> Deref for MappedBytes<'a> {
     type Target = [u8];
 
@@ -751,7 +751,7 @@ impl<'a> Deref for MappedBytes<'a> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> Index<usize> for MappedBytes<'a> {
     type Output = u8;
 
@@ -760,7 +760,7 @@ impl<'a> Index<usize> for MappedBytes<'a> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> MemoryMapped<'a> for MappedBytes<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
@@ -812,14 +812,14 @@ impl<'a> MemoryMapped<'a> for MappedBytes<'a> {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(PartialEq, Eq, Debug)]
 pub struct MappedStr<'a> {
     data: &'a str,
     offset: usize,
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> MappedStr<'a> {
     /// Returns the length of the slice in bytes.
     pub fn len(&self) -> usize {
@@ -832,14 +832,14 @@ impl<'a> MappedStr<'a> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> AsRef<str> for MappedStr<'a> {
     fn as_ref(&self) -> &str {
         self.data
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> Deref for MappedStr<'a> {
     type Target = str;
 
@@ -847,7 +847,7 @@ impl<'a> Deref for MappedStr<'a> {
         self.data
     }
 }
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a> MemoryMapped<'a> for MappedStr<'a> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {
@@ -899,7 +899,7 @@ impl<'a> MemoryMapped<'a> for MappedStr<'a> {
 ///
 /// fs::remove_file(&filename).unwrap();
 /// ```
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 #[derive(PartialEq, Eq, Debug)]
 pub struct MappedOption<'a, T: MemoryMapped<'a>> {
     data: Option<T>,
@@ -908,7 +908,7 @@ pub struct MappedOption<'a, T: MemoryMapped<'a>> {
     _marker: marker::PhantomData<&'a ()>,
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: MemoryMapped<'a>> MappedOption<'a, T> {
     /// Returns `true` if the option is a [`Some`] value.
     pub fn is_some(&self) -> bool {
@@ -941,7 +941,7 @@ impl<'a, T: MemoryMapped<'a>> MappedOption<'a, T> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "libc")]
 impl<'a, T: MemoryMapped<'a>> MemoryMapped<'a> for MappedOption<'a, T> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
         if offset >= map.len() {

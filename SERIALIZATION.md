@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.4.0. Updated 2022-08-18.
+For version 0.4.0. Updated 2025-12-24.
 
 Changes since version 0.2.0 are mentioned in the relevant location.
 
@@ -173,15 +173,17 @@ This process **reorders** the items in the vector by sorting them according to t
 ### Wavelet matrix core
 
 The **core** of a wavelet matrix (`WMCore`) consists of the bitvectors that handle the reordering.
+The bitvectors can be of any type that implements `FullBitVec`.
 
 Serialization format for the wavelet matrix core:
 
 1. `width`: Width of the items as an element.
-2. `levels`: A `BitVector` for each level in `0..width`.
+2. `levels`: A bitvector for each level in `0..width`.
 
-### Plain wavelet matrix
+### Wavelet matrix
 
-A **plain** wavelet matrix (`WaveletMatrix`) uses the core directly for representing the vector.
+A **plain** wavelet matrix (`WaveletMatrix`) uses `WMCore` with plain bitvectors (`BitVector`).
+A **run-length encoded** wavelet matrix (`RLWM`) uses `WMCore` with run-length encoded bitvectors (`RLVector`).
 
 Serialization format for plain wavelet matrices:
 

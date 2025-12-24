@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "libc")]
 use crate::serialize::MappingMode;
 use crate::serialize;
 
@@ -11,14 +12,15 @@ use rand::Rng;
 
 fn random_vector(n: usize, width: usize) -> Vec<u64> {
     let mut result: Vec<u64> = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..n {
-        let value: u64 = rng.gen();
+        let value: u64 = rng.random();
         result.push(value & bits::low_set(width));
     }
     result
 }
 
+#[cfg(feature = "libc")]
 fn random_raw_vector(n: usize, width: usize) -> RawVector {
     let values = random_vector(n, width);
     let mut result = RawVector::with_capacity(values.len() * width);
@@ -269,9 +271,9 @@ fn push_bits_to_writer() {
     let filename = serialize::temp_file_name("push-bits-to-raw-vector-writer");
 
     let mut correct: Vec<bool> = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..3523 {
-        correct.push(rng.gen());
+        correct.push(rng.random());
     }
 
     let mut header: Vec<u64> = Vec::new();
@@ -343,6 +345,7 @@ fn large_writer() {
 
 //-----------------------------------------------------------------------------
 
+#[cfg(feature = "libc")]
 fn check_mapper(mapper: &RawVectorMapper, truth: &RawVector, width: usize) {
     assert!(!mapper.is_mutable(), "Read-only mapper is mutable");
     assert_eq!(mapper.len(), truth.len(), "Invalid mapper length");
@@ -361,6 +364,7 @@ fn check_mapper(mapper: &RawVectorMapper, truth: &RawVector, width: usize) {
     }
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn empty_mapper() {
     let filename = serialize::temp_file_name("empty-raw-vector-mapper");
@@ -375,6 +379,7 @@ fn empty_mapper() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn non_empty_mapper() {
     let filename = serialize::temp_file_name("non-empty-raw-vector-mapper");
@@ -390,6 +395,7 @@ fn non_empty_mapper() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn mapper_offset() {
     let filename = serialize::temp_file_name("raw-vector-mapper-offset");
@@ -410,6 +416,7 @@ fn mapper_offset() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 #[ignore]
 fn large_mapper() {

@@ -16,6 +16,9 @@
 //! * [`Select`]: Select queries and iterators over set bits.
 //! * [`SelectZero`]: Select queries on the complement and iterators over unset bits.
 //! * [`PredSucc`]: Predecessor and successor queries.
+//! * [`FullBitVec`]: A fully functional bitvector with the above operations as well as [`Serialize`].
+
+use crate::serialize::Serialize;
 
 use std::iter::FusedIterator;
 use std::cmp;
@@ -205,7 +208,7 @@ pub trait Pack: Vector {
 /// See [`Vector`] for an example and [`AccessIter`] for a possible implementation of the iterator.
 pub trait Access<'a>: Vector {
     /// Iterator over the items in the vector.
-    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator;
+    type Iter: Iterator<Item = <Self as Vector>::Item> + ExactSizeIterator + FusedIterator;
 
     /// Returns an item from the vector.
     ///
@@ -499,7 +502,7 @@ pub trait Pop: Vector {
 ///         Self::ValueIter { parent: self, value, rank: 0, index: 0, }
 ///     }
 ///
-///     fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
+///     fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item {
 ///         iter.value
 ///     }
 ///
@@ -535,7 +538,7 @@ pub trait Pop: Vector {
 /// // Iterator
 /// let a: Vec<(usize, usize)> = vec.value_iter('a').collect();
 /// assert_eq!(a, vec![(0, 0), (1, 4)]);
-/// assert_eq!(Example::value_of(&vec.value_iter('c')), 'c');
+/// assert_eq!(vec.value_of(&vec.value_iter('c')), 'c');
 ///
 /// // Select
 /// assert_eq!(vec.select(0, 'c'), Some(2));
@@ -607,7 +610,11 @@ pub trait VectorIndex<'a>: Access<'a> {
     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter;
 
     /// Returns the value of the items iterated over by the iterator.
-    fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item;
+    ///
+    /// The iterator must belong to this vector.
+    /// The value is usually stored in the iterator.
+    /// This method provides a generic way to access it.
+    fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item;
 
     /// Returns the index of the vector that contains the occurrence of item `value` of rank `rank`.
     ///
@@ -935,6 +942,8 @@ pub trait BitVec<'a> {
 
 //-----------------------------------------------------------------------------
 
+// TODO: Add inverse_select that returns (bv.rank(bv[i]), bv[i])
+// TODO: with a default implementation using get() and rank() / rank_zero()
 /// Rank queries on a bitvector.
 ///
 /// Some bitvector types do not build rank/select support structures by default.
@@ -972,6 +981,7 @@ pub trait Rank<'a>: BitVec<'a> {
     /// May panic from I/O errors.
     #[inline]
     fn rank_zero(&self, index: usize) -> usize {
+        let index = cmp::min(index, self.len());
         index - self.rank(index)
     }
 }
@@ -1143,5 +1153,12 @@ pub trait PredSucc<'a>: BitVec<'a> {
     /// The iterator may also panic for the same reasons.
     fn successor(&'a self, value: usize) -> Self::OneIter;
 }
+
+//-----------------------------------------------------------------------------
+
+/// A marker trait indicating that the structure is a fully functional bitvector.
+///
+/// This trait implies all other bitvector traits as well as [`Serialize`].
+pub trait FullBitVec<'a>: BitVec<'a> + Rank<'a> + Select<'a> + SelectZero<'a> + PredSucc<'a> + Serialize {}
 
 //-----------------------------------------------------------------------------

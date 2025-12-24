@@ -2,7 +2,7 @@
 
 use crate::bit_vector::rank_support::RankSupport;
 use crate::bit_vector::select_support::SelectSupport;
-use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc, FullBitVec};
 use crate::raw_vector::{RawVector, AccessRaw, PushRaw};
 use crate::serialize::Serialize;
 use crate::bits;
@@ -129,6 +129,10 @@ impl BitVector {
     /// assert_eq!(copy.len(), bv.len());
     /// assert_eq!(copy.count_ones(), bv.count_ones());
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if the source bitvector is in an invalid state.
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut data = RawVector::with_len(source.len(), false);
         for (_, index) in source.one_iter() {
@@ -245,7 +249,7 @@ impl<'a> BitVec<'a> for BitVector {
 
 impl<'a> Rank<'a> for BitVector {
     fn supports_rank(&self) -> bool {
-        self.rank != None
+        self.rank.is_some()
     }
 
     fn enable_rank(&mut self) {
@@ -325,7 +329,7 @@ impl Transformation for Identity {
 
     #[inline]
     unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
-        parent.data.word_unchecked(index)
+        unsafe { parent.data.word_unchecked(index) }
     }
 
     #[inline]
@@ -359,10 +363,12 @@ impl Transformation for Complement {
 
     unsafe fn word_unchecked(parent: &BitVector, index: usize) -> u64 {
         let (last_index, offset) = bits::split_offset(parent.len());
-        if index >= last_index {
-            (!parent.data.word_unchecked(index)) & bits::low_set_unchecked(offset)
-        } else {
-            !parent.data.word_unchecked(index)
+        unsafe {
+            if index >= last_index {
+                (!parent.data.word_unchecked(index)) & bits::low_set_unchecked(offset)
+            } else {
+                !parent.data.word_unchecked(index)
+            }
         }
     }
 
@@ -521,7 +527,7 @@ impl<'a> Select<'a> for BitVector {
     type OneIter = OneIter<'a, Identity>;
 
     fn supports_select(&self) -> bool {
-        self.select != None
+        self.select.is_some()
     }
 
     fn enable_select(&mut self) {
@@ -572,7 +578,7 @@ impl<'a> SelectZero<'a> for BitVector {
     type ZeroIter = OneIter<'a, Complement>;
 
     fn supports_select_zero(&self) -> bool {
-        self.select_zero != None
+        self.select_zero.is_some()
     }
 
     fn enable_select_zero(&mut self) {
@@ -623,7 +629,7 @@ impl<'a> PredSucc<'a> for BitVector {
     type OneIter = OneIter<'a, Identity>;
 
     fn supports_pred_succ(&self) -> bool {
-        self.rank != None && self.select != None
+        self.rank.is_some() && self.select.is_some()
     }
 
     fn enable_pred_succ(&mut self) {
@@ -672,6 +678,9 @@ impl Serialize for BitVector {
         if ones > data.len() {
             return Err(Error::new(ErrorKind::InvalidData, "Too many set bits"));
         }
+        if ones != data.count_ones() {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of set bits"));
+        }
 
         let rank = Option::<RankSupport>::load(reader)?;
         if let Some(value) = rank.as_ref() {
@@ -709,6 +718,8 @@ impl Serialize for BitVector {
 }
 
 //-----------------------------------------------------------------------------
+
+impl<'a> FullBitVec<'a> for BitVector {}
 
 impl AsRef<RawVector> for BitVector {
     #[inline]

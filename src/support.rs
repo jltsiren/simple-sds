@@ -14,6 +14,12 @@ macro_rules! bitvector_conversion {
                 $target::copy_bit_vec(&source)
             }
         }
+
+        impl From<&$source> for $target {
+            fn from(source: &$source) -> Self {
+                $target::copy_bit_vec(source)
+            }
+        }
     };
 }
 

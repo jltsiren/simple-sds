@@ -8,8 +8,10 @@
 //! * This crate is designed for the x86_64 architecture with the BMI2 instruction set (Intel Haswell / AMD Excavator or later).
 //! Some operations may be slow without the POPCNT, LZCNT, TZCNT, and PDEP instructions.
 //! * 64-bit ARM is also supported.
-//! * Unix-like operating system is required for `mmap()`.
+//! * Unix-like operating system is required for `mmap()`, which is enabled with feature `libc`.
 //! * Things may not work if the system is not little-endian or if `usize` is not 64-bit.
+
+#![allow(clippy::uninlined_format_args)]
 
 pub mod bit_vector;
 pub mod bits;
@@ -17,6 +19,7 @@ pub mod int_vector;
 pub mod ops;
 pub mod raw_vector;
 pub mod rl_vector;
+pub mod rlwm;
 pub mod serialize;
 pub mod sparse_vector;
 pub mod support;

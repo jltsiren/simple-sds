@@ -4,6 +4,7 @@ use crate::ops::{Vector, Access, VectorIndex, BitVec, Rank, Select, SelectZero, 
 use crate::serialize::Serialize;
 use crate::bits;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use rand::Rng;
@@ -14,9 +15,9 @@ use rand_distr::{Geometric, Distribution};
 // Returns a vector of `len` random `width`-bit integers.
 pub fn random_vector(len: usize, width: usize) -> Vec<u64> {
     let mut result: Vec<u64> = Vec::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..len {
-        let value: u64 = rng.gen();
+        let value: u64 = rng.random();
         result.push(value & bits::low_set(width));
     }
     result
@@ -25,9 +26,9 @@ pub fn random_vector(len: usize, width: usize) -> Vec<u64> {
 // Returns `n` random values in `0..universe`.
 pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
     let mut result: Vec<usize> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..n {
-        let value: usize = rng.gen();
+        let value: usize = rng.random::<u64>() as usize;
         result.push(value % universe);
     }
     result
@@ -37,7 +38,7 @@ pub fn random_queries(n: usize, universe: usize) -> Vec<usize>{
 // The distances between positions are `Geometric(density)`.
 pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
     let mut positions: Vec<usize> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(density).unwrap();
     let mut universe = 0;
 
@@ -57,11 +58,11 @@ pub fn random_positions(n: usize, density: f64) -> (Vec<usize>, usize) {
 // Note that `p` is the flip probability.
 pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
     let mut runs: Vec<(usize, usize)> = Vec::with_capacity(n);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let dist = Geometric::new(p).unwrap();
 
-    let start_with_one: bool = rng.gen();
-    let end_with_zero: bool = rng.gen();
+    let start_with_one: bool = rng.random();
+    let end_with_zero: bool = rng.random();
     let mut universe = 0;
     let mut iter = dist.sample_iter(&mut rng);
     if start_with_one {
@@ -82,6 +83,71 @@ pub fn random_runs(n: usize, p: f64) -> (Vec<(usize, usize)>, usize) {
     (runs, universe)
 }
 
+// Returns `n` random (value, length) runs, where lengths are `Geometric(p)`.
+// The values are in `0..(1 << width)`, and it is possible that the same value is repeated.
+// Note that `p` is the flip probability.
+pub fn random_integer_runs(n: usize, width: usize, p: f64) -> Vec<(u64, usize)> {
+    let mut runs: Vec<(u64, usize)> = Vec::with_capacity(n);
+    let mut rng = rand::rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let mask = bits::low_set(width);
+    for _ in 0..n {
+        let value: u64 = rng.random::<u64>() & mask;
+        let len = 1 + (dist.sample(&mut rng) as usize);
+        runs.push((value, len));
+    }
+
+    runs
+}
+
+// Returns random runs of total length `len`, where lengths are `Geometric(p)`.
+// The values are in `0..(1 << width)`, and it is possible that the same value is repeated.
+// Note that `p` is the flip probability.
+pub fn random_integer_runs_with_len(len: usize, width: usize, p: f64) -> Vec<(u64, usize)> {
+    let mut runs: Vec<(u64, usize)> = Vec::new();
+    let mut rng = rand::rng();
+    let dist = Geometric::new(p).unwrap();
+
+    let mask = bits::low_set(width);
+    let mut total_len = 0;
+    while total_len < len {
+        let value: u64 = rng.random::<u64>() & mask;
+        let mut run_len = 1 + (dist.sample(&mut rng) as usize);
+        if total_len + run_len > len {
+            run_len = len - total_len;
+        }
+        runs.push((value, run_len));
+        total_len += run_len;
+    }
+
+    runs
+}
+
+pub fn maximal_runs(runs: Vec<(u64, usize)>) -> Vec<(u64, usize)> {
+    let mut maximal: Vec<(u64, usize)> = Vec::new();
+    for (value, length) in runs.into_iter() {
+        if let Some(last) = maximal.last_mut() {
+            if last.0 == value {
+                last.1 += length;
+                continue;
+            }
+        }
+        maximal.push((value, length));
+    }
+    maximal
+}
+
+pub fn runs_to_values(runs: &[(u64, usize)]) -> Vec<u64> {
+    let mut values: Vec<u64> = Vec::new();
+    for &(value, length) in runs.iter() {
+        for _ in 0..length {
+            values.push(value);
+        }
+    }
+    values
+}
+
 //-----------------------------------------------------------------------------
 
 // Returns a human-readable representation of a size in bytes.
@@ -95,16 +161,16 @@ pub fn readable_size(bytes: usize) -> (f64, &'static str) {
     ];
 
     let value = bytes as f64;
-    let mut unit = 0;
-    for i in 1..units.len() {
-        if value >= units[i].0 {
-            unit = i;
+    let mut unit = units[0];
+    for next in units.iter().skip(1) {
+        if value >= next.0 {
+            unit = *next;
         } else {
             break;
         }
     }
 
-    (value / units[unit].0, units[unit].1)
+    (value / unit.0, unit.1)
 }
 
 // Prints a summary report for construction.
@@ -117,7 +183,7 @@ pub fn report_construction<T: Serialize>(object: &T, len: usize, duration: Durat
     let (size, unit) = readable_size(object.size_in_bytes());
     println!("Time:     {:.3} seconds ({:.1} ns/symbol)", duration.as_secs_f64(), ns);
     println!("Size:     {:.3} {}", size, unit);
-    println!("");
+    println!();
 }
 
 // Prints a summary report for query results.
@@ -132,13 +198,13 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
     let ns = (duration.as_nanos() as f64) / (queries as f64);
     println!("Time:     {:.3} seconds ({:.1} ns/query)", duration.as_secs_f64(), ns);
     println!("Average:  {:.0} absolute, {:.6} normalized", average, normalized);
-    println!("");
+    println!();
 }
 
 //-----------------------------------------------------------------------------
 
 // Returns peak RSS size so far; Linux version.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "libc"))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
@@ -151,7 +217,7 @@ pub fn peak_memory_usage() -> Result<usize, &'static str> {
 }
 
 // Returns peak RSS size so far; macOS version.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "libc"))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
@@ -164,7 +230,7 @@ pub fn peak_memory_usage() -> Result<usize, &'static str> {
 }
 
 // Returns peak RSS size so far; generic version.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos"), feature = "libc")))]
 pub fn peak_memory_usage() -> Result<usize, &'static str> {
     Err("No peak_memory_usage implementation for this OS")
 }
@@ -180,7 +246,7 @@ pub fn report_memory_usage() {
             println!("{}", f);
         },
     }
-    println!("");
+    println!();
 }
 
 //-----------------------------------------------------------------------------
@@ -296,27 +362,23 @@ pub fn try_pred_succ<'a, T: Rank<'a> + PredSucc<'a>>(bv: &'a T) {
         } else {
             if rank == 0 {
                 assert!(pred_result.is_none(), "Got a predecessor result before the first set bit");
+            } else if let Some((pred_rank, pred_value)) = pred_result {
+                let new_rank = bv.rank(pred_value);
+                assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
+                assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
+                assert!(bv.get(pred_value), "Predecessor returned an unset bit");
             } else {
-                if let Some((pred_rank, pred_value)) = pred_result {
-                    let new_rank = bv.rank(pred_value);
-                    assert_eq!(new_rank, rank - 1, "The returned value was not the predecessor");
-                    assert_eq!(pred_rank, new_rank, "Predecessor returned an invalid rank");
-                    assert!(bv.get(pred_value), "Predecessor returned an unset bit");
-                } else {
-                    panic!("Could not find a predecessor");
-                }
+                panic!("Could not find a predecessor");
             }
             if rank == bv.count_ones() {
                 assert!(succ_result.is_none(), "Got a successor result after the last set bit");
+            } else if let Some((succ_rank, succ_value)) = succ_result {
+                let new_rank = bv.rank(succ_value);
+                assert_eq!(new_rank, rank, "The returned value was not the successor");
+                assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
+                assert!(bv.get(succ_value), "Successor returned an unset bit");
             } else {
-                if let Some((succ_rank, succ_value)) = succ_result {
-                    let new_rank = bv.rank(succ_value);
-                    assert_eq!(new_rank, rank, "The returned value was not the successor");
-                    assert_eq!(succ_rank, new_rank, "Successor returned an invalid rank");
-                    assert!(bv.get(succ_value), "Successor returned an unset bit");
-                } else {
-                    panic!("Could not find a successor");
-                }
+                panic!("Could not find a successor");
             }
         }
     }
@@ -340,8 +402,8 @@ where
     assert_eq!(v.is_empty(), truth.is_empty(), "Invalid vector emptiness");
     assert_eq!(v.width(), width, "Invalid vector width");
 
-    for i in 0..v.len() {
-        assert_eq!(v.get(i), truth[i], "Invalid value {}", i);
+    for (i, value) in truth.iter().enumerate() {
+        assert_eq!(v.get(i), *value, "Invalid value {}", i);
     }
     assert!(v.iter().eq(truth.iter().cloned()), "Invalid iterator (forward)");
 
@@ -381,8 +443,12 @@ pub fn check_contains<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let mut values = HashSet::new();
+    for value in v.iter() {
+        values.insert(value);
+    }
     for value in 0..(1 << width) {
-        let should_have = v.iter().any(|x| x == value);
+        let should_have = values.contains(&value);
         assert_eq!(v.contains(value), should_have, "Invalid contains({})", value);
     }
 }
@@ -392,13 +458,14 @@ pub fn check_rank<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
-    for value in 0..(1 << width) {
-        let mut count = 0;
-        for index in 0..=v.len() {
-            assert_eq!(v.rank(index, value), count, "Invalid rank({}, {})", index, value);
-            if index < v.len() && v.get(index) == value {
-                count += 1;
-            }
+    let mut counts: Vec<usize> = vec![0; 1 << width];
+    for index in 0..=v.len() {
+        for value in 0..(1 << width) {
+            assert_eq!(v.rank(index, value), counts[value as usize], "Invalid rank({}, {})", index, value);
+        }
+        if index < v.len() {
+            let value = v.get(index) as usize;
+            counts[value] += 1;
         }
     }
 }
@@ -418,17 +485,17 @@ where
 }
 
 // Test `value_iter`.
-pub fn check_value_iter<'a, T>(v: &'a T, width: usize)
+pub fn check_value_iter<'a, T>(v: &'a T, width: usize, values: &[u64])
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
     for value in 0..(1 << width) {
         let mut iter = v.value_iter(value);
-        assert_eq!(T::value_of(&iter), value, "Invalid value for value_iter({})", value);
+        assert_eq!(v.value_of(&iter), value, "Invalid value for value_iter({})", value);
         let mut rank = 0;
         let mut index = 0;
         while index < v.len() {
-            if v.get(index) == value {
+            if values[index] == value {
                 assert_eq!(iter.next(), Some((rank, index)), "Invalid result of rank {} from value_iter({})", rank, value);
                 rank += 1;
             }
@@ -439,7 +506,7 @@ where
 }
 
 // Test `select` and `select_iter`.
-pub fn check_select<'a, T>(v: &'a T, width: usize)
+pub fn check_select<'a, T>(v: &'a T, width: usize, values: &[u64])
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
@@ -447,7 +514,7 @@ where
         let mut rank = 0;
         let mut index = 0;
         while index < v.len() {
-            if v.get(index) == value {
+            if values[index] == value {
                 assert_eq!(v.select(rank, value), Some(index), "Invalid select({}, {})", rank, value);
                 assert_eq!(v.select_iter(rank, value).next(), Some((rank, index)), "Invalid select_iter({}, {})", rank, value);
                 rank += 1;
@@ -464,21 +531,26 @@ pub fn check_pred_succ<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let mut iters = Vec::with_capacity(1 << width);
+    let mut prev = Vec::with_capacity(1 << width);
+    let mut next = Vec::with_capacity(1 << width);
     for value in 0..(1 << width) {
-        let mut iter = v.value_iter(value);
-        let mut prev: Option<(usize, usize)> = None;
-        let mut next: Option<(usize, usize)> = iter.next();
+        iters.push(v.value_iter(value));
+        prev.push(None);
+        next.push(iters[value as usize].next());
+    }
 
-        // Try also querying at past-the-end position.
-        for index in 0..=v.len() {
-            if next.is_some() && index == next.unwrap().1 {
-                assert_eq!(v.predecessor(index, value).next(), next, "Invalid predecessor({}, {}) at occurrence", index, value);
-                assert_eq!(v.successor(index, value).next(), next, "Invalid successor({}, {}) at occurrence", index, value);
-                prev = next;
-                next = iter.next();
+    for index in 0..=v.len() {
+        for value in 0..(1 << width) {
+            let val = value as usize;
+            if next[val].is_some() && index == next[val].unwrap().1 {
+                assert_eq!(v.predecessor(index, value).next(), next[val], "Invalid predecessor({}, {}) at occurrence", index, value);
+                assert_eq!(v.successor(index, value).next(), next[val], "Invalid successor({}, {}) at occurrence", index, value);
+                prev[val] = next[val];
+                next[val] = iters[val].next();
             } else {
-                assert_eq!(v.predecessor(index, value).next(), prev, "Invalid predecessor({}, {})", index, value);
-                assert_eq!(v.successor(index, value).next(), next, "Invalid successor({}, {})", index, value);
+                assert_eq!(v.predecessor(index, value).next(), prev[val], "Invalid predecessor({}, {})", index, value);
+                assert_eq!(v.successor(index, value).next(), next[val], "Invalid successor({}, {})", index, value);
             }
         }
     }
@@ -488,11 +560,12 @@ pub fn check_vector_index<'a, T>(v: &'a T, width: usize)
 where
     T: Vector<Item = u64> + Access<'a> + VectorIndex<'a>,
 {
+    let values: Vec<u64> = v.iter().collect();
     check_contains(v, width);
     check_rank(v, width);
     check_inverse_select(v);
-    check_value_iter(v, width);
-    check_select(v, width);
+    check_value_iter(v, width, &values);
+    check_select(v, width, &values);
     check_pred_succ(v, width);
 }
 

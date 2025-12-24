@@ -6,17 +6,17 @@ use crate::{internal, serialize};
 
 use std::cmp;
 
-use rand::distributions::{Bernoulli, Distribution};
+use rand_distr::{Bernoulli, Distribution};
 use rand::Rng;
 
 //-----------------------------------------------------------------------------
 
 fn random_raw_vector(len: usize, density: f64) -> RawVector {
     let mut data = RawVector::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     if density == 0.5 {
         while data.len() < len {
-            unsafe { data.push_int(rng.gen(), cmp::min(len - data.len(), 64)); }
+            unsafe { data.push_int(rng.random(), cmp::min(len - data.len(), 64)); }
         }
     }
     else {
@@ -50,7 +50,7 @@ fn random_vector(len: usize, density: f64) -> BitVector {
 // The final bitvector may be complemented if necessary.
 fn non_uniform_vector(regions: &[(usize, f64)], complement: bool) -> BitVector {
     let mut data = RawVector::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut total_ones: usize = 0;
     for (ones, density) in regions.iter() {
         let dist = Bernoulli::new(*density).unwrap();

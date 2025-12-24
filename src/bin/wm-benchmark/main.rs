@@ -1,4 +1,10 @@
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::new_without_default
+)]
+
 use simple_sds::ops::{Vector, Access, VectorIndex};
+use simple_sds::rlwm::RLWM;
 use simple_sds::serialize::Serialize;
 use simple_sds::wavelet_matrix::WaveletMatrix;
 use simple_sds::internal;
@@ -13,8 +19,16 @@ use getopts::Options;
 fn main() {
     let config = Config::new();
 
-    println!("Generating a random vector of {}-bit integers of length {}", config.width, config.len);
-    let source = internal::random_vector(config.len, config.width);
+    let mut runs = None;
+    let source = if config.flip > 0.0 {
+        println!("Generating a random vector of {}-bit integers of length {} with runs (flip probability {})",
+            config.width, config.len, config.flip);
+        runs = Some(internal::random_integer_runs_with_len(config.len, config.width, config.flip));
+        internal::runs_to_values(runs.as_ref().unwrap())
+    } else {
+        println!("Generating a random vector of {}-bit integers of length {}", config.width, config.len);
+        internal::random_vector(config.len, config.width)
+    };
 
     println!("Building a WaveletMatrix");
     let start = Instant::now();
@@ -23,27 +37,27 @@ fn main() {
 
     println!("Generating {} random access queries over the vector", config.queries);
     let access_queries = internal::random_queries(config.queries, wm.len());
-    println!("");
+    println!();
 
     println!("Generating {} random rank queries over the vector", config.queries);
     let rank_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random inverse select queries over the vector", config.queries);
     let inverse_select_queries = internal::random_queries(config.queries, wm.len());
-    println!("");
+    println!();
 
     println!("Generating {} random select queries over the vector", config.queries);
     let select_queries = query_pairs(config.queries, wm.len() >> wm.width(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random predecessor queries over the vector", config.queries);
     let predecessor_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     println!("Generating {} random successor queries over the vector", config.queries);
     let successor_queries = query_pairs(config.queries, wm.len(), wm.width());
-    println!("");
+    println!();
 
     independent_access(&wm, &access_queries, "WaveletMatrix");
     independent_rank(&wm, &rank_queries, "WaveletMatrix");
@@ -52,6 +66,20 @@ fn main() {
     independent_predecessor(&wm, &predecessor_queries, "WaveletMatrix");
     independent_successor(&wm, &successor_queries, "WaveletMatrix");
 
+    if let Some(runs) = runs {
+        println!("Building a RLWM from the runs");
+        let start = Instant::now();
+        let rlwm = RLWM::from(runs);
+        internal::report_construction(&rlwm, rlwm.len(), start.elapsed());
+
+        independent_access(&rlwm, &access_queries, "RLWM");
+        independent_rank(&rlwm, &rank_queries, "RLWM");
+        independent_inverse_select(&rlwm, &inverse_select_queries, "RLWM");
+        independent_select(&rlwm, &select_queries, "RLWM");
+        independent_predecessor(&rlwm, &predecessor_queries, "RLWM");
+        independent_successor(&rlwm, &successor_queries, "RLWM");
+    }
+
     internal::report_memory_usage();
 }
 
@@ -59,6 +87,7 @@ fn main() {
 
 pub struct Config {
     pub len: usize,
+    pub flip: f64,
     pub width: usize,
     pub queries: usize,
 }
@@ -74,19 +103,21 @@ impl Config {
 
         let mut opts = Options::new();
         opts.optopt("l", "bit-len", &format!("use vectors of length 2^INT (default {})", Self::BIT_LEN), "INT");
+        opts.optopt("r", "runs", "generate runs with flip probability FLOAT", "FLOAT");
         opts.optopt("w", "width", &format!("use INT-bit items (default {})", Self::WIDTH), "INT");
         opts.optopt("n", "queries", &format!("number of queries (default {})", Self::QUERIES), "INT");
         opts.optflag("h", "help", "print this help");
         let matches = match opts.parse(&args[1..]) {
             Ok(m) => m,
             Err(f) => {
-                eprintln!("{}", f.to_string());
+                eprintln!("{}", f);
                 process::exit(1);
             }
         };
 
         let mut config = Config {
             len: 1 << Self::BIT_LEN,
+            flip: 0.0,
             width: Self::WIDTH,
             queries: Self::QUERIES,
         };
@@ -105,7 +136,22 @@ impl Config {
                     config.len = 1 << n;
                 },
                 Err(f) => {
-                    eprintln!("--bit-len: {}", f.to_string());
+                    eprintln!("--bit-len: {}", f);
+                    process::exit(1);
+                },
+            }
+        }
+        if let Some(s) = matches.opt_str("r") {
+            match s.parse::<f64>() {
+                Ok(f) => {
+                    if f < 0.0 || f > 1.0 {
+                        eprintln!("Invalid flip probability: {}", f);
+                        process::exit(1);
+                    }
+                    config.flip = f;
+                },
+                Err(f) => {
+                    eprintln!("--runs: {}", f);
                     process::exit(1);
                 },
             }
@@ -120,7 +166,7 @@ impl Config {
                     config.width = n;
                 },
                 Err(f) => {
-                    eprintln!("--width: {}", f.to_string());
+                    eprintln!("--width: {}", f);
                     process::exit(1);
                 },
             }
@@ -135,7 +181,7 @@ impl Config {
                     config.queries = n;
                 },
                 Err(f) => {
-                    eprintln!("--queries: {}", f.to_string());
+                    eprintln!("--queries: {}", f);
                     process::exit(1);
                 },
             }

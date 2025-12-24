@@ -1,3 +1,8 @@
+#![allow(
+    clippy::uninlined_format_args,
+    clippy::new_without_default
+)]
+
 use simple_sds::ops::{BitVec, Rank, Select, SelectZero};
 use simple_sds::serialize::Serialize;
 use simple_sds::bit_vector::BitVector;
@@ -37,15 +42,15 @@ fn main() {
 
     println!("Generating {} random rank queries over the bitvector", config.queries);
     let rank_queries = internal::random_queries(config.queries, bv.len());
-    println!("");
+    println!();
 
     println!("Generating {} random select queries over the bitvector", config.queries);
     let select_queries = internal::random_queries(config.queries, bv.count_ones());
-    println!("");
+    println!();
 
     println!("Generating {} random select_zero queries over the bitvector", config.queries);
     let select_zero_queries = internal::random_queries(config.queries, bv.count_zeros());
-    println!("");
+    println!();
 
     run_tests(&bv, &rank_queries, &select_queries, &select_zero_queries, "BitVector", "bv", &config);
 
@@ -105,7 +110,7 @@ impl Config {
         let matches = match opts.parse(&args[1..]) {
             Ok(m) => m,
             Err(f) => {
-                eprintln!("{}", f.to_string());
+                eprintln!("{}", f);
                 process::exit(1);
             }
         };
@@ -134,7 +139,7 @@ impl Config {
                     config.bit_len = n;
                 },
                 Err(f) => {
-                    eprintln!("--bit-len: {}", f.to_string());
+                    eprintln!("--bit-len: {}", f);
                     process::exit(1);
                 },
             }
@@ -142,14 +147,14 @@ impl Config {
         if let Some(s) = matches.opt_str("d") {
             match s.parse::<f64>() {
                 Ok(n) => {
-                    if n < 0.0 || n > 1.0 {
+                    if !(0.0..=1.0).contains(&n) {
                         eprintln!("Invalid set bit density: {}", n);
                         process::exit(1);
                     }
                     config.density = n;
                 }
                 Err(f) => {
-                    eprintln!("--density: {}", f.to_string());
+                    eprintln!("--density: {}", f);
                     process::exit(1);
                 },
             }
@@ -165,7 +170,7 @@ impl Config {
                     config.queries = n;
                 },
                 Err(f) => {
-                    eprintln!("--queries: {}", f.to_string());
+                    eprintln!("--queries: {}", f);
                     process::exit(1);
                 },
             }
@@ -182,7 +187,7 @@ impl Config {
 fn run_tests<'a, T>(bv: &'a T, rank_queries: &[usize], select_queries: &[usize], select_zero_queries: &[usize], name: &str, extension: &str, config: &Config)
 where T: BitVec<'a> + Rank<'a> + Select<'a> + SelectZero<'a> + Serialize {
     println!("Size:     {}", utils::bitvector_size(bv));
-    println!("");
+    println!();
 
     independent_rank(bv, rank_queries, name);
     chained_rank(bv, rank_queries, config.chain_mask, name);
@@ -195,7 +200,7 @@ where T: BitVec<'a> + Rank<'a> + Select<'a> + SelectZero<'a> + Serialize {
         let filename: String = format!("{}.{}", basename, extension);
         println!("Saving {} to {}", name, filename);
         serialize::serialize_to(bv, &filename).unwrap();
-        println!("");
+        println!();
     }
 }
 
@@ -203,8 +208,8 @@ fn independent_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &[usize], 
     println!("{} with {} independent rank queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
-    for i in 0..queries.len() {
-        let result = bv.rank(queries[i]);
+    for query in queries {
+        let result = bv.rank(*query);
         total += result;
     }
     internal::report_results(queries.len(), total, bv.count_ones(), now.elapsed());
@@ -215,8 +220,8 @@ fn chained_rank<'a, T: BitVec<'a> + Rank<'a>>(bv: &'a T, queries: &[usize], chai
     let now = Instant::now();
     let mut total = 0;
     let mut prev: usize = 0;
-    for i in 0..queries.len() {
-        let query = queries[i] ^ prev;
+    for query in queries {
+        let query = query ^ prev;
         let result = bv.rank(query);
         total += result;
         prev = result & chained_query_mask;
@@ -228,8 +233,8 @@ fn independent_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &[usiz
     println!("{} with {} independent select queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
-    for i in 0..queries.len() {
-        let result = bv.select(queries[i]).unwrap();
+    for query in queries {
+        let result = bv.select(*query).unwrap();
         total += result;
     }
     internal::report_results(queries.len(), total, bv.len(), now.elapsed());
@@ -240,8 +245,8 @@ fn chained_select<'a, T: BitVec<'a> + Select<'a>>(bv: &'a T, queries: &[usize], 
     let now = Instant::now();
     let mut total = 0;
     let mut prev: usize = 0;
-    for i in 0..queries.len() {
-        let query = (queries[i] ^ prev) % bv.count_ones();
+    for query in queries {
+        let query = (query ^ prev) % bv.count_ones();
         let result = bv.select(query).unwrap();
         total += result;
         prev = result & chained_query_mask;
@@ -253,8 +258,8 @@ fn independent_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, querie
     println!("{} with {} independent select_zero queries", vector_type, queries.len());
     let now = Instant::now();
     let mut total = 0;
-    for i in 0..queries.len() {
-        let result = bv.select_zero(queries[i]).unwrap();
+    for query in queries {
+        let result = bv.select_zero(*query).unwrap();
         total += result;
     }
     internal::report_results(queries.len(), total, bv.len(), now.elapsed());
@@ -265,8 +270,8 @@ fn chained_select_zero<'a, T: BitVec<'a> + SelectZero<'a>>(bv: &'a T, queries: &
     let now = Instant::now();
     let mut total = 0;
     let mut prev: usize = 0;
-    for i in 0..queries.len() {
-        let query = (queries[i] ^ prev) % bv.count_zeros();
+    for query in queries {
+        let query = (query ^ prev) % bv.count_zeros();
         let result = bv.select_zero(query).unwrap();
         total += result;
         prev = result & chained_query_mask;

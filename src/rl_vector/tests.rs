@@ -332,3 +332,82 @@ fn large_pred_succ() {
 }
 
 //-----------------------------------------------------------------------------
+
+fn test_run_ops(rv: &RLVector) {
+    // rank_with_run
+    for index in 0..rv.len() {
+        let result = rv.rank_with_run(index);
+        assert!(result.is_some(), "rank_with_run returned None for index {} (len {})", index, rv.len());
+        let (rank, value, run_len) = result.unwrap();
+        assert_eq!(value, rv.get(index), "rank_with_run returned incorrect value at index {} (len {})", index, rv.len());
+        let (true_rank, rank_at_end, rank_past_end) = if value {
+            (rv.rank(index), rv.rank(index + run_len), rv.rank(index + run_len + 1))
+        } else {
+            (rv.rank_zero(index), rv.rank_zero(index + run_len), rv.rank_zero(index + run_len + 1))
+        };
+        assert_eq!(rank, true_rank, "rank_with_run returned incorrect rank {} at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len, rank_at_end, "rank_with_run did not return a {} run at index {} (len {})", value, index, rv.len());
+        assert_eq!(rank + run_len, rank_past_end, "rank_with_run returned a non-maximal {} run at index {} (len {})", value, index, rv.len());
+    }
+    let result = rv.rank_with_run(rv.len());
+    assert!(result.is_none(), "rank_with_run returned a result for index past the end (len {})", rv.len());
+
+    // select_run
+    for rank in 0..rv.count_ones() {
+        let result = rv.select_run(rank);
+        assert!(result.is_some(), "select_run returned None for rank {} (count_ones {})", rank, rv.count_ones());
+        let (index, run_len) = result.unwrap();
+        let true_index = rv.select(rank).unwrap();
+        assert_eq!(index, true_index, "select_run returned incorrect index for rank {} (count_ones {})", rank, rv.count_ones());
+        let run_end = rv.select(rank + run_len - 1);
+        assert_eq!(Some(index + run_len - 1), run_end, "select_run did not return a run for rank {} (count_ones {})", rank, rv.count_ones());
+        let after_run = rv.select(rank + run_len);
+        assert_ne!(Some(index + run_len), after_run, "select_run returned a non-maximal run for rank {} (count_ones {})", rank, rv.count_ones());
+    }
+    let result = rv.select_run(rv.count_ones());
+    assert!(result.is_none(), "select_run returned a result for rank past the end (count_ones {})", rv.count_ones());
+
+    // select_zero_run
+    for rank in 0..rv.count_zeros() {
+        let result = rv.select_zero_run(rank);
+        assert!(result.is_some(), "select_zero_run returned None for rank {} (count_zeros {})", rank, rv.count_zeros());
+        let (index, run_len) = result.unwrap();
+        let true_index = rv.select_zero(rank).unwrap();
+        assert_eq!(index, true_index, "select_zero_run returned incorrect index for rank {} (count_zeros {})", rank, rv.count_zeros());
+        let run_end = rv.select_zero(rank + run_len - 1);
+        assert_eq!(Some(index + run_len - 1), run_end, "select_zero_run did not return a run for rank {} (count_zeros {})", rank, rv.count_zeros());
+        let after_run = rv.select_zero(rank + run_len);
+        assert_ne!(Some(index + run_len), after_run, "select_zero_run returned a non-maximal run for rank {} (count_zeros {})", rank, rv.count_zeros());
+    }
+    let result = rv.select_zero_run(rv.count_zeros());
+    assert!(result.is_none(), "select_zero_run returned a result for rank past the end (count_zeros {})", rv.count_zeros());
+}
+
+#[test]
+fn empty_run_ops() {
+    let empty = zero_vector(0);
+    test_run_ops(&empty);
+}
+
+#[test]
+fn nonempty_run_ops() {
+    let rv = random_rl_vector(87, 0.025);
+    test_run_ops(&rv);
+}
+
+#[test]
+fn uniform_run_ops() {
+    let zeros = zero_vector(1903);
+    let ones = one_vector(1754);
+    test_run_ops(&zeros);
+    test_run_ops(&ones);
+}
+
+#[test]
+#[ignore]
+fn large_run_ops() {
+    let rv = random_rl_vector(20567, 0.03);
+    test_run_ops(&rv);
+}
+
+//-----------------------------------------------------------------------------

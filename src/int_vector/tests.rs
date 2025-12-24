@@ -1,7 +1,9 @@
 use super::*;
 
 use crate::ops::{Vector, Resize, Pack, Access, Push, Pop};
-use crate::serialize::{Serialize, MappingMode};
+use crate::serialize::Serialize;
+#[cfg(feature = "libc")]
+use crate::serialize::MappingMode;
 use crate::{serialize, internal};
 
 use std::fs::OpenOptions;
@@ -9,6 +11,7 @@ use std::fs;
 
 //-----------------------------------------------------------------------------
 
+#[cfg(feature = "libc")]
 fn random_int_vector(n: usize, width: usize) -> IntVector {
     let values = internal::random_vector(n, width);
     let mut result = IntVector::new(width).unwrap();
@@ -139,6 +142,13 @@ fn set_get() {
 fn from_vec() {
     let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
     let int_vec = IntVector::from(correct.clone());
+    internal::check_vector(&int_vec, &correct, 64);
+}
+
+#[test]
+fn from_slice() {
+    let correct: Vec<u64> = vec![1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+    let int_vec = IntVector::from(&correct[..]);
     internal::check_vector(&int_vec, &correct, 64);
 }
 
@@ -288,6 +298,7 @@ fn large_writer() {
 
 //-----------------------------------------------------------------------------
 
+#[cfg(feature = "libc")]
 fn check_mapper(mapper: &IntVectorMapper, truth: &IntVector) {
     assert!(!mapper.is_mutable(), "Read-only mapper is mutable");
     assert_eq!(mapper.len(), truth.len(), "Invalid mapper length");
@@ -307,6 +318,7 @@ fn check_mapper(mapper: &IntVectorMapper, truth: &IntVector) {
     }
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn empty_mapper() {
     let filename = serialize::temp_file_name("empty-int-vector-mapper");
@@ -321,6 +333,7 @@ fn empty_mapper() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn non_empty_mapper() {
     let filename = serialize::temp_file_name("non-empty-int-vector-mapper");
@@ -335,6 +348,7 @@ fn non_empty_mapper() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 fn mapper_offset() {
     let filename = serialize::temp_file_name("int-vector-mapper-offset");
@@ -355,6 +369,7 @@ fn mapper_offset() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[cfg(feature = "libc")]
 #[test]
 #[ignore]
 fn large_mapper() {

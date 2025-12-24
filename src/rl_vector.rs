@@ -19,7 +19,8 @@
 //! A [`SampleIndex`] is used for narrowing down the range of the binary search.
 
 use crate::int_vector::IntVector;
-use crate::ops::{Vector, Access, Push, Resize, BitVec, Rank, Select, SelectZero, PredSucc};
+use crate::ops::{Vector, Access, Push, Resize};
+use crate::ops::{BitVec, Rank, Select, SelectZero, PredSucc, FullBitVec};
 use crate::rl_vector::index::SampleIndex;
 use crate::serialize::Serialize;
 use crate::bits;
@@ -106,6 +107,14 @@ mod tests;
 /// assert_eq!(rv.successor(139).next(), Some((47, 140)));
 /// assert_eq!(rv.successor(140).next(), Some((47, 140)));
 /// assert!(rv.successor(152).next().is_none());
+///
+/// // Operations returning remaining run lengths
+/// let rank_result = rv.rank_with_run(100);
+/// assert_eq!(rank_result, Some((27, true, 20)));
+/// let select_result = rv.select_run(40);
+/// assert_eq!(select_result, Some((113, 7)));
+/// let select_zero_result = rv.select_zero_run(50);
+/// assert_eq!(select_zero_result, Some((72, 23)));
 /// ```
 ///
 /// # Notes
@@ -145,6 +154,7 @@ impl RLVector {
     ///
     /// The copy is created by iterating over the set bits using [`Select::one_iter`].
     /// [`From`] implementations from other bitvector types should generally use this function.
+    /// If the source is in an invalid state or a multiset, this will select a greedy increasing subsequence of positions of set bits.
     ///
     /// # Examples
     ///
@@ -163,7 +173,9 @@ impl RLVector {
     pub fn copy_bit_vec<'a, T: BitVec<'a> + Select<'a>>(source: &'a T) -> Self {
         let mut builder = RLBuilder::new();
         for (_, index) in source.one_iter() {
-            unsafe { builder.set_bit_unchecked(index); }
+            if index >= builder.len() {
+                unsafe { builder.set_bit_unchecked(index); }
+            }
         }
         builder.set_len(source.len());
         RLVector::from(builder)
@@ -327,6 +339,7 @@ impl RLBuilder {
     /// Returns the length of the bitvector.
     ///
     /// This is the first position that can be set.
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -334,16 +347,19 @@ impl RLBuilder {
     /// Returns `true` if the bitvector is empty.
     ///
     /// Makes Clippy happy.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the number of set bits in the bitvector.
+    #[inline]
     pub fn count_ones(&self) -> usize {
         self.ones
     }
 
     /// Returns the number of unset bits in the bitvector.
+    #[inline]
     pub fn count_zeros(&self) -> usize {
         self.len() - self.count_ones()
     }
@@ -384,7 +400,7 @@ impl RLBuilder {
     ///
     /// Behavior is undefined if `index < self.len()`.
     pub unsafe fn set_bit_unchecked(&mut self, index: usize) {
-        self.set_run_unchecked(index, 1);
+        unsafe { self.set_run_unchecked(index, 1); }
     }
 
     /// Encodes a run of set bits of length `len` starting at position `start`.
@@ -400,7 +416,7 @@ impl RLBuilder {
     ///
     /// Behavior is undefined if `start < self.len()` of `start + len > usize::MAX`.
     pub unsafe fn set_run_unchecked(&mut self, start: usize, len: usize) {
-        if len <= 0 {
+        if len == 0 {
             return;
         }
         if start == self.len() {
@@ -428,7 +444,7 @@ impl RLBuilder {
 
     // Encodes the current run if necessary and sets the active run to `(self.len(), 0)`.
     fn flush(&mut self) {
-        if self.run.1 <= 0 {
+        if self.run.1 == 0 {
             return;
         }
 
@@ -452,7 +468,7 @@ impl RLBuilder {
         let mut value = value as u64;
         while value > RLVector::CODE_MASK {
             self.data.push((value & RLVector::CODE_MASK) | RLVector::CODE_FLAG);
-            value = value >> RLVector::CODE_SHIFT;
+            value >>= RLVector::CODE_SHIFT;
         }
         self.data.push(value);
     }
@@ -500,7 +516,7 @@ impl From<RLBuilder> for RLVector {
             rank_index,
             select_index,
             select_zero_index,
-            samples: samples,
+            samples,
             data: builder.data,
         }
     }
@@ -1094,7 +1110,7 @@ impl<'a> PredSucc<'a> for RLVector {
                 let (start, _) = next.unwrap();
 
                 iterate = start <= value;
-                return iterate;
+                iterate
             });
         }
 
@@ -1146,6 +1162,84 @@ impl<'a> PredSucc<'a> for RLVector {
 
 //-----------------------------------------------------------------------------
 
+impl RLVector {
+    /// Returns the rank of the bit at `index`, as well as the right-maximal run containing it.
+    ///
+    /// Let `bv[index..index + len]` be a right-maximal run of bit values `value`.
+    /// Then, the return value is `(rank, value, len)`, or [`None`] if the index is out of bounds.
+    /// Here `rank` is either `rank(index)` or `rank_zero(index)`, depending on `value`.
+    pub fn rank_with_run(&self, index: usize) -> Option<(usize, bool, usize)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_bit(index);
+        while let Some((start, len)) = iter.next() {
+            if start > index {
+                // The bit is unset.
+                let rank = index - (iter.rank() - len);
+                let run_len = start - index;
+                return Some((rank, false, run_len));
+            }
+            if iter.offset() > index {
+                // The bit is set.
+                let rank = iter.rank_at(index);
+                let run_len = iter.offset() - index;
+                return Some((rank, true, run_len));
+            }
+        }
+
+        // We have a trailing run of unset bits.
+        let rank = self.count_zeros() - (self.len() - index);
+        let run_len = self.len() - index;
+        Some((rank, false, run_len))
+    }
+
+    /// Returns the bit array index for set bit of the given rank, as well as the length of the right-maximal run containing it.
+    ///
+    /// Returns [`None`] if there is no such set bit.
+    pub fn select_run(&self, rank: usize) -> Option<(usize, usize)> {
+        if rank >= self.count_ones() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_one(rank);
+        while let Some((start, len)) = iter.next() {
+            if iter.rank() > rank {
+                let index = iter.offset_for(rank);
+                let run_len = start + len - index;
+                return Some((index, run_len));
+            }
+        }
+        None
+    }
+
+    /// Returns the bit array index for unset bit of the given rank, as well as the length of the right-maximal run containing it.
+    ///
+    /// Returns [`None`] if there is no such unset bit.
+    pub fn select_zero_run(&self, rank: usize) -> Option<(usize, usize)> {
+        if rank >= self.count_zeros() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_zero(rank);
+        while let Some((start, _)) = iter.next() {
+            if iter.rank_zero() > rank {
+                let run_len = iter.rank_zero() - rank;
+                let index = start - run_len;
+                return Some((index, run_len));
+            }
+        }
+
+        // We have a trailing run of unset bits.
+        let index = self.len() - (self.count_zeros() - rank);
+        let run_len = self.len() - index;
+        Some((index, run_len))
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 impl Serialize for RLVector {
     fn serialize_header<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         self.len.serialize(writer)?;
@@ -1190,5 +1284,9 @@ impl Serialize for RLVector {
         self.data.size_in_elements()
     }
 }
+
+//-----------------------------------------------------------------------------
+
+impl<'a> FullBitVec<'a> for RLVector {}
 
 //-----------------------------------------------------------------------------

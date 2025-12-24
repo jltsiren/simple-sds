@@ -263,7 +263,7 @@ pub fn low_set(n: usize) -> u64 {
 /// Behavior is undefined if `n > 64`.
 #[inline]
 pub unsafe fn low_set_unchecked(n: usize) -> u64 {
-    *LOW_SET.get_unchecked(n)
+    unsafe { *LOW_SET.get_unchecked(n) }
 }
 
 /// Returns an integer with the highest `n` bits set.
@@ -291,7 +291,7 @@ pub fn high_set(n: usize) -> u64 {
 /// Behavior is undefined if `n > 64`.
 #[inline]
 pub unsafe fn high_set_unchecked(n: usize) -> u64 {
-    *HIGH_SET.get_unchecked(n)
+    unsafe  { *HIGH_SET.get_unchecked(n) }
 }
 
 /// Returns the length of the binary representation of integer `n`.
@@ -376,13 +376,18 @@ pub unsafe fn select(n: u64, rank: usize) -> usize {
 
         // We add `128 - rank - 1` to each byte and mask out all bits except `128`. We get
         // the bit offset for the byte containing the answer by counting trailing zeros.
-        let mask = (cumulative + *_PS_OVERFLOW.get_unchecked(rank + 1)) & 0x8080_8080_8080_8080;
-        let offset = ((mask.trailing_zeros() >> 3) << 3) as usize;
+        let offset = unsafe {
+            let mask = (cumulative + *_PS_OVERFLOW.get_unchecked(rank + 1)) & 0x8080_8080_8080_8080;
+            ((mask.trailing_zeros() >> 3) << 3) as usize
+        };
 
         // Subtract the number of set bits in the previous bytes from the rank.
         let relative_rank = rank - (((cumulative << 8) >> offset) as usize & 0xFF);
 
-        offset + (*_SELECT_IN_BYTE.get_unchecked((relative_rank << 8) + ((n >> offset) as usize & 0xFF)) as usize)
+        let in_byte = unsafe {
+            *_SELECT_IN_BYTE.get_unchecked((relative_rank << 8) + ((n >> offset) as usize & 0xFF)) as usize
+        };
+        offset + in_byte
     }
 }
 
@@ -616,10 +621,10 @@ pub unsafe fn write_int<T: IndexMut<usize, Output = u64>>(array: &mut T, bit_off
     let (index, offset) = split_offset(bit_offset);
 
     if offset + width <= WORD_BITS {
-        array[index] &= high_set_unchecked(WORD_BITS - width - offset) | low_set_unchecked(offset);
+        array[index] &= unsafe { high_set_unchecked(WORD_BITS - width - offset) | low_set_unchecked(offset) };
         array[index] |= value << offset;
     } else {
-        array[index] &= low_set_unchecked(offset);
+        array[index] &= unsafe { low_set_unchecked(offset) };
         array[index] |= value << offset;
         array[index + 1] &= high_set(2 * WORD_BITS - width - offset);
         array[index + 1] |= value >> (WORD_BITS - offset);
@@ -657,9 +662,9 @@ pub unsafe fn read_int<T: Index<usize, Output = u64>>(array: &T, bit_offset: usi
     let first = array[index] >> offset;
 
     if offset + width <= WORD_BITS {
-        first & low_set_unchecked(width)
+        first & unsafe { low_set_unchecked(width) }
     } else {
-        first | ((array[index + 1] & low_set_unchecked((offset + width) & OFFSET_MASK)) << (WORD_BITS - offset))
+        first | ((array[index + 1] & unsafe { low_set_unchecked((offset + width) & OFFSET_MASK) }) << (WORD_BITS - offset))
     }
 }
 
@@ -732,9 +737,9 @@ mod tests {
     #[test]
     fn read_write() {
         let mut correct: Vec<(u64, u64, u64, u64)> = Vec::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..64 {
-            let mut tuple: (u64, u64, u64, u64) = rng.gen();
+            let mut tuple: (u64, u64, u64, u64) = rng.random();
             tuple.0 &= low_set(31); tuple.1 &= low_set(64); tuple.2 &= low_set(35); tuple.3 &= low_set(63);
             correct.push(tuple);
         }
