@@ -1,6 +1,6 @@
 # Serialization formats
 
-For version 0.4.0. Updated 2024-03-04.
+For version 0.4.0. Updated 2025-12-24.
 
 Changes since version 0.2.0 are mentioned in the relevant location.
 
