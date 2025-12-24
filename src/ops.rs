@@ -502,7 +502,7 @@ pub trait Pop: Vector {
 ///         Self::ValueIter { parent: self, value, rank: 0, index: 0, }
 ///     }
 ///
-///     fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
+///     fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item {
 ///         iter.value
 ///     }
 ///
@@ -538,7 +538,7 @@ pub trait Pop: Vector {
 /// // Iterator
 /// let a: Vec<(usize, usize)> = vec.value_iter('a').collect();
 /// assert_eq!(a, vec![(0, 0), (1, 4)]);
-/// assert_eq!(Example::value_of(&vec.value_iter('c')), 'c');
+/// assert_eq!(vec.value_of(&vec.value_iter('c')), 'c');
 ///
 /// // Select
 /// assert_eq!(vec.select(0, 'c'), Some(2));
@@ -610,7 +610,11 @@ pub trait VectorIndex<'a>: Access<'a> {
     fn value_iter(&'a self, value: <Self as Vector>::Item) -> Self::ValueIter;
 
     /// Returns the value of the items iterated over by the iterator.
-    fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item;
+    ///
+    /// The iterator must belong to this vector.
+    /// The value is usually stored in the iterator.
+    /// This method provides a generic way to access it.
+    fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item;
 
     /// Returns the index of the vector that contains the occurrence of item `value` of rank `rank`.
     ///

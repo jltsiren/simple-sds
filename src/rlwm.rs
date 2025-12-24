@@ -1,6 +1,13 @@
 //! An immutable run-length encoded integer vector supporting rank/select-type queries.
-
-// FIXME document
+//!
+//! The wavelet matrix was first described in:
+//!
+//! > Claude, Navarro, Ordóñez: The wavelet matrix: An efficient wavelet tree for large alphabets.
+//! > Information Systems, 2015.
+//! > DOI: [10.1016/j.is.2014.06.002](https://doi.org/10.1016/j.is.2014.06.002)
+//!
+//! See [`wm_core`] for a low-level description and [`crate::wavelet_matrix`] for a plain variant.
+//! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
 use crate::int_vector::IntVector;
 use crate::ops::{Vector, Access, VectorIndex};
@@ -18,7 +25,6 @@ mod tests;
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
 /// An immutable run-length encoded integer vector supporting rank/select-type queries.
 ///
 /// Each item consists of the lowest 1 to 64 bits of a [`u64`] value, as specified by the width of the vector.
@@ -41,6 +47,65 @@ mod tests;
 /// * [`Access::iter`] returns a more efficient iterator that accesses the vector one run at a time.
 ///
 /// Both iterators ([`AccessIter`] and [`ValueIter`]) support iterating over the runs using `next_run`.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::{Vector, Access, VectorIndex};
+/// use simple_sds::rlwm::RLWM;
+///
+/// // Construction
+/// let runs: Vec<(u64, usize)> = vec![
+///     (1, 3), (2, 2), (3, 4), (1, 2), (0, 1), (2, 3)
+/// ];
+/// let wm = RLWM::from(runs.clone());
+/// let values: Vec<u64> = runs.iter().flat_map(|(value, length)|
+///     std::iter::repeat(*value).take(*length)
+/// ).collect();
+///
+/// // Access
+/// assert_eq!(wm.len(), values.len());
+/// assert_eq!(wm.width(), 2);
+/// for i in 0..wm.len() {
+///     assert_eq!(wm.get(i), values[i]);
+/// }
+/// assert!(wm.iter().eq(values.iter().copied()));
+///
+/// // Access by runs
+/// let mut offset = 0;
+/// for run in runs.iter() {
+///     let (value, length) = wm.get_run(offset);
+///     assert_eq!((value, length), *run);
+///     offset += length;
+/// }
+///
+/// // Rank
+/// assert_eq!(wm.rank(5, 1), 3);
+/// assert_eq!(wm.rank(10, 2), 2);
+///
+/// // Select
+/// assert_eq!(wm.select(2, 3), Some(7));
+/// assert_eq!(wm.select_run(2, 3), Some((7, 2)));
+/// assert!(wm.select(1, 5).is_none());
+/// assert_eq!(wm.select_iter(1, 2).next(), Some((1, 4)));
+///
+/// // Inverse select
+/// let index = 7;
+/// let inverse = wm.inverse_select(index).unwrap();
+/// assert_eq!(inverse, (2, 3));
+/// assert_eq!(wm.select(inverse.0, inverse.1), Some(index));
+///
+/// // Predecessor / successor
+/// assert!(wm.predecessor(1, 2).next().is_none());
+/// assert_eq!(wm.predecessor(4, 1).next(), Some((2, 2)));
+/// assert_eq!(wm.successor(10, 0).next(), Some((0, 11)));
+/// assert!(wm.successor(12, 0).next().is_none());
+/// ```
+///
+/// # Notes
+///
+/// * `RLWM` never panics from I/O errors.
+/// * Because `RLWM` uses a separate bitvector for each level, it is not space-efficient for short vectors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RLWM<'a> {
     len: usize,
@@ -152,7 +217,7 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
         }
     }
 
-    fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
+    fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item {
         iter.value
     }
 
@@ -177,7 +242,6 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
 }
 
 impl <'a> RLWM<'a> {
-    // FIXME: examples
     /// Returns the right-maximal run of values starting at the given index.
     ///
     /// The returned tuple is (value, length).
@@ -191,7 +255,6 @@ impl <'a> RLWM<'a> {
         (result.1, result.2)
     }
 
-    // FIXME: examples
     /// Returns the right-maximal run of the vector that starts with occurrence of item `value` of rank `rank`.
     ///
     /// The returned tuple is (starting index, run length).
@@ -237,7 +300,6 @@ impl<'a> Serialize for RLWM<'a> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME: examples
 /// A read-only iterator over the items in [`RLWM`].
 ///
 /// This is a more efficient override of the default iterator provided by [`Access`].
@@ -245,6 +307,8 @@ impl<'a> Serialize for RLWM<'a> {
 ///
 /// Backward iteration with [`DoubleEndedIterator::next_back`] is supported but less efficient.
 /// Method [`AccessIter::next_run`] can be used for iterating over runs of values.
+///
+/// See [`RLWM`] for an example.
 #[derive(Clone, Debug)]
 pub struct AccessIter<'a> {
     parent: &'a RLWM<'a>,
@@ -322,13 +386,34 @@ impl<'a> FusedIterator for AccessIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME: example
 /// A read-only iterator over the occurrences of a specific value in [`RLWM`].
 ///
 /// The type of `Item` is [`(usize, usize)`] representing a pair (rank, index).
 /// The item at position `index` has the given value, and the rank of that value at that position is `rank`.
 ///
 /// Method [`ValueIter::next_run`] can be used for iterating over runs of the given value.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::ops::VectorIndex;
+/// use simple_sds::rlwm::RLWM;
+///
+/// // Construction
+/// let runs: Vec<(u64, usize)> = vec![
+///     (1, 3), (2, 2), (3, 4), (1, 2), (0, 1), (2, 3)
+/// ];
+/// let wm = RLWM::from(runs.clone());
+///
+/// // Iteration over values
+/// let mut iter = wm.value_iter(2);
+/// assert_eq!(wm.value_of(&iter), 2);
+/// assert_eq!(iter.next(), Some((0, 3)));
+/// assert_eq!(iter.next(), Some((1, 4)));
+/// assert_eq!(iter.next(), Some((2, 12)));
+/// assert_eq!(iter.next_run(), Some((3, 13, 2)));
+/// assert!(iter.next().is_none());
+/// ```
 #[derive(Clone, Debug)]
 pub struct ValueIter<'a> {
     parent: &'a RLWM<'a>,
@@ -396,10 +481,28 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-// FIXME example
-/// [`RLWM`] iterator that consumes the vector.
+/// [`RLWM`] transformed into an iterator over its items.
 ///
 /// The type of `Item` is [`u64`].
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::rlwm::RLWM;
+///
+/// // Construction
+/// let runs: Vec<(u64, usize)> = vec![
+///     (1, 3), (2, 2), (3, 4), (1, 2), (0, 1), (2, 3)
+/// ];
+/// let wm = RLWM::from(runs.clone());
+/// let values: Vec<u64> = runs.iter().flat_map(|(value, length)|
+///     std::iter::repeat(*value).take(*length)
+/// ).collect();
+///
+/// // Into iterator
+/// let v: Vec<u64> = wm.into_iter().collect();
+/// assert_eq!(v, values);
+/// ```
 #[derive(Clone, Debug)]
 pub struct IntoIter<'a> {
     parent: RLWM<'a>,

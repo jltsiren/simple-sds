@@ -87,7 +87,7 @@ impl<'a> VectorIndex<'a> for NaiveVector {
         }
     }
 
-    fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
+    fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item {
         iter.value
     }
 

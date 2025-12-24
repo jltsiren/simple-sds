@@ -491,7 +491,7 @@ where
 {
     for value in 0..(1 << width) {
         let mut iter = v.value_iter(value);
-        assert_eq!(T::value_of(&iter), value, "Invalid value for value_iter({})", value);
+        assert_eq!(v.value_of(&iter), value, "Invalid value for value_iter({})", value);
         let mut rank = 0;
         let mut index = 0;
         while index < v.len() {

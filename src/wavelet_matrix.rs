@@ -2,11 +2,11 @@
 //!
 //! The wavelet matrix was first described in:
 //!
-//! > Claude, Navarro, Ordóñez: The wavelet matrix: An efficient wavelet tree for large alphabets.  
-//! > Information Systems, 2015.  
+//! > Claude, Navarro, Ordóñez: The wavelet matrix: An efficient wavelet tree for large alphabets.
+//! > Information Systems, 2015.
 //! > DOI: [10.1016/j.is.2014.06.002](https://doi.org/10.1016/j.is.2014.06.002)
 //!
-//! See [`wm_core`] for a low-level description.
+//! See [`wm_core`] for a low-level description and [`crate::rlwm`] for a run-length encoded variant.
 //! As in wavelet trees, access and rank queries proceed down from level `0`, while select queries go up from level `width - 1`.
 
 use crate::bit_vector::BitVector;
@@ -198,7 +198,7 @@ impl<'a> VectorIndex<'a> for WaveletMatrix<'a> {
         }
     }
 
-    fn value_of(iter: &Self::ValueIter) -> <Self as Vector>::Item {
+    fn value_of(&self, iter: &Self::ValueIter) -> <Self as Vector>::Item {
         iter.value
     }
 
@@ -267,7 +267,7 @@ impl<'a> Serialize for WaveletMatrix<'a> {
 ///
 /// // Iteration over values
 /// let mut iter = wm.value_iter(2);
-/// assert_eq!(WaveletMatrix::value_of(&iter), 2);
+/// assert_eq!(wm.value_of(&iter), 2);
 /// assert_eq!(iter.next(), Some((0, 5)));
 /// assert_eq!(iter.next(), Some((1, 9)));
 /// assert!(iter.next().is_none());
@@ -302,7 +302,7 @@ impl<'a> FusedIterator for ValueIter<'a> {}
 
 //-----------------------------------------------------------------------------
 
-/// [`WaveletMatrix`] transformed into an iterator.
+/// [`WaveletMatrix`] transformed into an iterator over its items.
 ///
 /// The type of `Item` is [`u64`].
 ///
