@@ -1003,13 +1003,15 @@ pub trait Rank<'a>: BitVec<'a> {
         if index >= self.len() {
             return None;
         }
+        // We may get better instruction-level parallelism by computing `rank`
+        // unconditionally instead of calling `rank_zero` when the bit is unset.
         let bit = self.get(index);
-        let rank = if bit {
-            self.rank(index)
+        let rank = self.rank(index);
+        if bit {
+            Some((rank, bit))
         } else {
-            self.rank_zero(index)
-        };
-        Some((rank, bit))
+            Some((index - rank, bit))
+        }
     }
 
 }

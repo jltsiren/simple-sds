@@ -233,7 +233,7 @@ impl<'a> VectorIndex<'a> for RLWM<'a> {
         }
     }
 
-    // TODO: implement predecessor/successor using the same functionality in RLVector?
+    // TODO: override default predecessor/successor using the same functionality in RLVector?
 }
 
 impl <'a> RLWM<'a> {

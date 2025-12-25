@@ -103,7 +103,6 @@ impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
         self.levels.len()
     }
 
-    // TODO: this should use inverse_select when it's implemented
     /// Maps the item at the given position down.
     ///
     /// Returns the position of the item in the reordered vector and the value of the item, or [`None`] if the position is invalid.
@@ -115,11 +114,12 @@ impl<'a, T: FullBitVec<'a>> WMCore<'a, T> {
         let mut index = index;
         let mut value = 0;
         for level in 0..self.width() {
-            if self.levels[level].get(index) {
-                index = self.map_down_one(index, level);
+            let (rank, bit) = self.levels[level].inverse_select(index)?;
+            if bit {
+                index = self.levels[level].count_zeros() + rank;
                 value += self.bit_value(level);
             } else {
-                index = self.map_down_zero(index, level);
+                index = rank;
             }
         }
 
