@@ -41,11 +41,6 @@ mod tests;
 /// * Queries and operations: [`VectorIndex`]
 /// * Serialization: [`Serialize`]
 ///
-/// Overridden default implementations:
-/// * [`VectorIndex::contains`] has a simple constant-time implementation.
-/// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
-/// * [`Access::iter`] returns a more efficient iterator that accesses the vector one run at a time.
-///
 /// Both iterators ([`AccessIter`] and [`ValueIter`]) support iterating over the runs using `next_run`.
 ///
 /// # Examples

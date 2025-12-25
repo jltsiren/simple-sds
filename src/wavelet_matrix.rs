@@ -43,10 +43,6 @@ mod tests;
 /// * Queries and operations: [`VectorIndex`]
 /// * Serialization: [`Serialize`]
 ///
-/// Overridden default implementations:
-/// * [`VectorIndex::contains`] has a simple constant-time implementation.
-/// * [`VectorIndex::inverse_select`] is effectively the same as [`Access::get`].
-///
 /// # Examples
 ///
 /// ```
