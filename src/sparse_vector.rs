@@ -207,7 +207,7 @@ impl SparseVector {
     ///     assert_eq!(value, source[index]);
     /// }
     /// ```
-    pub fn try_from_iter<T: Iterator<Item = usize> + DoubleEndedIterator + ExactSizeIterator>(iter: T) -> Result<SparseVector, &'static str> {
+    pub fn try_from_iter<T: Iterator<Item = usize> + DoubleEndedIterator + ExactSizeIterator>(iter: T) -> Result<SparseVector, String> {
         let mut iter = iter;
         let (ones, _) = iter.size_hint();
         let universe = if let Some(pos) = iter.next_back() { pos + 1 } else { 0 };
@@ -375,9 +375,9 @@ impl SparseBuilder {
     ///
     /// * `universe`: Universe size or length of the bitvector.
     /// * `ones`: Number of bits that will be set in the bitvector.
-    pub fn new(universe: usize, ones: usize) -> Result<SparseBuilder, &'static str> {
+    pub fn new(universe: usize, ones: usize) -> Result<SparseBuilder, String> {
         if ones > universe {
-            return Err("Number of set bits is greater than universe size");
+            return Err(format!("Number of set bits {} is greater than universe size {}", ones, universe));
         }
 
         let (width, high_len) = Self::get_params(universe, ones);
@@ -527,19 +527,19 @@ impl SparseBuilder {
     /// Tries to set the specified bit in the bitvector.
     ///
     /// Returns [`Err`] if the builder is full, if `index < self.next_index()`, or if `index >= self.universe()`.
-    pub fn try_set(&mut self, index: usize) -> Result<(), &'static str> {
+    pub fn try_set(&mut self, index: usize) -> Result<(), String> {
         if self.is_full() {
-            return Err("The builder is full");
+            return Err(String::from("The builder is full"));
         }
         if index < self.next_index() {
             if self.increment == 0 {
-                return Err("Index must be >= previous set position");
+                return Err(format!("Index {} must be >= previous set position {}", index, self.next_index()));
             } else {
-                return Err("Index must be > previous set position");
+                return Err(format!("Index {} must be > previous set position {}", index, self.next_index() - self.increment));
             }
         }
         if index >= self.universe() {
-            return Err("Index is larger than universe size");
+            return Err(format!("Index {} is larger than universe size {}", index, self.universe()));
         }
         unsafe { self.set_unchecked(index); }
         Ok(())
@@ -555,12 +555,12 @@ impl Extend<usize> for SparseBuilder {
 }
 
 impl TryFrom<SparseBuilder> for SparseVector {
-    type Error = &'static str;
+    type Error = String;
 
     fn try_from(builder: SparseBuilder) -> Result<Self, Self::Error> {
         let mut builder = builder;
         if !builder.is_full() {
-            return Err("The builder is not full");
+            return Err(String::from("The builder is not full"));
         }
         builder.data.high = BitVector::from(builder.high);
         builder.data.high.enable_select();

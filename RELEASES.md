@@ -27,6 +27,7 @@
   * `Access::get_or` returns a default value if the index is not valid.
 * `IntVector` construction from a slice of integers.
 * Memory-mapped structures are enabled with feature `libc`.
+* Error type is always `String` or `io::Error`.
 
 ## Simple-SDS 0.3.1 (2022-02-17)
 

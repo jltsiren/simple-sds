@@ -205,34 +205,34 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
 
 // Returns peak RSS size so far; Linux version.
 #[cfg(all(target_os = "linux", feature = "libc"))]
-pub fn peak_memory_usage() -> Result<usize, &'static str> {
+pub fn peak_memory_usage() -> Result<usize, String> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
         let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
         match retval {
             0 => Ok(rusage.ru_maxrss as usize * 1024),
-            _ => Err("libc::getrusage call failed"),
+            val => Err(format!("libc::getrusage call failed with return value {}", val)),
         }
     }
 }
 
 // Returns peak RSS size so far; macOS version.
 #[cfg(all(target_os = "macos", feature = "libc"))]
-pub fn peak_memory_usage() -> Result<usize, &'static str> {
+pub fn peak_memory_usage() -> Result<usize, String> {
     unsafe {
         let mut rusage: libc::rusage = std::mem::zeroed();
         let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
         match retval {
             0 => Ok(rusage.ru_maxrss as usize),
-            _ => Err("libc::getrusage call failed"),
+            val => Err(format!("libc::getrusage call failed with return value {}", val)),
         }
     }
 }
 
 // Returns peak RSS size so far; generic version.
 #[cfg(not(all(any(target_os = "linux", target_os = "macos"), feature = "libc")))]
-pub fn peak_memory_usage() -> Result<usize, &'static str> {
-    Err("No peak_memory_usage implementation for this OS")
+pub fn peak_memory_usage() -> Result<usize, String> {
+    Err(String::from("No peak_memory_usage implementation for this OS"))
 }
 
 // Prints a memory usage report.

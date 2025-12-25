@@ -58,9 +58,9 @@ impl IntVector {
     /// assert!(v.is_empty());
     /// assert_eq!(v.width(), 13);
     /// ```
-    pub fn new(width: usize) -> Result<IntVector, &'static str> {
+    pub fn new(width: usize) -> Result<IntVector, String> {
         if width == 0 || width > bits::WORD_BITS {
-            Err("Integer width must be 1 to 64 bits")
+            Err(String::from("Integer width must be 1 to 64 bits"))
         }
         else {
             Ok(IntVector {
@@ -98,9 +98,9 @@ impl IntVector {
     /// # Panics
     ///
     /// May panic if the vector would exceed the maximum length.
-    pub fn with_len(len: usize, width: usize, value: u64) -> Result<IntVector, &'static str> {
+    pub fn with_len(len: usize, width: usize, value: u64) -> Result<IntVector, String> {
         if width == 0 || width > bits::WORD_BITS {
-            return Err("Integer width must be 1 to 64 bits");
+            return Err(String::from("Integer width must be 1 to 64 bits"));
         }
         let mut data = RawVector::with_capacity(len * width);
         for _ in 0..len {
@@ -135,9 +135,9 @@ impl IntVector {
     /// # Panics
     ///
     /// May panic if the capacity would exceed the maximum length.
-    pub fn with_capacity(capacity: usize, width: usize) -> Result<IntVector, &'static str> {
+    pub fn with_capacity(capacity: usize, width: usize) -> Result<IntVector, String> {
         if width == 0 || width > bits::WORD_BITS {
-            Err("Integer width must be 1 to 64 bits")
+            Err(String::from("Integer width must be 1 to 64 bits"))
         } else {
             Ok(IntVector {
                 len: 0,
