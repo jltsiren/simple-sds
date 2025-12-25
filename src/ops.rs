@@ -872,6 +872,7 @@ pub trait VectorIndex<'a>: Access<'a> {
 /// assert_eq!(bv.rank(33), 1);
 /// assert_eq!(bv.rank(34), 2);
 /// assert_eq!(bv.rank_zero(65), 63);
+/// assert_eq!(bv.inverse_select(33), Some((1, true))); // See select() below.
 ///
 /// // Select
 /// bv.enable_select();
@@ -942,8 +943,6 @@ pub trait BitVec<'a> {
 
 //-----------------------------------------------------------------------------
 
-// TODO: Add inverse_select that returns (bv.rank(bv[i]), bv[i])
-// TODO: with a default implementation using get() and rank() / rank_zero()
 /// Rank queries on a bitvector.
 ///
 /// Some bitvector types do not build rank/select support structures by default.
@@ -984,6 +983,35 @@ pub trait Rank<'a>: BitVec<'a> {
         let index = cmp::min(index, self.len());
         index - self.rank(index)
     }
+
+    /// Determines the rank for the bit value at index `index`.
+    ///
+    /// Returns `(rank, bit)` such that `bit == self.get(index)` and
+    /// * if `bit == true`, then `rank == self.rank(index)`; and
+    /// * if `bit == false`, then `rank == self.rank_zero(index)`.
+    /// Returns [`None`] if `index` is out of bounds.
+    ///
+    /// The corresponding select method ([`Select::select`] or [`SelectZero::select_zero`]) will return `index` at `rank`.
+    /// The default implementation calls [`BitVec::get`] and either [`Rank::rank`] or [`Rank::rank_zero`] separately.
+    /// Compressed bitvector implementations can usually compute `inverse_select` more efficiently with a single access.
+    ///
+    /// # Panics
+    ///
+    /// May panic if rank support has not been enabled.
+    /// May panic from I/O errors.
+    fn inverse_select(&self, index: usize) -> Option<(usize, bool)> {
+        if index >= self.len() {
+            return None;
+        }
+        let bit = self.get(index);
+        let rank = if bit {
+            self.rank(index)
+        } else {
+            self.rank_zero(index)
+        };
+        Some((rank, bit))
+    }
+
 }
 
 //-----------------------------------------------------------------------------
