@@ -778,6 +778,43 @@ impl<'a> Rank<'a> for SparseVector {
 
         pos.low + 1
     }
+
+    fn inverse_select(&self, index: usize) -> Option<(usize, bool)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        // Find the last value with the same high part, if it exists.
+        let parts = self.split(index);
+        let mut pos = self.upper_bound(parts.high);
+        if pos.low == 0 {
+            // The first set bit is after `index`.
+            return Some((index, false));
+        }
+        pos.high -= 1; pos.low -= 1;
+
+        // Iterate backward over the values with the same high part until we find
+        // as value no larger than `index` or we run out of such values.
+        while self.high.get(pos.high) {
+            let low = self.low.get(pos.low) as usize;
+            if low == parts.low {
+                // The bit is set.
+                return Some((pos.low, true));
+            }
+            if low < parts.low {
+                // The bit is not set.
+                return Some((index - (pos.low + 1), false));
+            }
+            if pos.low == 0 {
+                // The first set bit is after `index`.
+                return Some((index, false));
+            }
+            pos.high -= 1; pos.low -= 1;
+        }
+
+        // The bit is not set.
+        Some((index - (pos.low + 1), false))
+    }
 }
 
 //-----------------------------------------------------------------------------

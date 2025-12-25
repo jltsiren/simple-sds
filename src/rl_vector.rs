@@ -790,6 +790,28 @@ impl<'a> Rank<'a> for RLVector {
 
         iter.rank()
     }
+
+    fn inverse_select(&self, index: usize) -> Option<(usize, bool)> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let mut iter = self.iter_for_bit(index);
+        while let Some((start, len)) = iter.next() {
+            if start > index {
+                // The bit is unset.
+                let rank = iter.rank() - len;
+                return Some((index - rank, false));
+            }
+            if start + len > index {
+                // The bit is set.
+                return Some((iter.rank_at(index), true));
+            }
+        }
+
+        // The bit is unset in the final run.
+        Some((index - iter.rank(), false))
+    }
 }
 
 //-----------------------------------------------------------------------------

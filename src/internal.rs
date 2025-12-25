@@ -266,15 +266,30 @@ pub fn try_bitvec_iter<'a, T: BitVec<'a>>(bv: &'a T) {
     assert_eq!(visited, bv.len(), "Iter did not visit all values");
 }
 
-// Check that rank queries work correctly at every position.
+// Check that rank (and inverse_select) queries work correctly at every position.
 pub fn try_rank<'a, T: Rank<'a>>(bv: &'a T) {
     assert!(bv.supports_rank(), "Failed to enable rank support");
     assert_eq!(bv.rank(bv.len()), bv.count_ones(), "Invalid rank at vector size");
+    assert_eq!(bv.rank_zero(bv.len()), bv.count_zeros(), "Invalid rank_zero at vector size");
+    assert!(bv.inverse_select(bv.len()).is_none(), "Got a result for inverse_select past the end");
 
     let mut rank: usize = 0;
+    let mut rank_zero = 0;
     for i in 0..bv.len() {
         assert_eq!(bv.rank(i), rank, "Invalid rank at {}", i);
-        rank += bv.get(i) as usize;
+        assert_eq!(bv.rank_zero(i), rank_zero, "Invalid rank_zero at {}", i);
+        let inv = bv.inverse_select(i);
+        assert!(inv.is_some(), "No result for inverse_select({})", i);
+        let (inv_rank, inv_bit) = inv.unwrap();
+        let true_bit = bv.get(i);
+        assert_eq!(inv_bit, true_bit, "Invalid bit from inverse_select({})", i);
+        if true_bit {
+            assert_eq!(inv_rank, rank, "Invalid rank from inverse_select({}) with a set bit", i);
+            rank += 1;
+        } else {
+            assert_eq!(inv_rank, rank_zero, "Invalid rank from inverse_select({}) with an unset bit", i);
+            rank_zero += 1;
+        }
     }
 }
 
