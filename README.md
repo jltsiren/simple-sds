@@ -17,32 +17,25 @@ As the focus is on (relative) simplicity, ugly low-level optimizations are gener
   * Supports `rank()`, `inverse_select()`, `select()`, `predecessor()`, and `successor()` with each item value.
   * Iterators over all items and over items with a specified value.
   * Implemented using a `BitVector` for each level.
+* `RLWM`: A run-length encoded immutable vector of fixed-width integers.
+  * Supports `rank()`, `inverse_select()`, `select()`, `predecessor()`, and `successor()` with each item value.
+  * Iterators over all items and over items with a specified value, with an option to iterate over runs of items.
+  * Implemented using a `RLVector` for each level.
 
 ### Bitvectors
 
 * `BitVector`: A plain immutable bitvector.
-  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries using optional support structures.
+  * Supports `rank()`, `rank_zero()`, `inverse_select()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries using optional support structures.
   * Iterators over set bits, unset bits, and all bits.
   * Implemented on top of `RawVector`.
 * `RLVector`: A run-length encoded bitvector.
-  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries.
+  * Supports `rank()`, `rank_zero()`, `inverse_select()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries.
   * Iterators over set bits and all bits.
   * Space-efficient construction with `RLBuilder`.
 * `SparseVector`: An Elias-Fano encoded bitvector.
-  * Supports `rank()`, `rank_zero()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries .
+  * Supports `rank()`, `rank_zero()`, `inverse_select()`, `select()`, `select_zero()`, `predecessor()`, and `successor()` queries .
   * Iterators over set bits and all bits.
   * Space-efficient construction with `SparseBuilder`.
-
-## Planned functionality
-
-### Integer vectors
-
-* Mutable memory-mapped vectors.
-
-### Bitvectors
-
-* Versions of `predecessor()` and `successor()` that return values instead of iterators?
-* Slice-like functionality based on iterators?
 
 ## Notes
 
