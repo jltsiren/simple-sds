@@ -449,7 +449,7 @@ impl IntVectorWriter {
     /// Any I/O errors will be passed through.
     pub fn new<P: AsRef<Path>>(filename: P, width: usize) -> io::Result<IntVectorWriter> {
         if width == 0 || width > bits::WORD_BITS {
-            return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
+            return Err(Error::other("Integer width must be 1 to 64 bits"));
         }
         // The header will contain `len` and `width`.
         let mut header: Vec<u64> = vec![0, 0];
@@ -483,7 +483,7 @@ impl IntVectorWriter {
     /// May panic if buffer length would exceed the maximum length.
     pub fn with_buf_len<P: AsRef<Path>>(filename: P, width: usize, buf_len: usize) -> io::Result<IntVectorWriter> {
         if width == 0 || width > bits::WORD_BITS {
-            return Err(Error::new(ErrorKind::Other, "Integer width must be 1 to 64 bits"));
+            return Err(Error::other("Integer width must be 1 to 64 bits"));
         }
         // The header will contain `len` and `width`.
         let mut header: Vec<u64> = vec![0, 0];

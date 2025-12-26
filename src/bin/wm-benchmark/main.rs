@@ -144,7 +144,7 @@ impl Config {
         if let Some(s) = matches.opt_str("r") {
             match s.parse::<f64>() {
                 Ok(f) => {
-                    if f < 0.0 || f > 1.0 {
+                    if !(0.0..=1.0).contains(&f) {
                         eprintln!("Invalid flip probability: {}", f);
                         process::exit(1);
                     }

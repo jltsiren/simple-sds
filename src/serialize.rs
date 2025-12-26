@@ -432,7 +432,7 @@ impl MemoryMap {
         let metadata = file.metadata()?;
         let len = metadata.len() as usize;
         if len != bits::round_up_to_word_bytes(len) {
-            return Err(Error::new(ErrorKind::Other, "File size must be a multiple of 8 bytes"));
+            return Err(Error::other("File size must be a multiple of 8 bytes"));
         }
 
         let prot = match mode {
@@ -441,7 +441,7 @@ impl MemoryMap {
         };
         let ptr = unsafe { libc::mmap(ptr::null_mut(), len, prot, libc::MAP_SHARED, file.as_raw_fd(), 0) };
         if ptr.is_null() {
-            return Err(Error::new(ErrorKind::Other, "Memory mapping failed"));
+            return Err(Error::other("Memory mapping failed"));
         }
 
         let mut buf = PathBuf::new();

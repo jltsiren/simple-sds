@@ -683,24 +683,21 @@ impl Serialize for BitVector {
         }
 
         let rank = Option::<RankSupport>::load(reader)?;
-        if let Some(value) = rank.as_ref() {
-            if value.blocks() != data.len().div_ceil(RankSupport::BLOCK_SIZE) {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of rank blocks"))
-            }
+        if let Some(value) = rank.as_ref()
+            && value.blocks() != data.len().div_ceil(RankSupport::BLOCK_SIZE) {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of rank blocks"))
         }
 
         let select = Option::<SelectSupport<Identity>>::load(reader)?;
-        if let Some(value) = select.as_ref() {
-            if value.superblocks() != ones.div_ceil(SelectSupport::<Identity>::SUPERBLOCK_SIZE) {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select superblocks"))
-            }
+        if let Some(value) = select.as_ref()
+            && value.superblocks() != ones.div_ceil(SelectSupport::<Identity>::SUPERBLOCK_SIZE) {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select superblocks"))
         }
 
         let select_zero = Option::<SelectSupport<Complement>>::load(reader)?;
-        if let Some(value) = select_zero.as_ref() {
-            if value.superblocks() != (data.len() - ones).div_ceil(SelectSupport::<Complement>::SUPERBLOCK_SIZE) {
-                return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select_zero superblocks"))
-            }
+        if let Some(value) = select_zero.as_ref()
+            && value.superblocks() != (data.len() - ones).div_ceil(SelectSupport::<Complement>::SUPERBLOCK_SIZE) {
+            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select_zero superblocks"))
         }
 
         Ok(BitVector {

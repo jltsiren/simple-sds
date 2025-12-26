@@ -127,11 +127,9 @@ pub fn random_integer_runs_with_len(len: usize, width: usize, p: f64) -> Vec<(u6
 pub fn maximal_runs(runs: Vec<(u64, usize)>) -> Vec<(u64, usize)> {
     let mut maximal: Vec<(u64, usize)> = Vec::new();
     for (value, length) in runs.into_iter() {
-        if let Some(last) = maximal.last_mut() {
-            if last.0 == value {
-                last.1 += length;
-                continue;
-            }
+        if let Some(last) = maximal.last_mut() && last.0 == value {
+            last.1 += length;
+            continue;
         }
         maximal.push((value, length));
     }

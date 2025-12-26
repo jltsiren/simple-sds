@@ -693,10 +693,8 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // Read the next run if we have processed the current one.
-        if let Some((start, len)) = self.run {
-            if self.pos >= start + len {
-                self.run = self.iter.next();
-            }
+        if let Some((start, len)) = self.run && self.pos >= start + len {
+            self.run = self.iter.next();
         }
 
         // Determine the next bit and advance.

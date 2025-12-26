@@ -798,11 +798,9 @@ impl RawVectorWriter {
         if let Some(f) = self.file.as_mut() {
             // Handle the overflow if not serializing the entire buffer.
             let mut overflow: (u64, usize) = (0, 0);
-            if let FlushMode::Safe = mode {
-                if self.buf.len() > self.buf_len {
-                    unsafe { overflow = (self.buf.int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len); }
-                    self.buf.resize(self.buf_len, false);
-                }
+            if let FlushMode::Safe = mode && self.buf.len() > self.buf_len {
+                unsafe { overflow = (self.buf.int(self.buf_len, self.buf.len() - self.buf_len), self.buf.len() - self.buf_len); }
+                self.buf.resize(self.buf_len, false);
             }
 
             // Serialize and clear the buffer.
@@ -810,10 +808,8 @@ impl RawVectorWriter {
             self.buf.clear();
 
             // Push the overflow back to the buffer.
-            if let FlushMode::Safe = mode {
-                if overflow.1 > 0 {
-                    unsafe { self.buf.push_int(overflow.0, overflow.1); }
-                }
+            if let FlushMode::Safe = mode && overflow.1 > 0 {
+                unsafe { self.buf.push_int(overflow.0, overflow.1); }
             }
         }
         Ok(())

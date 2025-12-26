@@ -1,6 +1,6 @@
 # Simple-SDS releases
 
-## Current version
+## Simple-SDS 0.4.0 (2025-12-26)
 
 ### Bitvectors
 

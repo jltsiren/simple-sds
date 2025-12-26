@@ -989,6 +989,7 @@ pub trait Rank<'a>: BitVec<'a> {
     /// Returns `(rank, bit)` such that `bit == self.get(index)` and
     /// * if `bit == true`, then `rank == self.rank(index)`; and
     /// * if `bit == false`, then `rank == self.rank_zero(index)`.
+    ///
     /// Returns [`None`] if `index` is out of bounds.
     ///
     /// The corresponding select method ([`Select::select`] or [`SelectZero::select_zero`]) will return `index` at `rank`.
