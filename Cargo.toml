@@ -1,6 +1,6 @@
 [package]
 name = "simple-sds"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 description = "Basic succinct data structures"
 license = "MIT"
