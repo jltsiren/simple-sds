@@ -76,12 +76,12 @@ impl<T: Transformation> SelectSupport<T> {
 
     /// Returns the number of long superblocks in the bitvector.
     pub fn long_superblocks(&self) -> usize {
-        (self.long.len() + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE
+        self.long.len().div_ceil(Self::SUPERBLOCK_SIZE)
     }
 
     /// Returns the number of short superblocks in the bitvector.
     pub fn short_superblocks(&self) -> usize {
-        (self.short.len() + Self::BLOCKS_IN_SUPERBLOCK - 1) / Self::BLOCKS_IN_SUPERBLOCK
+        self.short.len().div_ceil(Self::BLOCKS_IN_SUPERBLOCK)
     }
 
     /// Builds a select support structure for the parent bitvector.
@@ -100,7 +100,7 @@ impl<T: Transformation> SelectSupport<T> {
     /// assert_eq!(ss.short_superblocks(), 1);
     /// ```
     pub fn new(parent: &BitVector) -> SelectSupport<T> {
-        let superblocks = (T::count_ones(parent) + Self::SUPERBLOCK_SIZE - 1) / Self::SUPERBLOCK_SIZE;
+        let superblocks = T::count_ones(parent).div_ceil(Self::SUPERBLOCK_SIZE);
         let log4 = bits::bit_len(parent.len() as u64);
         let log4 = log4 * log4;
         let log4 = log4 * log4;
@@ -141,7 +141,7 @@ impl<T: Transformation> SelectSupport<T> {
             // Short superblock.
             else {
                 result.samples.push((2 * result.short.len() + 1) as u64);
-                let blocks = ((limit.0 - start.0) + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+                let blocks = (limit.0 - start.0).div_ceil(Self::BLOCK_SIZE);
                 for _ in 0..blocks {
                     result.short.push((value.unwrap().1 - start.1) as u64);
                     value = iter.nth(Self::BLOCK_SIZE - 1);

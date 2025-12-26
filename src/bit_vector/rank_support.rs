@@ -70,7 +70,7 @@ impl RankSupport {
     /// ```
     pub fn new(parent: &BitVector) -> RankSupport {
         let words = bits::bits_to_words(parent.len());
-        let blocks = (parent.len() + Self::BLOCK_SIZE - 1) / Self::BLOCK_SIZE;
+        let blocks = parent.len().div_ceil(Self::BLOCK_SIZE);
         let mut samples: Vec<(u64, u64)> = Vec::with_capacity(blocks);
 
         let mut ones: usize = 0;

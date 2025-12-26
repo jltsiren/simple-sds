@@ -684,21 +684,21 @@ impl Serialize for BitVector {
 
         let rank = Option::<RankSupport>::load(reader)?;
         if let Some(value) = rank.as_ref() {
-            if value.blocks() != bits::div_round_up(data.len(), RankSupport::BLOCK_SIZE) {
+            if value.blocks() != data.len().div_ceil(RankSupport::BLOCK_SIZE) {
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid number of rank blocks"))
             }
         }
 
         let select = Option::<SelectSupport<Identity>>::load(reader)?;
         if let Some(value) = select.as_ref() {
-            if value.superblocks() != bits::div_round_up(ones, SelectSupport::<Identity>::SUPERBLOCK_SIZE) {
+            if value.superblocks() != ones.div_ceil(SelectSupport::<Identity>::SUPERBLOCK_SIZE) {
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select superblocks"))
             }
         }
 
         let select_zero = Option::<SelectSupport<Complement>>::load(reader)?;
         if let Some(value) = select_zero.as_ref() {
-            if value.superblocks() != bits::div_round_up(data.len() - ones, SelectSupport::<Complement>::SUPERBLOCK_SIZE) {
+            if value.superblocks() != (data.len() - ones).div_ceil(SelectSupport::<Complement>::SUPERBLOCK_SIZE) {
                 return Err(Error::new(ErrorKind::InvalidData, "Invalid number of select_zero superblocks"))
             }
         }

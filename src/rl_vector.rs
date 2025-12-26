@@ -475,7 +475,7 @@ impl RLBuilder {
 
     // Number of code units required for encoding the value.
     fn code_len(value: usize) -> usize {
-        bits::div_round_up(bits::bit_len(value as u64), RLVector::CODE_SHIFT)
+        bits::bit_len(value as u64).div_ceil(RLVector::CODE_SHIFT)
     }
 }
 
@@ -616,7 +616,7 @@ impl<'a> RunIter<'a> {
         let mut offset = self.offset;
         let mut limit = self.limit;
         if self.rank() >= self.limit {
-            let block = bits::div_round_up(offset, RLVector::BLOCK_SIZE);
+            let block = offset.div_ceil(RLVector::BLOCK_SIZE);
             offset = block * RLVector::BLOCK_SIZE;
             if block >= self.parent.blocks() {
                 if advance(None) {
@@ -1283,7 +1283,7 @@ impl Serialize for RLVector {
 
         // Sanity checks.
         let sample_blocks = samples.len() / 2;
-        let data_blocks = bits::div_round_up(data.len(), Self::BLOCK_SIZE);
+        let data_blocks = data.len().div_ceil(Self::BLOCK_SIZE);
         if sample_blocks != data_blocks {
             return Err(Error::new(ErrorKind::InvalidData, "Mismatch between number of blocks and samples"));
         }

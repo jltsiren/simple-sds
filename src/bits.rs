@@ -427,7 +427,7 @@ pub fn words_to_bytes(n: usize) -> usize {
 /// May panic if `n + 7 > usize::MAX`.
 #[inline]
 pub fn bytes_to_words(n: usize) -> usize {
-    (n + WORD_BYTES - 1) / WORD_BYTES
+    n.div_ceil(WORD_BYTES)
 }
 
 /// Rounds `n` up to the next multiple of 8.
@@ -486,7 +486,7 @@ pub fn words_to_bits(n: usize) -> usize {
 /// May panic if `n + 63 > usize::MAX`.
 #[inline]
 pub fn bits_to_words(n: usize) -> usize {
-    (n + WORD_BITS - 1) / WORD_BITS
+    n.div_ceil(WORD_BITS)
 }
 
 /// Rounds `n` up to the next multiple of 64.
@@ -510,26 +510,6 @@ pub fn round_up_to_word_bits(n: usize) -> usize {
 }
 
 //-----------------------------------------------------------------------------
-
-/// Divides `value` by `n` and rounds the result up.
-///
-/// # Examples
-///
-/// ```
-/// use simple_sds::bits;
-///
-/// assert_eq!(bits::div_round_up(129, 13), 10);
-/// assert_eq!(bits::div_round_up(130, 13), 10);
-/// assert_eq!(bits::div_round_up(131, 13), 11);
-/// ```
-///
-/// # Panics
-///
-/// May panic if `value + n > usize::MAX` or `n == 0`.
-#[inline]
-pub fn div_round_up(value: usize, n: usize) -> usize {
-    (value + n - 1) / n
-}
 
 /// Returns a [`u64`] value consisting entirely of bit `value`.
 ///

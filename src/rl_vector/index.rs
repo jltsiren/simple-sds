@@ -116,9 +116,9 @@ impl SampleIndex {
 
     // Returns `(samples, divisor)` such that `i / divisor` for `i in 0..universe` maps evenly to `0..samples`.
     fn parameters(values: usize, universe: usize) -> (usize, usize) {
-        let num_samples = bits::div_round_up(values, Self::RATIO);
-        let divisor = bits::div_round_up(universe, num_samples);
-        let num_samples = bits::div_round_up(universe, divisor);
+        let num_samples = values.div_ceil(Self::RATIO);
+        let divisor = universe.div_ceil(num_samples);
+        let num_samples = universe.div_ceil(divisor);
         (num_samples, divisor)
     }
 }
