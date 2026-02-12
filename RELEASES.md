@@ -90,3 +90,13 @@ This is no longer a pre-release, but things may still change without warning.
 ## Simple-SDS 0.1.0 (2021-01-14)
 
 This initial release implements bit-packed integer vectors, plain bitvectors, and sparse (Elias-Fano encoded) bitvectors as well as various bitvector iterators. The performance is generally comparable to SDSL. As this is a pre-release, anything can change without warning.
+
+## Release process
+
+* Run `cargo clippy --features=binaries`.
+* Run tests with `cargo test` and `cargo test -- --ignored`.
+* Update version in `Cargo.toml`.
+* Update `RELEASES.md`.
+* Publish in crates.io with `cargo publish`.
+* Push to GitHub.
+* Draft a new release in GitHub.
