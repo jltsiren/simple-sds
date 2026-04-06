@@ -8,7 +8,7 @@ use simple_sds::serialize::Serialize;
 use simple_sds::bit_vector::BitVector;
 use simple_sds::rl_vector::RLVector;
 use simple_sds::sparse_vector::SparseVector;
-use simple_sds::{internal, serialize};
+use simple_sds::{binaries, internal, serialize};
 
 use std::time::Instant;
 use std::{env, process};
@@ -130,7 +130,7 @@ impl Config {
             process::exit(0);
         }
         if let Some(s) = matches.opt_str("l") {
-            match s.parse::<usize>() {
+            match binaries::parse_unsigned(&s) {
                 Ok(n) => {
                     if n > 63 {
                         eprintln!("Invalid bit length: {}", n);
@@ -161,7 +161,7 @@ impl Config {
         }
         config.runs = matches.opt_present("r");
         if let Some(s) = matches.opt_str("n") {
-            match s.parse::<usize>() {
+            match binaries::parse_unsigned(&s) {
                 Ok(n) => {
                     if n == 0 {
                         eprintln!("Invalid query count: {}", n);

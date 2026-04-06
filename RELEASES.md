@@ -1,5 +1,7 @@
 # Simple-SDS releases
 
+## Current version
+
 ## Simple-SDS 0.4.0 (2025-12-26)
 
 ### Bitvectors
@@ -95,6 +97,7 @@ This initial release implements bit-packed integer vectors, plain bitvectors, an
 
 * Run `cargo clippy --features=binaries`.
 * Run tests with `cargo test` and `cargo test -- --ignored`.
+* Build documentation with `cargo doc`.
 * Update version in `Cargo.toml`.
 * Update `RELEASES.md`.
 * Publish in crates.io with `cargo publish`.

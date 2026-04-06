@@ -4,7 +4,7 @@ use simple_sds::bit_vector::BitVector;
 use simple_sds::ops::BitVec;
 use simple_sds::raw_vector::{RawVector, PushRaw};
 use simple_sds::serialize::Serialize;
-use simple_sds::internal;
+use simple_sds::binaries;
 
 use rand::Rng;
 use rand_distr::{Bernoulli, Geometric, Distribution};
@@ -60,7 +60,7 @@ pub fn random_vector_runs(len: usize, flip: f64) -> BitVector {
 
 pub fn bitvector_size<'a, T: BitVec<'a> + Serialize>(bv: &'a T) -> String {
     let bytes = bv.size_in_bytes();
-    let (size, unit) = internal::readable_size(bytes);
+    let (size, unit) = binaries::human_readable_size(bytes);
     let bpc = (bytes as f64 * 8.0) / (bv.len() as f64);
 
     format!("{:.3} {} ({:.3} bpc)", size, unit, bpc)

@@ -1,8 +1,8 @@
-// Utility functions for tests.
+// Utility functions for tests and benchmarks.
 
 use crate::ops::{Vector, Access, VectorIndex, BitVec, Rank, Select, SelectZero, PredSucc};
 use crate::serialize::Serialize;
-use crate::bits;
+use crate::{binaries, bits};
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -148,29 +148,6 @@ pub fn runs_to_values(runs: &[(u64, usize)]) -> Vec<u64> {
 
 //-----------------------------------------------------------------------------
 
-// Returns a human-readable representation of a size in bytes.
-pub fn readable_size(bytes: usize) -> (f64, &'static str) {
-    let units: Vec<(f64, &'static str)> = vec![
-        (1.0, "B"),
-        (1024.0, "KiB"),
-        (1024.0 * 1024.0, "MiB"),
-        (1024.0 * 1024.0 * 1024.0, "GiB"),
-        (1024.0 * 1024.0 * 1024.0 * 1024.0, "TiB"),
-    ];
-
-    let value = bytes as f64;
-    let mut unit = units[0];
-    for next in units.iter().skip(1) {
-        if value >= next.0 {
-            unit = *next;
-        } else {
-            break;
-        }
-    }
-
-    (value / unit.0, unit.1)
-}
-
 // Prints a summary report for construction.
 //
 // * `object`: The structure that was built.
@@ -178,7 +155,7 @@ pub fn readable_size(bytes: usize) -> (f64, &'static str) {
 // * `duration`: Time used for construction.
 pub fn report_construction<T: Serialize>(object: &T, len: usize, duration: Duration) {
     let ns = (duration.as_nanos() as f64) / (len as f64);
-    let (size, unit) = readable_size(object.size_in_bytes());
+    let (size, unit) = binaries::human_readable_size(object.size_in_bytes());
     println!("Time:     {:.3} seconds ({:.1} ns/symbol)", duration.as_secs_f64(), ns);
     println!("Size:     {:.3} {}", size, unit);
     println!();
@@ -199,45 +176,11 @@ pub fn report_results(queries: usize, total: usize, len: usize, duration: Durati
     println!();
 }
 
-//-----------------------------------------------------------------------------
-
-// Returns peak RSS size so far; Linux version.
-#[cfg(all(target_os = "linux", feature = "libc"))]
-pub fn peak_memory_usage() -> Result<usize, String> {
-    unsafe {
-        let mut rusage: libc::rusage = std::mem::zeroed();
-        let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
-        match retval {
-            0 => Ok(rusage.ru_maxrss as usize * 1024),
-            val => Err(format!("libc::getrusage call failed with return value {}", val)),
-        }
-    }
-}
-
-// Returns peak RSS size so far; macOS version.
-#[cfg(all(target_os = "macos", feature = "libc"))]
-pub fn peak_memory_usage() -> Result<usize, String> {
-    unsafe {
-        let mut rusage: libc::rusage = std::mem::zeroed();
-        let retval = libc::getrusage(libc::RUSAGE_SELF, &mut rusage as *mut _);
-        match retval {
-            0 => Ok(rusage.ru_maxrss as usize),
-            val => Err(format!("libc::getrusage call failed with return value {}", val)),
-        }
-    }
-}
-
-// Returns peak RSS size so far; generic version.
-#[cfg(not(all(any(target_os = "linux", target_os = "macos"), feature = "libc")))]
-pub fn peak_memory_usage() -> Result<usize, String> {
-    Err(String::from("No peak_memory_usage implementation for this OS"))
-}
-
 // Prints a memory usage report.
 pub fn report_memory_usage() {
-    match peak_memory_usage() {
+    match binaries::peak_memory_usage() {
         Ok(bytes) => {
-            let (size, unit) = readable_size(bytes);
+            let (size, unit) = binaries::human_readable_size(bytes);
             println!("Peak memory usage: {:.3} {}", size, unit);
         },
         Err(f) => {

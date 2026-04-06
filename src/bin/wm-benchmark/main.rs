@@ -7,7 +7,7 @@ use simple_sds::ops::{Vector, Access, VectorIndex};
 use simple_sds::rlwm::RLWM;
 use simple_sds::serialize::Serialize;
 use simple_sds::wavelet_matrix::WaveletMatrix;
-use simple_sds::internal;
+use simple_sds::{binaries, internal};
 
 use std::time::Instant;
 use std::{env, process};
@@ -172,7 +172,7 @@ impl Config {
             }
         }
         if let Some(s) = matches.opt_str("n") {
-            match s.parse::<usize>() {
+            match binaries::parse_unsigned(&s) {
                 Ok(n) => {
                     if n == 0 {
                         eprintln!("Invalid query count: {}", n);
@@ -195,7 +195,7 @@ impl Config {
 
 pub fn vector_size<T: Vector + Serialize>(v: &T) -> String {
     let bytes = v.size_in_bytes();
-    let (size, unit) = internal::readable_size(bytes);
+    let (size, unit) = binaries::human_readable_size(bytes);
     let bpc = (bytes as f64 * 8.0) / (v.len() as f64);
 
     format!("{:.3} {} ({:.3} bpc)", size, unit, bpc)

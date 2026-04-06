@@ -13,6 +13,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+pub mod binaries;
 pub mod bit_vector;
 pub mod bits;
 pub mod int_vector;
