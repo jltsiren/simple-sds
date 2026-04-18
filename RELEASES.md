@@ -1,6 +1,9 @@
 # Simple-SDS releases
 
-## Current version
+## Simple-SDS 0.4.1 (2026-04-17)
+
+* Exposes some utilities used in binaries to dependents.
+* Command line arguments can use suffixes (e.g. `k`, `MiB`) for sizes and counts that can plausibly be large.
 
 ## Simple-SDS 0.4.0 (2025-12-26)
 
@@ -95,11 +98,14 @@ This initial release implements bit-packed integer vectors, plain bitvectors, an
 
 ## Release process
 
+* Clean up with `cargo clean`.
+* Update version in `Cargo.toml`.
+* Update `RELEASES.md`.
 * Run `cargo clippy --features=binaries`.
 * Run tests with `cargo test` and `cargo test -- --ignored`.
 * Build documentation with `cargo doc`.
-* Update version in `Cargo.toml`.
-* Update `RELEASES.md`.
+* Build the optimized version with `cargo build --release --features=binaries`.
+* Commit the final changes for the release.
 * Publish in crates.io with `cargo publish`.
 * Push to GitHub.
 * Draft a new release in GitHub.
