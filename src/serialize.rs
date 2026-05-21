@@ -183,7 +183,14 @@ pub trait Serializable: Sized + Default {
 }
 
 impl Serializable for u64 {}
-impl Serializable for usize {}
+// `usize` deliberately does not implement `Serializable`. The blanket
+// `Serialize` impl below uses `mem::size_of::<Self>()`, which gives a
+// pointer-width-dependent on-disk size (4 bytes on 32-bit targets, 8 on
+// 64-bit). The standard simple-sds file layout assumes 8 bytes per `usize`,
+// so a `Serializable for usize` impl would silently produce files that a
+// 32-bit consumer (e.g. `wasm32`) cannot read. The explicit
+// `Serialize for usize` / `Serialize for Vec<usize>` impls below always
+// round-trip through `u64`, giving the same on-disk bytes on every target.
 impl Serializable for (u64, u64) {}
 
 impl<V: Serializable> Serialize for V {
@@ -211,6 +218,28 @@ impl<V: Serializable> Serialize for V {
     fn size_in_elements(&self) -> usize {
         Self::elements()
     }
+}
+
+// Pointer-width-independent serialization for `usize`: always 8 bytes,
+// little-endian, via a `u64` round-trip. Files written on a 64-bit host
+// remain readable from `wasm32` and other 32-bit targets, and vice versa.
+impl Serialize for usize {
+    fn serialize_header<T: Write>(&self, _: &mut T) -> io::Result<()> { Ok(()) }
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        let v: u64 = *self as u64;
+        writer.write_all(&v.to_le_bytes())
+    }
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+        let mut buf = [0u8; 8];
+        reader.read_exact(&mut buf)?;
+        let v = u64::from_le_bytes(buf);
+        if v > usize::MAX as u64 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                format!("Serialized usize value {} exceeds target usize::MAX", v)));
+        }
+        Ok(v as usize)
+    }
+    fn size_in_elements(&self) -> usize { 1 }
 }
 
 impl<V: Serializable> Serialize for Vec<V> {
@@ -243,6 +272,43 @@ impl<V: Serializable> Serialize for Vec<V> {
 
     fn size_in_elements(&self) -> usize {
         1 + self.len() * V::elements()
+    }
+}
+
+// Pointer-width-independent serialization for `Vec<usize>`: length header
+// (already 8 bytes via `Serialize for usize` above) followed by 8 bytes per
+// element. The blanket `Serialize for Vec<V: Serializable>` cannot apply
+// because `usize` is no longer `Serializable`.
+impl Serialize for Vec<usize> {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        let size = self.len();
+        size.serialize(writer)?;
+        Ok(())
+    }
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        for v in self.iter() {
+            let u: u64 = *v as u64;
+            writer.write_all(&u.to_le_bytes())?;
+        }
+        Ok(())
+    }
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+        let size = usize::load(reader)?;
+        let mut value: Vec<usize> = Vec::with_capacity(size);
+        let mut buf = [0u8; 8];
+        for _ in 0..size {
+            reader.read_exact(&mut buf)?;
+            let u = u64::from_le_bytes(buf);
+            if u > usize::MAX as u64 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                    format!("Serialized usize element {} exceeds target usize::MAX", u)));
+            }
+            value.push(u as usize);
+        }
+        Ok(value)
+    }
+    fn size_in_elements(&self) -> usize {
+        1 + self.len()
     }
 }
 
