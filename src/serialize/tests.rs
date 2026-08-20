@@ -196,3 +196,78 @@ fn skip_options() {
 }
 
 //-----------------------------------------------------------------------------
+
+// This is a dummy data structure for testing versioned serialization formats.
+// Versions 1 to 3 are supported.
+// Version 2 is the default, and it adds a new field to the struct.
+// Internally the structure is always stored in the latest version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VersionedData {
+    version: usize,
+    data: usize,
+    new_field: usize,
+}
+
+impl VersionedData {
+    fn new(data: usize, new_field: usize) -> Self {
+        VersionedData { version: Self::MAX_VERSION, data, new_field }
+    }
+}
+
+impl Serialize for VersionedData {
+    fn serialize_header<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.serialize_header_version(writer, Self::DEFAULT_VERSION)
+    }
+
+    fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        self.serialize_body_version(writer, Self::DEFAULT_VERSION)
+    }
+
+    fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+        let serialized_version = usize::load(reader)?;
+        let version = Self::MAX_VERSION;
+        let data = usize::load(reader)?;
+        let new_field = if serialized_version >= 2 {
+            usize::load(reader)?
+        } else {
+            0
+        };
+        Ok(VersionedData { version, data, new_field })
+    }
+
+    fn size_in_elements(&self) -> usize {
+        3
+    }
+}
+
+impl SerializeVersion for VersionedData {
+    const MIN_VERSION: usize = 1;
+    const MAX_VERSION: usize = 3;
+    const DEFAULT_VERSION: usize = 2;
+
+    fn serialize_header_version<T: Write>(&self, writer: &mut T, version: usize) -> io::Result<()> {
+        Self::ensure_supported_version(version, "VersionedData")?;
+        version.serialize(writer)
+    }
+
+    fn serialize_body_version<T: Write>(&self, writer: &mut T, version: usize) -> io::Result<()> {
+        Self::ensure_supported_version(version, "VersionedData")?;
+        self.data.serialize(writer)?;
+        if version >= 2 {
+            self.new_field.serialize(writer)?;
+        }
+        Ok(())
+    }
+
+    fn determine_version<T: Read>(reader: &mut T) -> io::Result<usize> {
+        usize::load(reader)
+    }
+}
+
+#[test]
+fn serialize_version() {
+    let original = VersionedData::new(123, 456);
+    test_versions(&original, "versioned-data", &[2, 3]);
+}
+
+//-----------------------------------------------------------------------------

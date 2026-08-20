@@ -8,7 +8,7 @@
 //! However, it is not feasible to validate all loaded data in high-performance code.
 //! The behavior of corrupted data structures is always undefined.
 //!
-//! Function [`test`] offers a convenient way of testing that the serialization interface works correctly for a custom type.
+//! Function [`test()`] offers a convenient way of testing that the serialization interface works correctly for a custom type.
 //!
 //! # Serialization formats
 //!
@@ -363,7 +363,6 @@ impl<V: Serialize> Serialize for Option<V> {
 
 //-----------------------------------------------------------------------------
 
-// FIXME: tests
 /// Serialize a data structure with a version of the serialization format.
 ///
 /// The version is an integer from [`Self::MIN_VERSION`] to [`Self::MAX_VERSION`] (inclusive).
@@ -407,16 +406,12 @@ impl<V: Serialize> Serialize for Option<V> {
 ///     const DEFAULT_VERSION: usize = 2;
 ///
 ///     fn serialize_header_version<T: io::Write>(&self, writer: &mut T, version: usize) -> io::Result<()> {
-///         if version < Self::MIN_VERSION || version > Self::MAX_VERSION {
-///             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid version"));
-///         }
+///         Self::ensure_supported_version(version, "Example")?;
 ///         version.serialize(writer)
 ///     }
 ///
 ///     fn serialize_body_version<T: io::Write>(&self, writer: &mut T, version: usize) -> io::Result<()> {
-///         if version < Self::MIN_VERSION || version > Self::MAX_VERSION {
-///             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid version"));
-///         }
+///         Self::ensure_supported_version(version, "Example")?;
 ///         self.data.serialize(writer)
 ///     }
 ///
@@ -452,10 +447,25 @@ pub trait SerializeVersion: Serialize {
     /// Default version serialized by the [`Serialize`] trait.
     const DEFAULT_VERSION: usize;
 
+    /// Ensures that the given version is supported.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::InvalidInput`] if the version is not supported.
+    fn ensure_supported_version(version: usize, type_name: &str) -> io::Result<()> {
+        if version < Self::MIN_VERSION || version > Self::MAX_VERSION {
+            return Err(Error::new(ErrorKind::InvalidInput, format!(
+                "{}: Unsupported version {} (expected {} to {})",
+                type_name, version, Self::MIN_VERSION, Self::MAX_VERSION
+            )));
+        }
+        Ok(())
+    }
+
     /// Serializes the struct to the writer using the given version of the serialization format.
     ///
     /// Equivalent to calling [`Self::serialize_header_version`] and [`Self::serialize_body_version`].
-    /// See also [`serialize_to_version`].
+    /// See also [`serialize_version_to`].
     ///
     /// # Errors
     ///
@@ -1135,7 +1145,7 @@ pub fn serialize_to<T: Serialize, P: AsRef<Path>>(item: &T, filename: P) -> io::
 /// # Errors
 ///
 /// Any errors from [`OpenOptions::open`] and [`SerializeVersion::serialize_version`] will be passed through.
-pub fn serialize_to_version<T: SerializeVersion, P: AsRef<Path>>(item: &T, filename: P, version: usize) -> io::Result<()> {
+pub fn serialize_version_to<T: SerializeVersion, P: AsRef<Path>>(item: &T, filename: P, version: usize) -> io::Result<()> {
     let mut options = OpenOptions::new();
     let mut file = options.create(true).write(true).truncate(true).open(filename)?;
     item.serialize_version(&mut file, version)?;
@@ -1282,7 +1292,7 @@ pub fn test_versions<T: SerializeVersion + PartialEq + Debug + Clone>(original: 
     // Expect success with all supported versions.
     for version in T::MIN_VERSION..=T::MAX_VERSION {
         let filename = temp_file_name(name);
-        let result = serialize_to_version(original, &filename, version);
+        let result = serialize_version_to(original, &filename, version);
         assert!(result.is_ok(), "Failed to serialize the {} version {} to {}: {}", name, version, filename.display(), result.unwrap_err());
         let result = determine_version_from::<T, _>(&filename);
         assert!(result.is_ok(), "Failed to determine the version of the {} from {}: {}", name, filename.display(), result.unwrap_err());
@@ -1297,7 +1307,7 @@ pub fn test_versions<T: SerializeVersion + PartialEq + Debug + Clone>(original: 
             let result = load_from(&filename);
             assert!(result.is_ok(), "Failed to load the truth value for {} version {} from {}: {}", name, version, filename.display(), result.unwrap_err());
             let truth: T = result.unwrap();
-            let result = serialize_to_version(&truth, &filename, version);
+            let result = serialize_version_to(&truth, &filename, version);
             assert!(result.is_ok(), "Failed to reserialize the {} version {} to {}: {}", name, version, filename.display(), result.unwrap_err());
             truth
         };
@@ -1318,7 +1328,7 @@ pub fn test_versions<T: SerializeVersion + PartialEq + Debug + Clone>(original: 
     invalid_versions.push(T::MAX_VERSION + 1);
     for version in invalid_versions {
         let filename = temp_file_name(name);
-        let result = serialize_to_version(original, &filename, version);
+        let result = serialize_version_to(original, &filename, version);
         assert!(result.is_err(), "Serializing the {} version {} should have failed", name, version);
         let error = result.unwrap_err();
         assert_eq!(error.kind(), ErrorKind::InvalidInput, "Unexpected error kind when serializing the {} version {}: {:?}", name, version, error.kind());
