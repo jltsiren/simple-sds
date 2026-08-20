@@ -1,5 +1,9 @@
 # Simple-SDS releases
 
+## Current version
+
+* `SerializeVersion` trait for data structures with multiple versions of the serialization format.
+
 ## Simple-SDS 0.4.1 (2026-04-17)
 
 * Exposes some utilities used in binaries to dependents.
