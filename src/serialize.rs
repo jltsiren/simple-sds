@@ -369,6 +369,10 @@ impl<V: Serialize> Serialize for Option<V> {
 /// [`Serialize`] implementation is assumed to use version [`Self::DEFAULT_VERSION`].
 /// [`Serialize::load`] must be able to load any version serialized with this trait.
 ///
+/// When the data structure is serialized in an older version of the format and then loaded, some data may be lost.
+/// Version [`Self::DEFAULT_VERSION`] is assumed to pass the data through intact.
+/// Later versions should ideally also preserve the data, but this is not required.
+///
 /// ### Examples
 ///
 /// ```
