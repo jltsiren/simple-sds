@@ -26,6 +26,6 @@ pub mod sparse_vector;
 pub mod support;
 pub mod wavelet_matrix;
 
-#[cfg(any(test, feature = "binaries"))]
+#[cfg(any(test, feature = "benchmark"))]
 #[doc(hidden)]
 pub mod internal;

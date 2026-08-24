@@ -1,6 +1,6 @@
 # Simple-SDS releases
 
-## Current version
+## Simple-SDS 0.4.2 (2026-08-24)
 
 * `SerializeVersion` trait for data structures with multiple versions of the serialization format.
 
@@ -105,10 +105,10 @@ This initial release implements bit-packed integer vectors, plain bitvectors, an
 * Clean up with `cargo clean`.
 * Update version in `Cargo.toml`.
 * Update `RELEASES.md`.
-* Run `cargo clippy --features=binaries`.
+* Run `cargo clippy --features benchmark`.
 * Run tests with `cargo test` and `cargo test -- --ignored`.
 * Build documentation with `cargo doc`.
-* Build the optimized version with `cargo build --release --features=binaries`.
+* Build the optimized version with `cargo build --release --features benchmark`.
 * Commit the final changes for the release.
 * Publish in crates.io with `cargo publish`.
 * Push to GitHub.
