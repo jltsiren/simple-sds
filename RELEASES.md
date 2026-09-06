@@ -1,5 +1,9 @@
 # Simple-SDS releases
 
+## Current version
+
+* An empty `SparseVector` is now compressed properly.
+
 ## Simple-SDS 0.4.2 (2026-08-24)
 
 * `SerializeVersion` trait for data structures with multiple versions of the serialization format.

@@ -454,7 +454,10 @@ impl SparseBuilder {
     // Returns `(low.width(), high.len())`. Now works with overfull multisets as well.
     fn get_params(universe: usize, ones: usize) -> (usize, usize) {
         let mut low_width: usize = 1;
-        if ones > 0 && ones <= universe {
+        if ones == 0 {
+            // Low width log n and a single bucket if the vector is empty.
+            low_width = bits::bit_len(if universe == 0 { 0 } else { universe - 1 } as u64);
+        } else if ones <= universe {
             let ideal_width = ((universe as f64 * 2.0_f64.ln()) / (ones as f64)).log2();
             low_width = ideal_width.max(1.0).round() as usize;
         }

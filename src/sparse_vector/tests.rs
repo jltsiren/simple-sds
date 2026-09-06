@@ -115,6 +115,8 @@ fn uniform_vector() {
     assert_eq!(zeros.count_zeros(), zeros.len(), "Invalid number of zeros in the zero vector");
     assert_eq!(zeros.iter().len(), zeros.len(), "Invalid size hint from the zero vector");
     assert_eq!(zeros.iter().filter(|b| !*b).count(), zeros.len(), "Some bits were set in the iterator");
+    assert_eq!(zeros.high.len(), 1, "A zero vector should have a single bucket");
+    assert_eq!(zeros.low.width(), bits::bit_len(zeros.len() as u64 - 1), "Low width of a zero vector should be log n");
 
     let ones = one_vector(2133);
     assert!(!ones.is_multiset(), "The one vector is a multiset");
