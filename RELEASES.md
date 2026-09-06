@@ -2,7 +2,7 @@
 
 ## Current version
 
-* An empty `SparseVector` is now compressed properly.
+* A `SparseVector` with no set bits is now compressed properly.
 
 ## Simple-SDS 0.4.2 (2026-08-24)
 
