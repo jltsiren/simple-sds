@@ -825,7 +825,16 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
         }
         let slice: &[u64] = map.as_ref();
         let len = slice[offset] as usize;
-        if offset + 1 + len * T::elements() > map.len() {
+        // If T::elements() is 0 (if T is < 8 in size) we still wish to be
+        // able to safely construct a `len`-length slice
+        let element_len = std::cmp::max(1, T::elements());
+        let predicted_len = len.checked_mul(element_len)
+                               .and_then(|x| x.checked_add(offset))
+                               .and_then(|x| x.checked_add(1));
+        let Some(predicted_len) = predicted_len {
+            return Err(Error::new(ErrorKind::UnexpectedEof, "The requested length overflows"));
+        }
+        if predicted_len > map.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
         }
         let source: &[u64] = &slice[offset + 1 ..];
