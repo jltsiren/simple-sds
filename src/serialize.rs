@@ -240,7 +240,7 @@ impl<V: Serializable> Serialize for Vec<V> {
 
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
-        let mut value: Vec<V> = Vec::with_capacity(size);
+        let mut value: Vec<V> = vec![0u8; size];
 
         unsafe {
             let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<V>());
