@@ -655,7 +655,7 @@ impl AsRef<[u64]> for MemoryMap {
 impl Drop for MemoryMap {
     fn drop(&mut self) {
         unsafe {
-            let _ = libc::munmap(self.ptr.cast::<libc::c_void>(), self.len);
+            let _ = libc::munmap(self.ptr.cast::<libc::c_void>(), bits::words_to_bytes(self.len));
         }
     }
 }
