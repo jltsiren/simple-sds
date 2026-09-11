@@ -301,7 +301,7 @@ impl Serialize for IntVector {
         let len = usize::load(reader)?;
         let width = usize::load(reader)?;
         if width == 0 || width > bits::WORD_BITS {
-            Err(Error::new(ErrorKind::InvalidData, "Integer width must be 1 to 64 bits"))
+            return Err(Error::new(ErrorKind::InvalidData, "Integer width must be 1 to 64 bits"));
         }
         let data = RawVector::load(reader)?;
         if len * width != data.len() {
