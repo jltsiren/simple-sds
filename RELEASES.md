@@ -2,7 +2,12 @@
 
 ## Current version
 
-* A `SparseVector` with no set bits is now compressed properly.
+* Minor changes:
+  * A `SparseVector` with no set bits is now compressed properly.
+  * `IntVector` width is now validated during deserialization.
+* Bug fixes:
+  * Memory-mapped structures check for `mmap()` failure correctly.
+  * Memory-mapped structures are unmapped correctly.
 
 ## Simple-SDS 0.4.2 (2026-08-24)
 
