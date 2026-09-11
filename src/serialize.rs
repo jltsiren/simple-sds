@@ -596,7 +596,7 @@ impl MemoryMap {
             MappingMode::Mutable => libc::PROT_READ | libc::PROT_WRITE,
         };
         let ptr = unsafe { libc::mmap(ptr::null_mut(), len, prot, libc::MAP_SHARED, file.as_raw_fd(), 0) };
-        if ptr.is_null() {
+        if ptr.is_null() || ptr == libc::MAP_FAILED {
             return Err(Error::other("Memory mapping failed"));
         }
 
