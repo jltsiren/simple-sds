@@ -300,6 +300,9 @@ impl Serialize for IntVector {
     fn load<T: io::Read>(reader: &mut T) -> io::Result<Self> {
         let len = usize::load(reader)?;
         let width = usize::load(reader)?;
+        if width == 0 || width > bits::WORD_BITS {
+            Err(Error::new(ErrorKind::InvalidData, "Integer width must be 1 to 64 bits"))
+        }
         let data = RawVector::load(reader)?;
         if len * width != data.len() {
             Err(Error::new(ErrorKind::InvalidData, "Data length does not match len * width"))
