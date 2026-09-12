@@ -185,16 +185,39 @@ pub trait Serialize: Sized {
 //-----------------------------------------------------------------------------
 
 /// A fixed-size type that can be serialized as one or more [`u64`] elements by copying the bits.
+///
+/// Rust does not provide a guaranteed way of enforcing a valid size at compile time.
+/// The size should be validated explicitly in contexts where an invalid size could cause undefined behavior.
+/// Constant [`Self::SIZE_IS_VALID`] can be used to enforce this at compile time.
+///
+/// # Examples
+///
+/// ```
+/// use simple_sds::serialize::Serializable;
+///
+/// #[derive(Clone, Copy, Default)]
+/// struct ValidSize(u64);
+/// impl Serializable for ValidSize {}
+/// let _ = ValidSize::SIZE_IS_VALID;
+///
+/// #[derive(Clone, Copy, Default)]
+/// struct InvalidSize(u32);
+/// impl Serializable for InvalidSize {}
+/// // This would fail at compile time if uncommented.
+/// // let _ = InvalidSize::SIZE_IS_VALID;
+/// ```
 pub trait Serializable: Sized + Copy + Default {
-    /// This is a hack that ensures that the size of the type is a non-zero multiple of the element size.
-    const _VALID_SIZE: () = assert!(
-        mem::size_of::<Self>() > 0 &&
-        mem::size_of::<Self>() % bits::WORD_BYTES == 0,
-        "Size of a Serializable type must be a non-zero multiple of the element size"
-    );
+    /// A constant that can be used for enforcing a valid size at compile time.
+    const SIZE_IS_VALID: () = {
+        assert!(
+            mem::size_of::<Self>() > 0 && mem::size_of::<Self>().is_multiple_of(bits::WORD_BYTES),
+            "Size of a Serializable type must be a non-zero multiple of the element size"
+        );
+    };
 
     /// Returns the number of elements needed for serializing the type.
     fn elements() -> usize {
+        const { let _ = Self::SIZE_IS_VALID; }
         mem::size_of::<Self>() / bits::WORD_BYTES
     }
 }
@@ -209,6 +232,7 @@ impl<V: Serializable> Serialize for V {
     }
 
     fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        const { let _ = Self::SIZE_IS_VALID; }
         unsafe {
             let buf: &[u8] = slice::from_raw_parts(self as *const Self as *const u8, mem::size_of::<Self>());
             writer.write_all(buf)?;
@@ -217,6 +241,7 @@ impl<V: Serializable> Serialize for V {
     }
 
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+        const { let _ = Self::SIZE_IS_VALID; }
         let mut value = Self::default();
         unsafe {
             let buf: &mut [u8] = slice::from_raw_parts_mut(&mut value as *mut Self as *mut u8, mem::size_of::<Self>());
@@ -238,6 +263,7 @@ impl<V: Serializable> Serialize for Vec<V> {
     }
 
     fn serialize_body<T: Write>(&self, writer: &mut T) -> io::Result<()> {
+        const { let _ = V::SIZE_IS_VALID; }
         unsafe {
             let buf: &[u8] = slice::from_raw_parts(self.as_ptr() as *const u8, self.len() * mem::size_of::<V>());
             writer.write_all(buf)?;
@@ -246,13 +272,14 @@ impl<V: Serializable> Serialize for Vec<V> {
     }
 
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
+        const { let _ = V::SIZE_IS_VALID; }
         let size = usize::load(reader)?;
         // TODO: Hopefully a future Rust version will allow reading into uninitialized memory.
         let mut value: Vec<V> = vec![V::default(); size];
         unsafe {
             let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<V>());
             reader.read_exact(buf)?;
-//            value.set_len(size);
+            // value.set_len(size);
         }
 
         Ok(value)
@@ -827,6 +854,7 @@ impl<'a, T: Serializable> Index<usize> for MappedSlice<'a, T> {
 #[cfg(feature = "libc")]
 impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
     fn new(map: &'a MemoryMap, offset: usize) -> io::Result<Self> {
+        const { let _ = T::SIZE_IS_VALID; };
         if offset >= map.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "The starting offset is out of range"));
         }
