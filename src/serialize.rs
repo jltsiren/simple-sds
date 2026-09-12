@@ -184,8 +184,15 @@ pub trait Serialize: Sized {
 
 //-----------------------------------------------------------------------------
 
-/// A fixed-size type that can be serialized as one or more [`u64`] elements.
+/// A fixed-size type that can be serialized as one or more [`u64`] elements by copying the bits.
 pub trait Serializable: Sized + Copy + Default {
+    /// This is a hack that ensures that the size of the type is a non-zero multiple of the element size.
+    const _VALID_SIZE: () = assert!(
+        mem::size_of::<Self>() > 0 &&
+        mem::size_of::<Self>() % bits::WORD_BYTES == 0,
+        "Size of a Serializable type must be a non-zero multiple of the element size"
+    );
+
     /// Returns the number of elements needed for serializing the type.
     fn elements() -> usize {
         mem::size_of::<Self>() / bits::WORD_BYTES
@@ -825,7 +832,11 @@ impl<'a, T: Serializable> MemoryMapped<'a> for MappedSlice<'a, T> {
         }
         let slice: &[u64] = map.as_ref();
         let len = slice[offset] as usize;
-        if offset + 1 + len * T::elements() > map.len() {
+        let slice_end = len.checked_mul(T::elements())
+            .and_then(|x| x.checked_add(offset))
+            .and_then(|x| x.checked_add(1))
+            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Slice end position overflowed"))?;
+        if slice_end > map.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "The file is too short"));
         }
         let source: &[u64] = &slice[offset + 1 ..];
