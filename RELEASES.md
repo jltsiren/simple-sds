@@ -5,9 +5,12 @@
 * Minor changes:
   * A `SparseVector` with no set bits is now compressed properly.
   * `IntVector` width is now validated during deserialization.
+  * `Serializable` trait now requires `Copy` and enforces that the size of the type is a non-zero multiple of 8 bytes.
 * Bug fixes:
   * Memory-mapped structures check for `mmap()` failure correctly.
   * Memory-mapped structures are unmapped correctly.
+  * Correct out-of-bounds checks when creating a `MappedSlice`.
+  * `Serialize` implementation for a `Vec` of `Serializable` no longer uses uninitialized memory.
 
 ## Simple-SDS 0.4.2 (2026-08-24)
 
