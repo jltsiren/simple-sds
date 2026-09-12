@@ -185,7 +185,7 @@ pub trait Serialize: Sized {
 //-----------------------------------------------------------------------------
 
 /// A fixed-size type that can be serialized as one or more [`u64`] elements.
-pub trait Serializable: Sized + Default {
+pub trait Serializable: Sized + Copy + Default {
     /// Returns the number of elements needed for serializing the type.
     fn elements() -> usize {
         mem::size_of::<Self>() / bits::WORD_BYTES
@@ -240,12 +240,12 @@ impl<V: Serializable> Serialize for Vec<V> {
 
     fn load<T: Read>(reader: &mut T) -> io::Result<Self> {
         let size = usize::load(reader)?;
-        let mut value: Vec<V> = Vec::with_capacity(size);
-
+        // TODO: Hopefully a future Rust version will allow reading into uninitialized memory.
+        let mut value: Vec<V> = vec![V::default(); size];
         unsafe {
             let buf: &mut [u8] = slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size * mem::size_of::<V>());
             reader.read_exact(buf)?;
-            value.set_len(size);
+//            value.set_len(size);
         }
 
         Ok(value)
