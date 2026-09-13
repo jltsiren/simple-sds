@@ -203,6 +203,34 @@ fn invalid_data() {
     fs::remove_file(&filename).unwrap();
 }
 
+#[test]
+fn overflow_data() {
+    // Test cases where len * width overflows usize:
+    // 1. len = usize::MAX, width = 2: overflows usize (panics on unpatched code in debug mode).
+    // 2. len = 1 << (usize::BITS - 1), width = 2: wraps to 0 in release mode, matching
+    //    data.len() == 0 and causing unpatched code to accept corrupted data.
+    let test_cases: [(usize, usize); 2] = [
+        (usize::MAX, 2),
+        (1usize << (usize::BITS - 1), 2),
+    ];
+    for (len, width) in test_cases {
+        let filename = serialize::temp_file_name("int-vector-overflow-data");
+        let mut options = OpenOptions::new();
+        let mut file = options.create(true).write(true).truncate(true).open(&filename).unwrap();
+
+        let data = RawVector::new();
+        len.serialize(&mut file).unwrap();
+        width.serialize(&mut file).unwrap();
+        data.serialize(&mut file).unwrap();
+        drop(file);
+
+        let result: io::Result<IntVector> = serialize::load_from(&filename);
+        assert_eq!(result.map_err(|e| e.kind()), Err(ErrorKind::InvalidData), "Expected ErrorKind::InvalidData");
+
+        fs::remove_file(&filename).unwrap();
+    }
+}
+
 //-----------------------------------------------------------------------------
 
 #[test]
