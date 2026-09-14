@@ -10,6 +10,7 @@
   * Memory-mapped structures check for `mmap()` failure correctly.
   * Memory-mapped structures are unmapped correctly.
   * Correct out-of-bounds checks when creating a `MappedSlice`.
+  * `IntVector` length validation no longer overflows during deserialization.
   * `Serialize` implementation for a `Vec` of `Serializable` no longer uses uninitialized memory.
 
 ## Simple-SDS 0.4.2 (2026-08-24)
