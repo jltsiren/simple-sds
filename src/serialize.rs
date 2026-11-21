@@ -79,6 +79,43 @@ mod tests;
 
 //-----------------------------------------------------------------------------
 
+/// A version of [`io::Sink`] that counts the number of bytes written.
+#[derive(Clone, Debug)]
+pub struct CountingSink {
+    bytes_written: usize,
+}
+
+impl CountingSink {
+    /// Creates a new counting sink.
+    pub fn new() -> Self {
+        Self { bytes_written: 0 }
+    }
+
+    /// Returns the number of bytes written.
+    pub fn bytes_written(&self) -> usize {
+        self.bytes_written
+    }
+}
+
+impl Default for CountingSink {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Write for CountingSink {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.bytes_written += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+//-----------------------------------------------------------------------------
+
 /// Serialize a data structure.
 ///
 /// `self.size_in_elements()` should always be nonzero.
@@ -172,7 +209,13 @@ pub trait Serialize: Sized {
     /// Returns the size of the serialized struct in [`u64`] elements.
     ///
     /// This is usually closely related to the size of the in-memory struct.
-    fn size_in_elements(&self) -> usize;
+    /// The default implementation serializes the struct to [`CountingSink`].
+    /// It should be overridden when the size can be determined more efficiently.
+    fn size_in_elements(&self) -> usize {
+        let mut sink = CountingSink::new();
+        self.serialize(&mut sink).unwrap();
+        bits::bytes_to_words(sink.bytes_written())
+    }
 
     /// Returns the size of the serialized struct in bytes.
     ///
