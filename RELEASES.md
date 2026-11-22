@@ -1,6 +1,6 @@
 # Simple-SDS releases
 
-## Current version
+## Simple-SDS 0.5.0 (2026-11-21)
 
 * Minor changes:
   * A `SparseVector` with no set bits is now compressed properly.
